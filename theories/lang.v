@@ -445,3 +445,29 @@ Fixpoint match_access
   | _ :: stack', _ => match_access stack' bor read bar
   | _, _ => None
   end.
+
+
+Inductive instrumented_step :
+  tags → stacks → barriers → option event → tags → stacks → Prop :=
+| DefaultIS τ α β :
+    instrumented_step τ α β None τ α
+| AllocHeapIS τ α β l n :
+    instrumented_step τ α β
+                      (Some $ AllocEvt l n (ShrB None))
+                      (<[l := ShrB None]> τ)
+                      (init_stack l (Pos.to_nat n) α Shr)
+| AllocStackIS τ α β t x n :
+    instrumented_step τ α β
+                      (Some $ AllocEvt x n (UniqB t))
+                      (<[x := UniqB t]> τ)
+                      (init_stack x (Pos.to_nat n) α (Uniq t))
+| ReadFrozenIS τ α β l v bor stack :
+    (α !! l = Some stack) →
+    is_frozen stack →
+    instrumented_step τ α β
+                      (Some $ ReadEvt l v bor) τ α
+| ReadUnfreeze τ α β l v bor stack stack':
+    (α !! l = Some stack) →
+    instrumented_step τ α β
+                      (Some $ ReadEvt l v bor) τ
+                      (<[l := mkBorStack stack' None ]> α).
