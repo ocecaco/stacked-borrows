@@ -302,6 +302,7 @@ Definition stuck_term := App (Lit $ LitInt 0) [].
 
 
 Notation time := nat.
+Notation call_id := nat.
 
 Inductive borrow :=
 | UniqB (t: time)
@@ -309,6 +310,7 @@ Inductive borrow :=
 .
 
 Inductive ref_kind := | UniqueRef | FrozenRef | RawRef.
+Inductive retag_kind := | FnEntry | TwoPhase | Raw | Default.
 
 Inductive event :=
 | AllocEvt (l : loc) (n: positive) (bor: borrow)
@@ -317,6 +319,8 @@ Inductive event :=
 | WriteEvt (l: loc) (v: immediate) (bor: borrow)
 | UpdateEvt (l: loc) (vr vw: immediate) (bor: borrow)
 | DerefEvt (l: loc) (bor: borrow) (ref: ref_kind)
+| RetagEvt (x l: loc) (n : positive) (old_bor new_bor: borrow)
+           (retag: retag_kind) (bar: option call_id)
 .
 
 Inductive base_step :
@@ -388,65 +392,139 @@ Inductive base_step :
 | ForkS e σ:
     base_step (Fork e) σ None (Lit LitPoison) σ [e].
 
-(* Instrumented state: tags and stack borrows. *)
+(* Instrumented state: tags, barriers, and stacked borrows. *)
 Definition tags := gmap loc borrow.
 
-Notation call_id := nat.
+Definition barriers := gmap call_id bool.
 
 Inductive stack_item :=
 | Uniq (t: time)
 | Shr
 | FnBarrier (ci : call_id)
 .
-
 Record bor_stack := mkBorStack {
   borrows     : list stack_item;
   frozen_since: option time;
 }.
+Definition is_frozen (s : bor_stack) : Prop := is_Some s.(frozen_since).
 
 Definition stacks := gmap loc bor_stack.
 
-Inductive retag_kind :=
-| FnEntry
-| TwoPhase
-| Raw
-| Default
-.
-
-Fixpoint init_stack (l:loc) (n:nat) (β:stacks) (si: stack_item) : stacks :=
+Fixpoint init_stacks (l:loc) (n:nat) (β:stacks) (si: stack_item) : stacks :=
   match n with
   | O => β
-  | S n => <[l:= mkBorStack [si] None]>(init_stack (l +ₗ 1) n β si)
+  | S n => <[l:= mkBorStack [si] None]>(init_stacks (l +ₗ 1) n β si)
   end.
 
-Definition is_frozen (s : bor_stack) : Prop := is_Some s.(frozen_since).
-
-Definition barriers := gmap call_id bool.
-
+(** Dealloc checks for no active barrier on the stack *)
 Definition is_active (bar: barriers) (c: call_id) : bool :=
   bool_decide (bar !! c = Some true).
 
-Fixpoint match_access
-  (stack: list stack_item) (bor: borrow) (read: bool) (bar: barriers)
-  : option (list stack_item) :=
-  match stack, bor with
-  | FnBarrier c :: stack', _ =>
-      if (is_active bar c) then None
-      else match_access stack' bor read bar
-  |  Uniq t1 :: stack', UniqB t2 =>
-      if (decide (t1 = t2))
-      then Some stack
-      else match_access stack' bor read bar
-  | Shr :: _, ShrB _ => Some stack
-  | Shr :: stack', _ =>
-      if read
-      then Some stack
-      else match_access stack' bor read bar
-  | _ :: stack', _ => match_access stack' bor read bar
-  | _, _ => None
+Definition is_active_barrier (bar: barriers) (si: stack_item) :=
+  match si with
+  | FnBarrier c => bar !! c = Some true
+  | _ => False
+  end.
+Instance is_active_barrier_dec bar : Decision (is_active_barrier bar si).
+Proof. move => [?| |?] /=; solve_decision. Qed.
+
+Definition find_top_active_call (stack: list stack_item) (bar: barriers) :
+  option call_id := (list_find (is_active_barrier bar) stack) ≫= (Some ∘ fst).
+
+Inductive access_kind := AccessRead | AccessWrite | AccessDealloc.
+Definition dealloc_no_active_barrier
+  (access: access_kind) (stack: list stack_item) (bar: barriers) : bool :=
+  match access with
+  | AccessDealloc =>
+      if find_top_active_call stack bar then false else true
+  | _ => true
   end.
 
+(** Check for accesses *)
+(* Return None if the check fails.
+ * Return Some stack' where stack' is the new stack. *)
+Fixpoint match_access
+  (stack: list stack_item) (bor: borrow) (access: access_kind) (bar: barriers)
+  : option (list stack_item) :=
+  match stack, bor, access with
+  (* try to pop barriers *)
+  | FnBarrier c :: stack', _, _ =>
+      (* cannot pop an active barrier *)
+      if (is_active bar c) then None
+      else match_access stack' bor access bar
+  (* Uniq t matches UniqB t *)
+  |  Uniq t1 :: stack', UniqB t2, _ =>
+      if (decide (t1 = t2))
+      then
+        (* if deallocating, check that there is no active call_id left *)
+        if dealloc_no_active_barrier access stack' bar then Some stack else None
+      else match_access stack' bor access bar
+  (* a Read can match Shr with both UniqB/ShrB *)
+  | Shr :: stack', _, AccessRead => Some stack
+  (* Shr matches ShrB *)
+  | Shr :: stack', ShrB _, _ =>
+      (* if deallocating, check that there is no active call_id left *)
+      if dealloc_no_active_barrier access stack' bar then Some stack else None
+  (* no current match, continue *)
+  | _ :: stack', _, _ => match_access stack' bor access bar
+  (* empty stack, no matches *)
+  | [], _, _ => None
+  end.
 
+(* Return the matched item's index if found (0 is the bottom of the stack). *)
+Fixpoint match_deref (stack: list stack_item) (bor: borrow) : option nat :=
+  match stack, bor with
+  | Uniq t1 :: stack', UniqB t2 =>
+      (* Uniq t1 matches UniqB t2 *)
+      if (decide (t1 = t2))
+      then Some (length stack')
+      else match_deref stack' bor
+  | Shr :: stack', ShrB _ =>
+      (* Shr matches ShrB *)
+      Some (length stack')
+  | _ :: stack', _ =>
+      (* no current match, continue *)
+      match_deref stack' bor
+  | [], _ =>
+      (* empty stack, no matches *)
+      None
+  end.
+
+(** Check for derefs *)
+(* Return None if the check fails.
+ * Return Some None if the stack is frozen.
+ * Return Some (Some i) where i is the matched item's index. *)
+Definition check_deref
+  (stack: bor_stack) (bor: borrow) (kind: ref_kind) : option (option nat) :=
+  match bor, stack.(frozen_since), kind with
+  | ShrB (Some _), _, UniqueRef =>
+      (* no shared tag for unique ref *)
+      None
+  | ShrB (Some _), None, FrozenRef =>
+      (* no shared tag and frozen ref on unfrozen stack *)
+      None
+  | ShrB (Some t1), Some t2, FrozenRef =>
+      (* shared tag, frozen stack and frozen ref:
+          stack must be frozen at t2 before the tag t1 *)
+      if decide (t2 <= t1) then Some None else None
+  | ShrB None, Some _, _ =>
+      (* raw tag, frozen stack: good *)
+      Some None
+  | _ , _, _ =>
+      (* otherwise, look for the bor in the stack *)
+      (match_deref stack.(borrows) bor) ≫= (Some ∘ Some)
+  end.
+
+(** Reborrow *)
+Inductive reborrow_one
+  (stack: bor_stack) (old_bor new_bor: borrow) (bar: option call_id) (kind: ref_kind) :
+  bor_stack → Prop :=
+| Reborrow stack' ptr_idx
+    (OLD_DEREF: check_deref stack old_bor kind = Some (Some ptr_idx)) :
+  reborrow_one stack old_bor new_bor bar kind stack'.
+
+(** Instrumented step for the stacked borrows *)
+(* This ignores CAS for now. *)
 Inductive instrumented_step :
   tags → stacks → barriers → option event → tags → stacks → Prop :=
 | DefaultIS τ α β :
@@ -455,19 +533,44 @@ Inductive instrumented_step :
     instrumented_step τ α β
                       (Some $ AllocEvt l n (ShrB None))
                       (<[l := ShrB None]> τ)
-                      (init_stack l (Pos.to_nat n) α Shr)
+                      (init_stacks l (Pos.to_nat n) α Shr)
 | AllocStackIS τ α β t x n :
     instrumented_step τ α β
                       (Some $ AllocEvt x n (UniqB t))
                       (<[x := UniqB t]> τ)
-                      (init_stack x (Pos.to_nat n) α (Uniq t))
+                      (init_stacks x (Pos.to_nat n) α (Uniq t))
 | ReadFrozenIS τ α β l v bor stack :
     (α !! l = Some stack) →
     is_frozen stack →
     instrumented_step τ α β
                       (Some $ ReadEvt l v bor) τ α
-| ReadUnfreeze τ α β l v bor stack stack':
+| ReadUnfrozenIS τ α β l v bor stack stack':
     (α !! l = Some stack) →
+    (¬ is_frozen stack) →
+    (match_access stack.(borrows) bor AccessRead β = Some stack') →
     instrumented_step τ α β
                       (Some $ ReadEvt l v bor) τ
-                      (<[l := mkBorStack stack' None ]> α).
+                      (<[l := mkBorStack stack' None ]> α)
+| WriteIS τ α β l v bor stack stack' :
+    (α !! l = Some stack) →
+    (match_access stack.(borrows) bor AccessWrite β = Some stack') →
+    instrumented_step τ α β
+                      (Some $ WriteEvt l v bor) τ
+                      (<[l := mkBorStack stack' None ]> α)
+| DeallocIS τ α β l v bor stack stack' :
+    (α !! l = Some stack) →
+    (match_access stack.(borrows) bor AccessDealloc β = Some stack') →
+    instrumented_step τ α β
+                      (Some $ WriteEvt l v bor) τ
+                      (<[l := mkBorStack stack' None ]> α)
+| DerefIS τ α β l bor kind stack :
+    (α !! l = Some stack) →
+    (is_Some (check_deref stack bor kind)) →
+    instrumented_step τ α β
+                      (Some $ DerefEvt l bor kind) τ α
+| RetagIS τ α β x l n old_bor new_bor kind stack bar :
+    (τ !! x = Some old_bor) →
+    (α !! l = Some stack) →
+    instrumented_step τ α β
+                      (Some $ RetagEvt x l n old_bor new_bor kind bar)
+                      (<[x := new_bor ]> τ) α.
