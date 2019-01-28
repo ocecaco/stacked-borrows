@@ -308,8 +308,19 @@ Inductive borrow :=
 | UniqB (t: time)
 | ShrB (ot : option time)
 .
+Definition is_unique (bor: borrow) :=
+  match bor with | UniqB _ => True | _ => False end.
+Definition is_shared (bor: borrow) :=
+  match bor with | ShrB _ => True | _ => False end.
 
-Inductive ref_kind := | UniqueRef | FrozenRef | RawRef.
+Inductive ref_kind :=
+(* &mut *)
+| UniqueRef
+(* & *)
+| FrozenRef
+(* * (raw) or & to UnsafeCell *)
+| RawRef.
+
 Inductive retag_kind := | FnEntry | TwoPhase | Raw | Default.
 
 Inductive event :=
@@ -319,7 +330,7 @@ Inductive event :=
 | WriteEvt (l: loc) (v: immediate) (bor: borrow)
 | UpdateEvt (l: loc) (vr vw: immediate) (bor: borrow)
 | DerefEvt (l: loc) (bor: borrow) (ref: ref_kind)
-| RetagEvt (x l: loc) (n : positive) (old_bor new_bor: borrow)
+| RetagEvt (x l: loc) (n : positive) (bor bor': borrow)
            (retag: retag_kind) (bar: option call_id)
 .
 
@@ -432,6 +443,11 @@ Definition find_top_active_call (stack: list stack_item) (bar: barriers) :
   option call_id := (list_find (is_active_barrier bar) stack) ≫= (Some ∘ fst).
 
 Inductive access_kind := AccessRead | AccessWrite | AccessDealloc.
+Definition to_access_kind (kind : ref_kind): access_kind :=
+  match kind with
+  | UniqueRef => AccessWrite
+  | _ => AccessRead
+  end.
 Definition dealloc_no_active_barrier
   (access: access_kind) (stack: list stack_item) (bar: barriers) : bool :=
   match access with
@@ -443,7 +459,7 @@ Definition dealloc_no_active_barrier
 (** Check for accesses *)
 (* Return None if the check fails.
  * Return Some stack' where stack' is the new stack. *)
-Fixpoint match_access
+Fixpoint access1
   (stack: list stack_item) (bor: borrow) (access: access_kind) (bar: barriers)
   : option (list stack_item) :=
   match stack, bor, access with
@@ -451,14 +467,14 @@ Fixpoint match_access
   | FnBarrier c :: stack', _, _ =>
       (* cannot pop an active barrier *)
       if (is_active bar c) then None
-      else match_access stack' bor access bar
+      else access1 stack' bor access bar
   (* Uniq t matches UniqB t *)
   |  Uniq t1 :: stack', UniqB t2, _ =>
       if (decide (t1 = t2))
       then
         (* if deallocating, check that there is no active call_id left *)
         if dealloc_no_active_barrier access stack' bar then Some stack else None
-      else match_access stack' bor access bar
+      else access1 stack' bor access bar
   (* a Read can match Shr with both UniqB/ShrB *)
   | Shr :: stack', _, AccessRead => Some stack
   (* Shr matches ShrB *)
@@ -466,10 +482,21 @@ Fixpoint match_access
       (* if deallocating, check that there is no active call_id left *)
       if dealloc_no_active_barrier access stack' bar then Some stack else None
   (* no current match, continue *)
-  | _ :: stack', _, _ => match_access stack' bor access bar
+  | _ :: stack', _, _ => access1 stack' bor access bar
   (* empty stack, no matches *)
   | [], _, _ => None
   end.
+
+Inductive accessN
+  (α: stacks) (β: barriers) (bor: borrow) (kind: access_kind) (l: loc)
+  : nat → stacks → Prop :=
+| ACNBase
+  : accessN α β bor kind l O α
+| ACNRecursive n stack bors' α'
+    (STACK: α !! l = Some stack)
+    (ACC1 : access1 stack.(borrows) bor kind β = Some bors')
+    (ACCN : accessN (<[l := mkBorStack bors' stack.(frozen_since) ]> α) β bor kind (l +ₗ 1) n α')
+  : accessN α β bor kind l (S n) α'.
 
 (* Return the matched item's index if found (0 is the bottom of the stack). *)
 Fixpoint match_deref (stack: list stack_item) (bor: borrow) : option nat :=
@@ -494,7 +521,7 @@ Fixpoint match_deref (stack: list stack_item) (bor: borrow) : option nat :=
 (* Return None if the check fails.
  * Return Some None if the stack is frozen.
  * Return Some (Some i) where i is the matched item's index. *)
-Definition check_deref
+Definition check_deref1
   (stack: bor_stack) (bor: borrow) (kind: ref_kind) : option (option nat) :=
   match bor, stack.(frozen_since), kind with
   | ShrB (Some _), _, UniqueRef =>
@@ -515,13 +542,100 @@ Definition check_deref
       (match_deref stack.(borrows) bor) ≫= (Some ∘ Some)
   end.
 
+Inductive check_derefN
+  (α: stacks) (bor: borrow) (kind: ref_kind) (l: loc)
+  : nat → Prop :=
+| DRNBase
+  : check_derefN α bor kind l O
+| DRNRecursive n stack
+    (STACK: α !! l = Some stack)
+    (DR1 : is_Some (check_deref1 stack bor kind))
+    (DRN : check_derefN α bor kind (l +ₗ 1) n)
+  : check_derefN α bor kind l (S n).
+
 (** Reborrow *)
-Inductive reborrow_one
-  (stack: bor_stack) (old_bor new_bor: borrow) (bar: option call_id) (kind: ref_kind) :
-  bor_stack → Prop :=
-| Reborrow stack' ptr_idx
-    (OLD_DEREF: check_deref stack old_bor kind = Some (Some ptr_idx)) :
-  reborrow_one stack old_bor new_bor bar kind stack'.
+
+Definition bor_redundant_check
+  (stack: bor_stack) (bor': borrow) (kind: ref_kind) (idx: option time): Prop :=
+  match (check_deref1 stack bor' kind) with
+  | Some idx' => match idx, idx' with
+                 | _, None => True
+                 | Some t, Some t' => t <= t'
+                 | None, Some _ => False
+                 end
+  | None => False
+  end.
+Instance bor_redundant_check_dec stack bor' kind idx :
+  Decision (bor_redundant_check stack bor' kind idx).
+Proof.
+  rewrite /bor_redundant_check.
+  destruct (check_deref1 stack bor' kind) as [idx'|]; [|solve_decision].
+  destruct idx as [t|], idx' as [t'|]; solve_decision.
+Qed.
+
+Definition add_barrier (stack: list stack_item) (c: call_id) : list stack_item :=
+  match stack with
+  | FnBarrier c' :: stack' =>
+      (* Avoid stacking multiple identical barriers on top of each other. *)
+      if decide (c' = c) then stack else FnBarrier c :: stack
+  | _ => FnBarrier c :: stack
+  end.
+
+Inductive push_borrow (stack: bor_stack) : borrow → ref_kind → bor_stack → Prop :=
+| PBShrFrozen (t t': time)
+    (* Already frozen earlier at t, nothing to do *)
+    (FROZEN: stack.(frozen_since) = Some t)
+    (EARLIER: (t ≤ t')%nat)
+  : push_borrow stack (ShrB (Some t')) FrozenRef stack
+| PBShrFreeze (t': time)
+    (* Not frozen, freeze now at t' *)
+    (UNFROZEN: stack.(frozen_since) = None)
+  : push_borrow stack (ShrB (Some t')) FrozenRef (mkBorStack stack.(borrows) (Some t'))
+| PBPushShr ot kind bors'
+    (* Not frozen, try to add new item, unless it's redundant *)
+    (UNFROZEN: stack.(frozen_since) = None)
+    (NOTFREEZE: kind ≠ FrozenRef)
+    (STACK: bors' = match stack.(borrows) with
+                    | Shr :: _ => stack.(borrows)
+                    | _ => Shr :: stack.(borrows)
+                    end)
+  : push_borrow stack (ShrB ot) kind (mkBorStack bors' None)
+| PBPushUniq t' kind
+    (* Not frozen, add new item *)
+    (UNFROZEN: stack.(frozen_since) = None)
+    (NOTFREEZE: kind ≠ FrozenRef)
+  : push_borrow stack (UniqB t') kind (mkBorStack (Uniq t' :: stack.(borrows)) None).
+
+Inductive reborrow1
+  (stack: bor_stack) (bor: borrow) (kind: ref_kind) (β: barriers) :
+  option call_id → borrow → bor_stack → Prop :=
+| RB1Redundant bor' ptr_idx
+    (OLD_DEREF: check_deref1 stack bor kind = Some ptr_idx)
+    (REDUNDANT: bor_redundant_check stack bor' kind ptr_idx)
+    (SHARED   : is_shared bor')
+  : reborrow1 stack bor kind β None bor' stack
+| RB1NonRedundantNoBarrier bor' bors' stack' ptr_idx
+    (OLD_DEREF : check_deref1 stack bor kind = Some ptr_idx)
+    (REDUNDANT : ¬ bor_redundant_check stack bor' kind ptr_idx)
+    (REACTIVATE: access1 stack.(borrows) bor (to_access_kind kind) β = Some bors')
+    (PUSH: push_borrow (mkBorStack bors' None) bor' kind stack')
+  : reborrow1 stack bor kind β None bor' stack'
+| RB1NonRedundantBarrier c bor' bors' stack'
+    (OLD_DEREF : is_Some (check_deref1 stack bor kind))
+    (REACTIVATE: access1 stack.(borrows) bor (to_access_kind kind) β = Some bors')
+    (PUSH: push_borrow (mkBorStack (add_barrier bors' c) None) bor' kind stack')
+  : reborrow1 stack bor kind β (Some c) bor' stack'.
+
+Inductive reborrowN
+  (α: stacks) (β: barriers) (bor: borrow) (kind: ref_kind)  (l: loc)
+  : nat → option call_id → borrow → stacks → Prop :=
+| RBNBase bar bor'
+  : reborrowN α β bor kind l O bar bor' α
+| RBNRecursive n stack stack' bar bor' α'
+    (STACK: α !! l = Some stack)
+    (REBOR1: reborrow1 stack bor kind β bar bor' stack')
+    (REBORN: reborrowN (<[l := stack' ]> α) β bor kind (l +ₗ 1) n bar bor' α')
+  : reborrowN α β bor kind l (S n) bar bor' α'.
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
@@ -547,30 +661,30 @@ Inductive instrumented_step :
 | ReadUnfrozenIS τ α β l v bor stack stack':
     (α !! l = Some stack) →
     (¬ is_frozen stack) →
-    (match_access stack.(borrows) bor AccessRead β = Some stack') →
+    (access1 stack.(borrows) bor AccessRead β = Some stack') →
     instrumented_step τ α β
                       (Some $ ReadEvt l v bor) τ
                       (<[l := mkBorStack stack' None ]> α)
 | WriteIS τ α β l v bor stack stack' :
     (α !! l = Some stack) →
-    (match_access stack.(borrows) bor AccessWrite β = Some stack') →
+    (access1 stack.(borrows) bor AccessWrite β = Some stack') →
     instrumented_step τ α β
                       (Some $ WriteEvt l v bor) τ
                       (<[l := mkBorStack stack' None ]> α)
 | DeallocIS τ α β l v bor stack stack' :
     (α !! l = Some stack) →
-    (match_access stack.(borrows) bor AccessDealloc β = Some stack') →
+    (access1 stack.(borrows) bor AccessDealloc β = Some stack') →
     instrumented_step τ α β
                       (Some $ WriteEvt l v bor) τ
                       (<[l := mkBorStack stack' None ]> α)
 | DerefIS τ α β l bor kind stack :
     (α !! l = Some stack) →
-    (is_Some (check_deref stack bor kind)) →
+    (is_Some (check_deref1 stack bor kind)) →
     instrumented_step τ α β
                       (Some $ DerefEvt l bor kind) τ α
-| RetagIS τ α β x l n old_bor new_bor kind stack bar :
-    (τ !! x = Some old_bor) →
-    (α !! l = Some stack) →
+| RetagIS τ α α' β x l n bor bor' kind bar :
+    (τ !! x = Some bor) →
+    (reborrowN α β bor kind l (Pos.to_nat n) bar bor' α') →
     instrumented_step τ α β
-                      (Some $ RetagEvt x l n old_bor new_bor kind bar)
-                      (<[x := new_bor ]> τ) α.
+                      (Some $ RetagEvt x l n bor bor' kind bar)
+                      (<[x := bor' ]> τ) α'.
