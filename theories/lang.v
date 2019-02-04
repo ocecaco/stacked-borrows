@@ -67,8 +67,14 @@ Proof.
   induction mxl as [|?? IH]; set_solver.
 Qed.
 
+Notation time := nat (only parsing).
+Inductive borrow :=
+| UniqB (t: time)
+| ShrB (ot : option time)
+.
+
 Inductive base_lit :=
-| LitPoison | LitLoc (l : loc) | LitInt (n : Z).
+| LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
 
 Inductive expr :=
 (* variable *)
@@ -77,7 +83,7 @@ Inductive expr :=
 | Lit (l : base_lit)
 | Rec (f : binder) (xl : list binder) (e : expr)
 (* lvalue *)
-| Place (l : loc)
+| Place (l: loc) (tag: borrow)
 (* bin op *)
 | BinOp (op : bin_op) (e1 e2 : expr)
 (* application *)
@@ -102,7 +108,7 @@ Arguments Case _%E _%E.
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
   | Var x => bool_decide (x ∈ X)
-  | Lit _ | Place _ => true
+  | Lit _ | Place _ _ => true
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
   | BinOp _ e1 e2 | Write e1 e2 | Free e1 e2 =>
     is_closed X e1 && is_closed X e2
@@ -123,7 +129,7 @@ Inductive immediate :=
 
 Inductive val :=
 | ImmV (v: immediate)
-| PlaceV (l: loc)
+| PlaceV (l: loc) (tag: borrow)
 .
 
 Bind Scope val_scope with val.
@@ -132,7 +138,7 @@ Definition of_val (v : val) : expr :=
   match v with
   | ImmV (RecV f x e) => Rec f x e
   | ImmV (LitV l) => Lit l
-  | PlaceV l => Place l
+  | PlaceV l tag => Place  l tag
   end.
 
 Definition to_val (e : expr) : option val :=
@@ -140,7 +146,7 @@ Definition to_val (e : expr) : option val :=
   | Rec f xl e =>
     if decide (Closed (f :b: xl +b+ []) e) then Some (ImmV (RecV f xl e)) else None
   | Lit l => Some (ImmV (LitV l))
-  | Place l => Some (PlaceV l)
+  | Place l tag => Some (PlaceV l tag)
   | _ => None
   end.
 
@@ -151,7 +157,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Lit l => Lit l
   | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e
-  | Place l => Place l
+  | Place l tag => Place l tag
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
   | App e el => App (subst x es e) (map (subst x es) el)
   | Read e => Read (subst x es e)
@@ -259,7 +265,7 @@ Fixpoint free_mem (l:loc) (n:nat) (σ:mem) : mem :=
 Inductive lit_eq (σ : mem) : base_lit → base_lit → Prop :=
 (* No refl case for poison *)
 | IntRefl z : lit_eq σ (LitInt z) (LitInt z)
-| LocRefl l : lit_eq σ (LitLoc l) (LitLoc l)
+| LocRefl l tag1 tag2 : lit_eq σ (LitLoc l tag1) (LitLoc l tag2)
 (* Comparing unallocated pointers can non-deterministically say they are equal
    even if they are not.  Given that our `free` actually makes addresses
    re-usable, this may not be strictly necessary, but it is the most
@@ -267,22 +273,22 @@ Inductive lit_eq (σ : mem) : base_lit → base_lit → Prop :=
    possible in safe Rust).  See
    <https://internals.rust-lang.org/t/comparing-dangling-pointers/3019> for some
    more background. *)
-| LocUnallocL l1 l2 :
+| LocUnallocL l1 l2 tag1 tag2 :
     σ !! l1 = None →
-    lit_eq σ (LitLoc l1) (LitLoc l2)
-| LocUnallocR l1 l2 :
+    lit_eq σ (LitLoc l1 tag1) (LitLoc l2 tag2)
+| LocUnallocR l1 l2 tag1 tag2 :
     σ !! l2 = None →
-    lit_eq σ (LitLoc l1) (LitLoc l2).
+    lit_eq σ (LitLoc l1 tag1) (LitLoc l2 tag2).
 
 Inductive lit_neq : base_lit → base_lit → Prop :=
 | IntNeq z1 z2 :
     z1 ≠ z2 → lit_neq (LitInt z1) (LitInt z2)
-| LocNeq l1 l2 :
-    l1 ≠ l2 → lit_neq (LitLoc l1) (LitLoc l2)
-| LocNeqNullR l :
-    lit_neq (LitLoc l) (LitInt 0)
-| LocNeqNullL l :
-    lit_neq (LitInt 0) (LitLoc l).
+| LocNeq l1 l2 tag1 tag2 :
+    l1 ≠ l2 → lit_neq (LitLoc l1 tag1) (LitLoc l2 tag2)
+| LocNeqNullR l tag :
+    lit_neq (LitLoc l tag) (LitInt 0)
+| LocNeqNullL l tag :
+    lit_neq (LitInt 0) (LitLoc l tag).
 
 Inductive bin_op_eval (σ : mem) : bin_op → base_lit → base_lit → base_lit → Prop :=
 | BinOpPlus z1 z2 :
@@ -295,19 +301,11 @@ Inductive bin_op_eval (σ : mem) : bin_op → base_lit → base_lit → base_lit
     lit_eq σ l1 l2 → bin_op_eval σ EqOp l1 l2 (lit_of_bool true)
 | BinOpEqFalse l1 l2 :
     lit_neq l1 l2 → bin_op_eval σ EqOp l1 l2 (lit_of_bool false)
-| BinOpOffset l z :
-    bin_op_eval σ OffsetOp (LitLoc l) (LitInt z) (LitLoc $ l +ₗ z).
+| BinOpOffset l z tag :
+    bin_op_eval σ OffsetOp (LitLoc l tag) (LitInt z) (LitLoc (l +ₗ z) tag).
 
 Definition stuck_term := App (Lit $ LitInt 0) [].
 
-
-Notation time := nat.
-Notation call_id := nat.
-
-Inductive borrow :=
-| UniqB (t: time)
-| ShrB (ot : option time)
-.
 Definition is_unique (bor: borrow) :=
   match bor with | UniqB _ => True | _ => False end.
 Definition is_shared (bor: borrow) :=
@@ -323,13 +321,13 @@ Inductive ref_kind :=
 
 Inductive retag_kind := | FnEntry | TwoPhase | Raw | Default.
 
+Notation call_id := nat (only parsing).
 Inductive event :=
-| AllocEvt (l : loc) (n: positive) (bor: borrow)
-| DeallocEvt (l: loc) (n : positive) (bor: borrow)
-| ReadEvt (l: loc) (v: immediate) (bor: borrow)
-| WriteEvt (l: loc) (v: immediate) (bor: borrow)
-| UpdateEvt (l: loc) (vr vw: immediate) (bor: borrow)
-| DerefEvt (l: loc) (bor: borrow) (ref: ref_kind)
+| AllocEvt (l : loc) (n: positive) (lbor: borrow)
+| DeallocEvt (l: loc) (n : positive) (lbor: borrow)
+| ReadEvt (l: loc) (lbor: borrow) (v: immediate)
+| WriteEvt (l: loc) (lbor: borrow) (v: immediate)
+| DerefEvt (l: loc) (lbor: borrow) (ref: ref_kind)
 | RetagEvt (x l: loc) (n : positive) (bor bor': borrow)
            (retag: retag_kind) (bar: option call_id)
 .
@@ -344,56 +342,40 @@ Inductive base_step :
     Closed (f :b: xl +b+ []) e →
     subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
     base_step (App (Rec f xl e) el) σ None e' σ []
-| RefBS l σ :
+| RefBS l lbor σ :
     is_Some (σ !! l) →
-    base_step (Ref (Place l)) σ None (Lit (LitLoc l)) σ []
-| DerefBS l bor ref σ :
+    base_step (Ref (Place l lbor)) σ None (Lit (LitLoc l lbor)) σ []
+| DerefBS l lbor ref σ :
     is_Some (σ !! l) →
-    base_step (Deref (Lit (LitLoc l))) σ
-              (Some $ DerefEvt l bor ref)
-              (Place l) σ
+    base_step (Deref (Lit (LitLoc l lbor))) σ
+              (Some $ DerefEvt l lbor ref)
+              (Place l lbor) σ
               []
-| ReadBS l v bor σ :
+| ReadBS l v lbor σ :
     σ !! l = Some v →
-    base_step (Read (Place l)) σ
-              (Some $ ReadEvt l v bor)
+    base_step (Read (Place l lbor)) σ
+              (Some $ ReadEvt l lbor v)
               (of_val (ImmV v)) σ
               []
-| WriteS l e v bor σ :
+| WriteS l e v lbor σ :
     is_Some (σ !! l) →
     to_val e = Some (ImmV v) →
-    base_step (Write (Place l) e) σ
-              (Some $ WriteEvt l v bor)
+    base_step (Write (Place l lbor) e) σ
+              (Some $ WriteEvt l lbor v)
               (Lit LitPoison) (<[l:=v]>σ)
               []
-| CasFailS l e1 v1 e2 v2 vr bor σ :
-    to_val e1 = Some $ ImmV $ LitV v1 → to_val e2 = Some $ ImmV $ LitV v2 →
-    σ !! l = Some (LitV vr) →
-    lit_neq v1 vr →
-    base_step (CAS (Place l) e1 e2) σ
-              (Some $ ReadEvt l (LitV vr) bor)
-              (Lit $ lit_of_bool false) σ
-              []
-| CasSucS l e1 v1 e2 v2 vr bor σ :
-    to_val e1 = Some $ ImmV $ LitV v1 → to_val e2 = Some $ ImmV $ LitV v2 →
-    σ !! l = Some (LitV vr) →
-    lit_eq σ v1 vr →
-    base_step (CAS (Place l) e1 e2) σ
-              (Some $ UpdateEvt l (LitV vr) (LitV v2) bor)
-              (Lit $ lit_of_bool true) (<[l:=(LitV v2)]>σ)
-              []
-| AllocS n l bor σ :
+| AllocS n l lbor σ :
     0 < n →
     (∀ m, σ !! (l +ₗ m) = None) →
     base_step (Alloc $ Lit $ LitInt n) σ
-              (Some $ AllocEvt l (Z.to_pos n) bor)
-              (Place l) (init_mem l (Z.to_nat n) σ)
+              (Some $ AllocEvt l (Z.to_pos n) lbor)
+              (Place l lbor) (init_mem l (Z.to_nat n) σ)
               []
-| FreeS n l bor σ :
+| FreeS n l lbor σ :
     0 < n →
     (∀ m, is_Some (σ !! (l +ₗ m)) ↔ 0 ≤ m < n) →
-    base_step (Free (Lit $ LitInt n) (Place l)) σ
-              (Some $ DeallocEvt l (Z.to_pos n) bor)
+    base_step (Free (Lit $ LitInt n) (Place l lbor)) σ
+              (Some $ DeallocEvt l (Z.to_pos n) lbor)
               (Lit LitPoison) (free_mem l (Z.to_nat n) σ)
               []
 | CaseS i el e σ :
@@ -403,9 +385,7 @@ Inductive base_step :
 | ForkS e σ:
     base_step (Fork e) σ None (Lit LitPoison) σ [e].
 
-(* Instrumented state: tags, barriers, and stacked borrows. *)
-Definition tags := gmap loc borrow.
-
+(* Instrumented state: barriers, and stacked borrows. *)
 Definition barriers := gmap call_id bool.
 
 Inductive stack_item :=
@@ -634,57 +614,54 @@ Inductive reborrowN
 | RBNRecursive n stack stack' bar bor' α'
     (STACK: α !! l = Some stack)
     (REBOR1: reborrow1 stack bor kind β bar bor' stack')
-    (REBORN: reborrowN (<[l := stack' ]> α) β bor kind (l +ₗ 1) n bar bor' α')
+    (REBORN: reborrowN (<[ l := stack' ]> α) β bor kind (l +ₗ 1) n bar bor' α')
   : reborrowN α β bor kind l (S n) bar bor' α'.
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
 Inductive instrumented_step :
-  tags → stacks → barriers → option event → tags → stacks → Prop :=
-| DefaultIS τ α β :
-    instrumented_step τ α β None τ α
-| AllocHeapIS τ α β l n :
-    instrumented_step τ α β
-                      (Some $ AllocEvt l n (ShrB None))
-                      (<[l := ShrB None]> τ)
+  mem → stacks → barriers → option event → mem → stacks → Prop :=
+| DefaultIS σ α β :
+    instrumented_step σ α β None σ α
+| AllocHeapIS σ σ' α β l n :
+    instrumented_step σ α β
+                      (Some $ AllocEvt l n (ShrB None)) σ'
                       (init_stacks l (Pos.to_nat n) α Shr)
-| AllocStackIS τ α β t x n :
-    instrumented_step τ α β
-                      (Some $ AllocEvt x n (UniqB t))
-                      (<[x := UniqB t]> τ)
+| AllocStackIS σ σ' α β t x n :
+    instrumented_step σ α β
+                      (Some $ AllocEvt x n (UniqB t)) σ'
                       (init_stacks x (Pos.to_nat n) α (Uniq t))
-| ReadFrozenIS τ α β l v bor stack :
+| ReadFrozenIS σ α β l v lbor stack :
     (α !! l = Some stack) →
     is_frozen stack →
-    instrumented_step τ α β
-                      (Some $ ReadEvt l v bor) τ α
-| ReadUnfrozenIS τ α β l v bor stack stack':
+    instrumented_step σ α β
+                      (Some $ ReadEvt l lbor v) σ α
+| ReadUnfrozenIS σ α β l v lbor stack stack':
     (α !! l = Some stack) →
     (¬ is_frozen stack) →
-    (access1 stack.(borrows) bor AccessRead β = Some stack') →
-    instrumented_step τ α β
-                      (Some $ ReadEvt l v bor) τ
-                      (<[l := mkBorStack stack' None ]> α)
-| WriteIS τ α β l v bor stack stack' :
+    (access1 stack.(borrows) lbor AccessRead β = Some stack') →
+    instrumented_step σ α β
+                      (Some $ ReadEvt l lbor v) σ
+                      (<[ l := mkBorStack stack' None ]> α)
+| WriteIS σ σ' α β l v lbor stack stack' :
     (α !! l = Some stack) →
-    (access1 stack.(borrows) bor AccessWrite β = Some stack') →
-    instrumented_step τ α β
-                      (Some $ WriteEvt l v bor) τ
-                      (<[l := mkBorStack stack' None ]> α)
-| DeallocIS τ α β l v bor stack stack' :
+    (access1 stack.(borrows) lbor AccessWrite β = Some stack') →
+    instrumented_step σ α β
+                      (Some $ WriteEvt l lbor v) σ'
+                      (<[ l := mkBorStack stack' None ]> α)
+| DeallocIS σ σ' α β l n lbor stack stack' :
     (α !! l = Some stack) →
-    (access1 stack.(borrows) bor AccessDealloc β = Some stack') →
-    instrumented_step τ α β
-                      (Some $ WriteEvt l v bor) τ
-                      (<[l := mkBorStack stack' None ]> α)
-| DerefIS τ α β l bor kind stack :
-    (α !! l = Some stack) →
-    (is_Some (check_deref1 stack bor kind)) →
-    instrumented_step τ α β
-                      (Some $ DerefEvt l bor kind) τ α
-| RetagIS τ α α' β x l n bor bor' kind bar :
-    (τ !! x = Some bor) →
-    (reborrowN α β bor kind l (Pos.to_nat n) bar bor' α') →
-    instrumented_step τ α β
-                      (Some $ RetagEvt x l n bor bor' kind bar)
-                      (<[x := bor' ]> τ) α'.
+    (access1 stack.(borrows) lbor AccessDealloc β = Some stack') →
+    instrumented_step σ α β
+                      (Some $ DeallocEvt l n lbor) σ'
+                      (<[ l := mkBorStack stack' None ]> α)
+| DerefIS σ α β l n lbor kind :
+    check_derefN α lbor kind l n →
+    instrumented_step σ α β
+                      (Some $ DerefEvt l lbor kind) σ α
+| RetagIS σ α α' β x l n bor bor' rkind rtkind bar :
+    (σ !! x = Some $ LitV $ LitLoc l bor) →
+    (reborrowN α β bor rkind l (Pos.to_nat n) bar bor' α') →
+    instrumented_step σ α β
+                      (Some $ RetagEvt x l n bor bor' rtkind bar)
+                      (<[ x := LitV $ LitLoc l bor' ]> σ) α'.
