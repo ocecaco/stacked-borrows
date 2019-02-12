@@ -70,14 +70,22 @@ Qed.
 Notation time := nat (only parsing).
 Inductive borrow :=
 | UniqB (t: time)
-| ShrB (ot : option time)
+| AliasB (ot : option time)
 .
 
 Inductive base_lit :=
 | LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
 
+Notation unsafe_list := (list (nat * nat))%type.
+Notation call_id := nat (only parsing).
 Inductive alloc_mod := Heap | Stack.
-Inductive retag_kind := | FnEntry | TwoPhase | Raw | Default.
+Inductive retag_kind := | FnEntry (c: call_id) | TwoPhase | RawRt | Default.
+Inductive ref_kind :=
+| UniqueRef (* &mut *)
+| FrozenRef (* & *)
+| RawRef (* * (raw) or & to UnsafeCell, or Box *)
+.
+Inductive mutability := Mutable | Immutable.
 
 Inductive expr :=
 (* variable *)
@@ -98,13 +106,13 @@ Inductive expr :=
 | Alloc (e : expr) (amod: alloc_mod)
 | Free (e1 e2 : expr)
 (* place op *)
-| Deref (e: expr)
+| Deref (e: expr) (usList: option unsafe_list)
 | Ref (e: expr)
 | Field (e1 e2: expr)
 (* function call tracking *)
 | NewCall
 | EndCall (e: expr)
-| Retag (kind: retag_kind) (e: expr)
+| Retag (kind: retag_kind) (e: expr) (usList: option unsafe_list)
 (* case *)
 | Case (e : expr) (el : list expr)
 (* concurrency *)
@@ -122,7 +130,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | BinOp _ e1 e2 | Write e1 e2 | Free e1 e2 | Field e1 e2 =>
     is_closed X e1 && is_closed X e2
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
-  | Read e | Alloc e _ | Deref e | Ref e | EndCall e | Retag _ e | Fork e => is_closed X e
+  | Read e | Alloc e _ | Deref e _ | Ref e | EndCall e | Retag _ e _ | Fork e => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 
@@ -174,12 +182,12 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
   | Alloc e amod => Alloc (subst x es e) amod
   | Free e1 e2 => Free (subst x es e1) (subst x es e2)
-  | Deref e => Deref (subst x es e)
+  | Deref e us => Deref (subst x es e) us
   | Ref e => Ref (subst x es e)
   | Field e1 e2 => Field (subst x es e1) (subst x es e2)
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
-  | Retag kind e => Retag kind (subst x es e)
+  | Retag kind e us => Retag kind (subst x es e) us
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
   end.
@@ -221,12 +229,12 @@ Inductive ectx_item :=
 | AllocCtx (amod: alloc_mod)
 | FreeLCtx (e : expr)
 | FreeRCtx (v : val)
-| DerefCtx
+| DerefCtx (us: option unsafe_list)
 | RefCtx
 | FieldLCtx (e : expr)
 | FieldRCtx (v : val)
 | EndCallCtx
-| RetagCtx (kind: retag_kind)
+| RetagCtx (kind: retag_kind) (us: option unsafe_list)
 | CaseCtx (el : list expr).
 
 Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
@@ -244,12 +252,12 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | AllocCtx amod => Alloc e amod
   | FreeLCtx e2 => Free e e2
   | FreeRCtx v1 => Free (of_val v1) e
-  | DerefCtx => Deref e
+  | DerefCtx us => Deref e us
   | RefCtx => Ref e
   | FieldLCtx e2 => Field e e2
   | FieldRCtx v1 => Field (of_val v1) e
   | EndCallCtx => EndCall e
-  | RetagCtx kind => Retag kind e
+  | RetagCtx kind us => Retag kind e us
   | CaseCtx el => Case e el
   end.
 
@@ -330,32 +338,19 @@ Definition stuck_term := App (Lit $ LitInt 0) [].
 
 Definition is_unique (bor: borrow) :=
   match bor with | UniqB _ => True | _ => False end.
-Definition is_shared (bor: borrow) :=
-  match bor with | ShrB _ => True | _ => False end.
+Definition is_aliasing (bor: borrow) :=
+  match bor with | AliasB _ => True | _ => False end.
 
-Inductive ref_kind :=
-(* &mut *)
-| UniqueRef
-(* & *)
-| FrozenRef
-(* * (raw) or & to UnsafeCell, or Box *)
-| RawRef.
-
-Inductive mutability := Mutable | Immutable.
-
-(* Use positive because we need `fresh`,
- * which for now is only implemented by stdpp for positives. *)
-Notation call_id := nat (only parsing).
 Inductive event :=
 | AllocEvt (l : loc) (n: positive) (lbor: borrow) (amod: alloc_mod)
 | DeallocEvt (l: loc) (n : positive) (lbor: borrow)
 | ReadEvt (l: loc) (lbor: borrow) (v: immediate)
 | WriteEvt (l: loc) (lbor: borrow) (v: immediate)
-| DerefEvt (l: loc) (lbor: borrow) (ref: ref_kind)
+| DerefEvt (l: loc) (lbor: borrow) (ref: ref_kind) (us: option unsafe_list)
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
 | RetagEvt (x l: loc) (n : positive) (bor bor': borrow)
-           (mut: option mutability) (bar: option call_id) (two_phase: bool)
+           (mut: option mutability) (rt: retag_kind)
 .
 
 Inductive base_step :
@@ -398,10 +393,10 @@ Inductive base_step :
 | RefBS l lbor σ :
     is_Some (σ !! l) →
     base_step (Ref (Place l lbor)) σ None (Lit (LitLoc l lbor)) σ []
-| DerefBS l lbor ref σ :
+| DerefBS l lbor ref us σ :
     is_Some (σ !! l) →
-    base_step (Deref (Lit (LitLoc l lbor))) σ
-              (Some $ DerefEvt l lbor ref)
+    base_step (Deref (Lit (LitLoc l lbor)) us) σ
+              (Some $ DerefEvt l lbor ref us)
               (Place l lbor) σ
               []
 | FieldBS l lbor z σ :
@@ -414,6 +409,9 @@ Inductive base_step :
     (0 ≤ call) →
     base_step (EndCall (Lit $ LitInt call)) σ
               (Some $ EndCallEvt (Z.to_nat call)) (Lit LitPoison) σ []
+| RetagBS x xbor l n lbor lbor' om rt us σ:
+    base_step (Retag rt (Place x xbor) us) σ
+              (Some $ RetagEvt x l n lbor lbor' om rt) (Lit LitPoison) σ []
 | CaseBS i el e σ :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
@@ -427,7 +425,7 @@ Implicit Type (β: barriers).
 
 Inductive stack_item :=
 | Uniq (t: time)
-| Shr
+| Raw
 | FnBarrier (ci : call_id)
 .
 Record bor_stack := mkBorStack {
@@ -494,10 +492,10 @@ Fixpoint access1
         (* if deallocating, check that there is no active call_id left *)
         if dealloc_no_active_barrier access stack' β then Some stack else None
       else access1 stack' bor access β
-  (* a Read can match Shr with both UniqB/ShrB *)
-  | Shr :: stack', _, AccessRead => Some stack
-  (* Shr matches ShrB *)
-  | Shr :: stack', ShrB _, _ =>
+  (* a Read can match Raw with both UniqB/AliasB *)
+  | Raw :: stack', _, AccessRead => Some stack
+  (* Shr matches AliasB *)
+  | Raw :: stack', AliasB _, _ =>
       (* if deallocating, check that there is no active call_id left *)
       if dealloc_no_active_barrier access stack' β then Some stack else None
   (* no current match, continue *)
@@ -523,8 +521,8 @@ Fixpoint match_deref (stack: list stack_item) (bor: borrow) : option nat :=
       if (decide (t1 = t2))
       then Some (length stack')
       else match_deref stack' bor
-  | Shr :: stack', ShrB _ =>
-      (* Shr matches ShrB *)
+  | Raw :: stack', AliasB _ =>
+      (* Shr matches AliasB *)
       Some (length stack')
   | _ :: stack', _ =>
       (* no current match, continue *)
@@ -541,17 +539,17 @@ Fixpoint match_deref (stack: list stack_item) (bor: borrow) : option nat :=
 Definition check_deref1
   (stack: bor_stack) (bor: borrow) (kind: ref_kind) : option (option nat) :=
   match bor, stack.(frozen_since), kind with
-  | ShrB (Some _), _, UniqueRef =>
+  | AliasB (Some _), _, UniqueRef =>
       (* no shared tag for unique ref *)
       None
-  | ShrB (Some _), None, FrozenRef =>
+  | AliasB (Some _), None, FrozenRef =>
       (* no shared tag and frozen ref on unfrozen stack *)
       None
-  | ShrB (Some t1), Some t2, FrozenRef =>
+  | AliasB (Some t1), Some t2, FrozenRef =>
       (* shared tag, frozen stack and frozen ref:
           stack must be frozen at t2 before the tag t1 *)
       if decide (t2 <= t1) then Some None else None
-  | ShrB None, Some _, _ =>
+  | AliasB None, Some _, _ =>
       (* raw tag, frozen stack: good *)
       Some None
   | _ , _, _ =>
@@ -601,20 +599,20 @@ Inductive push_borrow (stack: bor_stack) : borrow → ref_kind → bor_stack →
     (* Already frozen earlier at t, nothing to do *)
     (FROZEN: stack.(frozen_since) = Some t)
     (EARLIER: (t ≤ t')%nat)
-  : push_borrow stack (ShrB (Some t')) FrozenRef stack
+  : push_borrow stack (AliasB (Some t')) FrozenRef stack
 | PBShrFreeze (t': time)
     (* Not frozen, freeze now at t' *)
     (UNFROZEN: stack.(frozen_since) = None)
-  : push_borrow stack (ShrB (Some t')) FrozenRef (mkBorStack stack.(borrows) (Some t'))
+  : push_borrow stack (AliasB (Some t')) FrozenRef (mkBorStack stack.(borrows) (Some t'))
 | PBPushShr ot kind bors'
     (* Not frozen, try to add new item, unless it's redundant *)
     (UNFROZEN: stack.(frozen_since) = None)
     (NOTFREEZE: kind ≠ FrozenRef)
     (STACK: bors' = match stack.(borrows) with
-                    | Shr :: _ => stack.(borrows)
-                    | _ => Shr :: stack.(borrows)
+                    | Raw :: _ => stack.(borrows)
+                    | _ => Raw :: stack.(borrows)
                     end)
-  : push_borrow stack (ShrB ot) kind (mkBorStack bors' None)
+  : push_borrow stack (AliasB ot) kind (mkBorStack bors' None)
 | PBPushUniq t' kind
     (* Not frozen, add new item *)
     (UNFROZEN: stack.(frozen_since) = None)
@@ -627,7 +625,7 @@ Inductive reborrow1
 | RB1Redundant bor' ptr_idx
     (OLD_DEREF: check_deref1 stack bor kind = Some ptr_idx)
     (REDUNDANT: bor_redundant_check stack bor' kind ptr_idx)
-    (SHARED   : is_shared bor')
+    (SHARED   : is_aliasing bor')
   : reborrow1 stack bor kind β None bor' stack
 | RB1NonRedundantNoBarrier bor' bors' stack' ptr_idx
     (OLD_DEREF : check_deref1 stack bor kind = Some ptr_idx)
@@ -671,14 +669,14 @@ Inductive reborrowFreezeSensitive α β bor l t
 | RBRBase bar
   : reborrowFreezeSensitive α β bor l t [] bar α
 | RBRRecursive bar α1 α2 α3 r rs
-    (RBFreeze: reborrowBlock α β bor FrozenRef l r.1 bar (ShrB (Some t)) α1)
-    (RBUnsafe: reborrowBlock α1 β bor RawRef (l +ₗ r.1) r.2 None (ShrB (Some t)) α2)
+    (RBFreeze: reborrowBlock α β bor FrozenRef l r.1 bar (AliasB (Some t)) α1)
+    (RBUnsafe: reborrowBlock α1 β bor RawRef (l +ₗ r.1) r.2 None (AliasB (Some t)) α2)
     (RBRN:     reborrowFreezeSensitive α2 β bor (l +ₗ r.1 +ₗ r.2) t rs bar α3)
   : reborrowFreezeSensitive α β bor l t (r :: rs) bar α3.
 
 (* Freeze-sensitive reborrow of non-UnsafeCell *)
 Lemma reborrow_freeze_block α β bor l n t bar α':
-  reborrowBlock α β bor FrozenRef l n bar (ShrB (Some t)) α' ↔
+  reborrowBlock α β bor FrozenRef l n bar (AliasB (Some t)) α' ↔
   reborrowFreezeSensitive α β bor l t [(n,O)] bar α'.
 Proof.
   split; move => H; inversion H.
@@ -696,14 +694,14 @@ Inductive reborrow α β bor l
   (* Only Unique or Raw reborrow *)
   (RBB: match bor' with
         | UniqB _ => reborrowBlock α β bor UniqueRef l n bar bor' α'
-        | ShrB None => reborrowBlock α β bor RawRef l n bar bor' α'
+        | AliasB None => reborrowBlock α β bor RawRef l n bar bor' α'
         | _ => False
         end)
   : reborrow α β bor l (inl n) bar bor' α'
 | RBRange t rs bar α'
   (* Freezing possibly with UnsafeCell *)
   (RBF: reborrowFreezeSensitive α β bor l t rs bar α')
-  : reborrow α β bor l (inr rs) bar (ShrB (Some t)) α'.
+  : reborrow α β bor l (inr rs) bar (AliasB (Some t)) α'.
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
@@ -713,8 +711,8 @@ Inductive instrumented_step σ α β (clock: time):
     instrumented_step σ α β clock None σ α β clock
 | AllocHeapIS σ' l n :
     instrumented_step σ α β clock
-                      (Some $ AllocEvt l n (ShrB None) Heap) σ'
-                      (init_stacks l (Pos.to_nat n) α Shr) β clock
+                      (Some $ AllocEvt l n (AliasB None) Heap) σ'
+                      (init_stacks l (Pos.to_nat n) α Raw) β clock
 | AllocStackIS σ' t x n :
     instrumented_step σ α β clock
                       (Some $ AllocEvt x n (UniqB t) Stack) σ'
