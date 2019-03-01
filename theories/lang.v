@@ -5,7 +5,7 @@ Set Default Proof Using "Type".
 
 Open Scope Z_scope.
 
-(** Expressions and vals. *)
+(** Locations *)
 Definition block : Set := positive.
 Definition loc : Set := block * Z.
 
@@ -13,6 +13,89 @@ Bind Scope loc_scope with loc.
 Delimit Scope loc_scope with L.
 Open Scope loc_scope.
 
+Definition shift_loc (l : loc) (z : Z) : loc := (l.1, l.2 + z).
+
+Notation "l +ₗ z" := (shift_loc l%L z%Z)
+  (at level 50, left associativity) : loc_scope.
+
+Notation time := nat (only parsing).
+Notation call_id := nat (only parsing).
+
+(** Types *)
+(* Reference types *)
+Inductive mutability := Mutable | Immutable.
+Inductive ref_kind :=
+  | UniqueRef (* &mut *)
+  | FrozenRef (* & *)
+  | RawRef    (* * (raw) or & to UnsafeCell, or Box *)
+  .
+
+Inductive type :=
+  | Scala (sz: positive)
+  | Reference (kind: mutability) (t: type)
+  | Unsafe (t: type)
+  | Union (t1: type) (t2: type)
+  | Product (t1: type) (t2: type)
+  (* TODO: | Sum (t1: type) (t2: type) *)
+  .
+
+Fixpoint tsize (t: type) : positive :=
+  match t with
+  | Scala sz => sz
+  | Reference _ _ => 1%positive     (* We do not go beyond pointers *)
+  | Unsafe t1 => tsize t1
+  | Union t1 t2 => Pos.max (tsize t1) (tsize t2)
+  | Product t1 t2 => (tsize t1) + (tsize t2)
+  end.
+
+(* Type doesn't contain UnsafeCells. *)
+Fixpoint is_freeze (t: type) : bool :=
+  match t with
+  | Scala _ | Reference _ _ => true
+  | Unsafe _ => false
+  | Union t1 t2 | Product t1 t2 => is_freeze t1 && is_freeze t2
+  end.
+
+(** Instrumented states *)
+(* Borrow types *)
+Inductive borrow :=
+  | UniqB (t: time)           (* A unique (mutable) reference. *)
+  | AliasB (ot : option time) (* An aliasing reference, also for raw pointers
+                                 whose ot is None. *)
+  .
+
+Definition is_unique (bor: borrow) :=
+  match bor with | UniqB _ => True | _ => False end.
+Definition is_aliasing (bor: borrow) :=
+  match bor with | AliasB _ => True | _ => False end.
+
+(* Retag types *)
+Inductive retag_kind := | FnEntry (c: call_id) | TwoPhase | RawRt | Default.
+
+(* Barrier tracker: track if a call_id is active, i.e. the call is still running *)
+Definition barriers := gmap call_id bool.
+
+(* Stacks of borrows. *)
+Inductive stack_item :=
+  | Uniq (t: time)            (* A unique reference may mutate this location. *)
+  | Raw                       (* The location has been mutably shared, for both
+                                 raw pointers and unfrozen shared refs. *)
+  | FnBarrier (ci : call_id)  (* A barrier for a call *)
+  .
+
+Record bstack := mkBorStack {
+  borrows       : list stack_item;  (* used as a stack, never empty *)
+  frozen_since  : option time;      (* frozen item that is always on top *)
+}.
+Definition is_frozen (s : bstack) : Prop := is_Some s.(frozen_since).
+Definition bstacks := gmap loc bstack.
+
+Implicit Type (α: bstacks) (β: barriers).
+
+
+(*** BASE SEMANTICS --------------------------------------------------------***)
+
+(** Unary/Binary ops *)
 Inductive bin_op :=
   | AddOp     (* + addition       *)
   | SubOp     (* - subtraction    *)
@@ -33,6 +116,14 @@ Inductive bin_op :=
   | OffsetOp  (* . offset         *)
   .
 
+(** Base values *)
+Inductive base_lit :=
+| LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
+
+(** Allocation destination *)
+Inductive alloc_mod := Heap | Stack.
+
+(** Binders for lambdas: list of formal arguments to functions *)
 Inductive binder := BAnon | BNamed : string → binder.
 Delimit Scope lrust_binder_scope with RustB.
 Bind Scope lrust_binder_scope with binder.
@@ -67,52 +158,40 @@ Proof.
   induction mxl as [|?? IH]; set_solver.
 Qed.
 
-Notation time := nat (only parsing).
-Inductive borrow :=
-| UniqB (t: time)
-| AliasB (ot : option time)
-.
-
-Inductive base_lit :=
-| LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
-
-Notation unsafe_list := (list (nat * nat))%type.
-Notation call_id := nat (only parsing).
-Inductive alloc_mod := Heap | Stack.
-Inductive retag_kind := | FnEntry (c: call_id) | TwoPhase | RawRt | Default.
-Inductive ref_kind :=
-| UniqueRef (* &mut *)
-| FrozenRef (* & *)
-| RawRef (* * (raw) or & to UnsafeCell, or Box *)
-.
-Inductive mutability := Mutable | Immutable.
-
+(** Expressions *)
 Inductive expr :=
-(* variable *)
-| Var (x : string)
-(* values *)
+(* base values *)
 | Lit (l : base_lit)
+(* base lambda calculus *)
+| Var (x : string)
+| App (e : expr) (el : list expr)
 | Rec (f : binder) (xl : list binder) (e : expr)
-(* lvalue *)
-| Place (l: loc) (tag: borrow)
 (* bin op *)
 | BinOp (op : bin_op) (e1 e2 : expr)
-(* application *)
-| App (e : expr) (el : list expr)
+(* lvalue *)
+| Place (l: loc) (tag: borrow)    (* A place is a tagged pointer: every access
+                                     to memory revolves around a place. *)
+| Deref (e: expr) (t: type) (kind: ref_kind)
+                                  (* Deference a pointer `e` into a place
+                                     presenting the location that `e` points to.
+                                     The location has type `t` and the pointer
+                                     has reference kind `kind`. *)
+| Ref (e: expr)                   (* Turn a place `e` into a pointer value. *)
+| Field (e1 e2: expr)             (* Create a place that points to a component
+                                     of the place `e1`. *)
 (* mem op *)
-| Read (e : expr)
-| Write (e1 e2: expr)
-| CAS (e0 e1 e2 : expr)
-| Alloc (e : expr) (amod: alloc_mod)
-| Free (e1 e2 : expr)
-(* place op *)
-| Deref (e: expr) (usList: option unsafe_list)
-| Ref (e: expr)
-| Field (e1 e2: expr)
+| Read (e : expr)                 (* Read from the place `e` *)
+| Write (e1 e2: expr)             (* Write the value `e2` to the place `e1` *)
+| CAS (e0 e1 e2 : expr)           (* CAS the value `e2` for `e1` to the place `e0` *)
+| Alloc (t: type) (amod: alloc_mod) (* Allocate a place of type `t` *)
+| Free (e : expr) (t: type)       (* Free the place `e` of type `t` *)
 (* function call tracking *)
-| NewCall
-| EndCall (e: expr)
-| Retag (kind: retag_kind) (e: expr) (usList: option unsafe_list)
+| NewCall                         (* Issue a fresh id for the call *)
+| EndCall (e: expr)               (* End the call with id `e` *)
+(* retag *)
+| Retag (e: expr) (t: type) (kind: retag_kind)
+                                  (* Retag the place `e` of type `t` with retag
+                                     kind `kind`. *)
 (* case *)
 | Case (e : expr) (el : list expr)
 (* concurrency *)
@@ -124,13 +203,13 @@ Arguments Case _%E _%E.
 
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
+  | Lit _ | Place _ _ | Alloc _ _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
-  | Lit _ | Place _ _ | NewCall => true
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | Write e1 e2 | Free e1 e2 | Field e1 e2 =>
+  | BinOp _ e1 e2 | Write e1 e2  | Field e1 e2 =>
     is_closed X e1 && is_closed X e2
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
-  | Read e | Alloc e _ | Deref e _ | Ref e | EndCall e | Retag _ e _ | Fork e => is_closed X e
+  | Read e | Deref e _ _ | Ref e | Free e _ | EndCall e | Retag e _ _ | Fork e => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 
@@ -180,14 +259,14 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Read e => Read (subst x es e)
   | Write e1 e2 => Write (subst x es e1) (subst x es e2)
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
-  | Alloc e amod => Alloc (subst x es e) amod
-  | Free e1 e2 => Free (subst x es e1) (subst x es e2)
-  | Deref e us => Deref (subst x es e) us
+  | Alloc t amod => Alloc t amod
+  | Free e t => Free (subst x es e) t
+  | Deref e t kind => Deref (subst x es e) t kind
   | Ref e => Ref (subst x es e)
   | Field e1 e2 => Field (subst x es e1) (subst x es e2)
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
-  | Retag kind e us => Retag kind (subst x es e) us
+  | Retag e t kind => Retag (subst x es e) t kind
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
   end.
@@ -226,15 +305,13 @@ Inductive ectx_item :=
 | CasLCtx (e1 e2: expr)
 | CasMCtx (v0 : val) (e2 : expr)
 | CasRCtx (v0 : val) (v1 : val)
-| AllocCtx (amod: alloc_mod)
-| FreeLCtx (e : expr)
-| FreeRCtx (v : val)
-| DerefCtx (us: option unsafe_list)
+| FreeCtx (t: type)
+| DerefCtx (t: type) (kind: ref_kind)
 | RefCtx
 | FieldLCtx (e : expr)
 | FieldRCtx (v : val)
 | EndCallCtx
-| RetagCtx (kind: retag_kind) (us: option unsafe_list)
+| RetagCtx (t: type) (kind: retag_kind)
 | CaseCtx (el : list expr).
 
 Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
@@ -249,18 +326,15 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | CasLCtx e1 e2 => CAS e e1 e2
   | CasMCtx v0 e2 => CAS (of_val v0) e e2
   | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
-  | AllocCtx amod => Alloc e amod
-  | FreeLCtx e2 => Free e e2
-  | FreeRCtx v1 => Free (of_val v1) e
-  | DerefCtx us => Deref e us
+  | FreeCtx t=> Free e t
+  | DerefCtx t kind => Deref e t kind
   | RefCtx => Ref e
   | FieldLCtx e2 => Field e e2
   | FieldRCtx v1 => Field (of_val v1) e
   | EndCallCtx => EndCall e
-  | RetagCtx kind us => Retag kind e us
+  | RetagCtx t kind => Retag e t kind
   | CaseCtx el => Case e el
   end.
-
 
 (** Main state: a heap of immediates. *)
 Definition mem := gmap loc immediate.
@@ -274,11 +348,6 @@ Definition Z_of_bool (b : bool) : Z :=
 
 Definition lit_of_bool (b : bool) : base_lit :=
   LitInt $ Z_of_bool b.
-
-Definition shift_loc (l : loc) (z : Z) : loc := (l.1, l.2 + z).
-
-Notation "l +ₗ z" := (shift_loc l%L z%Z)
-  (at level 50, left associativity) : loc_scope.
 
 Fixpoint init_mem (l:loc) (n:nat) σ : mem :=
   match n with
@@ -336,20 +405,15 @@ Inductive bin_op_eval σ : bin_op → base_lit → base_lit → base_lit → Pro
 
 Definition stuck_term := App (Lit $ LitInt 0) [].
 
-Definition is_unique (bor: borrow) :=
-  match bor with | UniqB _ => True | _ => False end.
-Definition is_aliasing (bor: borrow) :=
-  match bor with | AliasB _ => True | _ => False end.
-
 Inductive event :=
 | AllocEvt (l : loc) (n: positive) (lbor: borrow) (amod: alloc_mod)
 | DeallocEvt (l: loc) (n : positive) (lbor: borrow)
 | ReadEvt (l: loc) (lbor: borrow) (v: immediate)
 | WriteEvt (l: loc) (lbor: borrow) (v: immediate)
-| DerefEvt (l: loc) (lbor: borrow) (ref: ref_kind) (us: option unsafe_list)
+| DerefEvt (l: loc) (lbor: borrow) (t: type) (ref: ref_kind)
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
-| RetagEvt (x l: loc) (n : positive) (bor bor': borrow)
+| RetagEvt (x l: loc) (t: type) (bor bor': borrow)
            (mut: option mutability) (rt: retag_kind)
 .
 
@@ -376,32 +440,18 @@ Inductive base_step :
               (Some $ WriteEvt l lbor v)
               (Lit LitPoison) (<[l:=v]>σ)
               []
-| AllocBS n l lbor amod σ :
-    0 < n →
+| AllocBS t l lbor amod σ :
     (∀ m, σ !! (l +ₗ m) = None) →
-    base_step (Alloc  (Lit $ LitInt n) amod) σ
-              (Some $ AllocEvt l (Z.to_pos n) lbor amod)
-              (Place l lbor) (init_mem l (Z.to_nat n) σ)
+    base_step (Alloc t amod) σ
+              (Some $ AllocEvt l (tsize t) lbor amod)
+              (Place l lbor) (init_mem l (Pos.to_nat (tsize t)) σ)
               []
-| FreeBS n l lbor σ :
-    0 < n →
-    (∀ m, is_Some (σ !! (l +ₗ m)) ↔ 0 ≤ m < n) →
-    base_step (Free (Lit $ LitInt n) (Place l lbor)) σ
-              (Some $ DeallocEvt l (Z.to_pos n) lbor)
-              (Lit LitPoison) (free_mem l (Z.to_nat n) σ)
+| FreeBS t l lbor σ :
+    (∀ m, is_Some (σ !! (l +ₗ m)) ↔ 0 ≤ m < Z.pos (tsize t)) →
+    base_step (Free (Place l lbor) t) σ
+              (Some $ DeallocEvt l (tsize t) lbor)
+              (Lit LitPoison) (free_mem l (Pos.to_nat (tsize t)) σ)
               []
-| RefBS l lbor σ :
-    is_Some (σ !! l) →
-    base_step (Ref (Place l lbor)) σ None (Lit (LitLoc l lbor)) σ []
-| DerefBS l lbor ref us σ :
-    is_Some (σ !! l) →
-    base_step (Deref (Lit (LitLoc l lbor)) us) σ
-              (Some $ DerefEvt l lbor ref us)
-              (Place l lbor) σ
-              []
-| FieldBS l lbor z σ :
-    base_step (Field (Place l lbor) (Lit $ LitInt z)) σ
-              None (Place (l +ₗ z) lbor) σ []
 | NewCallBS call σ:
     base_step NewCall σ
               (Some $ NewCallEvt call) (Lit $ LitInt call) σ []
@@ -409,9 +459,21 @@ Inductive base_step :
     (0 ≤ call) →
     base_step (EndCall (Lit $ LitInt call)) σ
               (Some $ EndCallEvt (Z.to_nat call)) (Lit LitPoison) σ []
-| RetagBS x xbor l n lbor lbor' om rt us σ:
-    base_step (Retag rt (Place x xbor) us) σ
-              (Some $ RetagEvt x l n lbor lbor' om rt) (Lit LitPoison) σ []
+| RefBS l lbor σ :
+    is_Some (σ !! l) →
+    base_step (Ref (Place l lbor)) σ None (Lit (LitLoc l lbor)) σ []
+| DerefBS l lbor ref t σ :
+    is_Some (σ !! l) →
+    base_step (Deref (Lit (LitLoc l lbor)) t ref) σ
+              (Some $ DerefEvt l lbor t ref)
+              (Place l lbor) σ
+              []
+| FieldBS l lbor z σ :
+    base_step (Field (Place l lbor) (Lit $ LitInt z)) σ
+              None (Place (l +ₗ z) lbor) σ []
+| RetagBS x xbor l lbor lbor' om t kind σ:
+    base_step (Retag (Place x xbor) t kind) σ
+              (Some $ RetagEvt x l t lbor lbor' om kind) (Lit LitPoison) σ []
 | CaseBS i el e σ :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
@@ -419,31 +481,16 @@ Inductive base_step :
 | ForkBS e σ:
     base_step (Fork e) σ None (Lit LitPoison) σ [e].
 
-(* Instrumented state: barriers, and stacked borrows. *)
-Definition barriers := gmap call_id bool.
-Implicit Type (β: barriers).
+(*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
-Inductive stack_item :=
-| Uniq (t: time)
-| Raw
-| FnBarrier (ci : call_id)
-.
-Record bor_stack := mkBorStack {
-  borrows     : list stack_item;
-  frozen_since: option time;
-}.
-Definition is_frozen (s : bor_stack) : Prop := is_Some s.(frozen_since).
-
-Definition stacks := gmap loc bor_stack.
-Implicit Type (α: stacks).
-
-Fixpoint init_stacks (l:loc) (n:nat) α (si: stack_item) : stacks :=
+(* Initialize [l, l + n) with non-frozen singleton stacks of si *)
+Fixpoint init_stacks (l:loc) (n:nat) α (si: stack_item) : bstacks :=
   match n with
   | O => α
   | S n => <[l:= mkBorStack [si] None]>(init_stacks (l +ₗ 1) n α si)
   end.
 
-(** Dealloc checks for no active barrier on the stack *)
+(** Dealloc check for no active barrier on the stack *)
 Definition is_active β (c: call_id) : bool :=
   bool_decide (β !! c = Some true).
 
@@ -473,103 +520,176 @@ Definition dealloc_no_active_barrier
   | _ => true
   end.
 
-(** Check for accesses *)
-(* Return None if the check fails.
+(** Access check *)
+(* Check for access per location.
+ * Return None if the check fails.
  * Return Some stack' where stack' is the new stack. *)
-Fixpoint access1
+Fixpoint access1'
   (stack: list stack_item) (bor: borrow) (access: access_kind) β
   : option (list stack_item) :=
   match stack, bor, access with
   (* try to pop barriers *)
   | FnBarrier c :: stack', _, _ =>
+      if (is_active β c)
       (* cannot pop an active barrier *)
-      if (is_active β c) then None
-      else access1 stack' bor access β
+      then None
+      (* otherwise, just pop *)
+      else access1' stack' bor access β
   (* Uniq t matches UniqB t *)
   |  Uniq t1 :: stack', UniqB t2, _ =>
       if (decide (t1 = t2))
+      (* if matched *)
       then
         (* if deallocating, check that there is no active call_id left *)
         if dealloc_no_active_barrier access stack' β then Some stack else None
-      else access1 stack' bor access β
+      (* otherwise, just pop *)
+      else access1' stack' bor access β
   (* a Read can match Raw with both UniqB/AliasB *)
   | Raw :: stack', _, AccessRead => Some stack
-  (* Shr matches AliasB *)
+  (* Raw matches AliasB *)
   | Raw :: stack', AliasB _, _ =>
       (* if deallocating, check that there is no active call_id left *)
       if dealloc_no_active_barrier access stack' β then Some stack else None
-  (* no current match, continue *)
-  | _ :: stack', _, _ => access1 stack' bor access β
+  (* no current match, pop and continue *)
+  | _ :: stack', _, _ => access1' stack' bor access β
   (* empty stack, no matches *)
   | [], _, _ => None
   end.
 
-Inductive accessN α β (bor: borrow) (kind: access_kind) l : nat → stacks → Prop :=
+(* This implements Stack::access. *)
+Definition access1 (stack: bstack) bor access β : option bstack :=
+  match stack.(frozen_since), access with
+  (* accept all reads if frozen *)
+  | Some _, AccessRead => Some stack
+  (* otherwise, unfreeze *)
+  | _,_ => match access1' stack.(borrows) bor access β with
+           | Some stack' => Some (mkBorStack stack' None)
+           | _ => None
+           end
+  end.
+
+(* Perform the access check on a block of continuous memory.
+ * This implements Stacks::access. *)
+Inductive accessN α β (bor: borrow) (kind: access_kind) l : nat → bstacks → Prop :=
 | ACNBase
   : accessN α β bor kind l O α
-| ACNRecursive n stack bors' α'
+| ACNRecursive n stack stack' α'
     (STACK: α !! l = Some stack)
-    (ACC1 : access1 stack.(borrows) bor kind β = Some bors')
-    (ACCN : accessN (<[l := mkBorStack bors' stack.(frozen_since) ]> α) β bor kind (l +ₗ 1) n α')
+    (ACC1 : access1 stack bor kind β = Some stack')
+    (ACCN : accessN (<[l := stack']> α) β bor kind (l +ₗ 1) n α')
   : accessN α β bor kind l (S n) α'.
 
-(* Return the matched item's index if found (0 is the bottom of the stack). *)
+(** Deref check *)
+(* Find the item that matches `bor`, then return its index (0 is the bottom of
+ * the stack). *)
 Fixpoint match_deref (stack: list stack_item) (bor: borrow) : option nat :=
   match stack, bor with
   | Uniq t1 :: stack', UniqB t2 =>
-      (* Uniq t1 matches UniqB t2 *)
       if (decide (t1 = t2))
-      then Some (length stack')
+      (* Uniq t1 matches UniqB t2 *)
+      then Some (length stack')         (* this is the index of Uniq t1 *)
+      (* otherwise, pop and continue *)
       else match_deref stack' bor
   | Raw :: stack', AliasB _ =>
-      (* Shr matches AliasB *)
-      Some (length stack')
+      (* Raw matches AliasB *)
+      Some (length stack')              (* this is the index of Raw *)
   | _ :: stack', _ =>
-      (* no current match, continue *)
+      (* no current match, continue. This one ignores barriers! *)
       match_deref stack' bor
   | [], _ =>
       (* empty stack, no matches *)
       None
   end.
 
-(** Check for derefs *)
 (* Return None if the check fails.
  * Return Some None if the stack is frozen.
- * Return Some (Some i) where i is the matched item's index. *)
-Definition check_deref1
-  (stack: bor_stack) (bor: borrow) (kind: ref_kind) : option (option nat) :=
+ * Return Some (Some i) where i is the matched item's index.
+ * This implements Stack::deref. *)
+Definition deref1
+  (stack: bstack) (bor: borrow) (kind: ref_kind) : option (option nat) :=
   match bor, stack.(frozen_since), kind with
   | AliasB (Some _), _, UniqueRef =>
       (* no shared tag for unique ref *)
       None
-  | AliasB (Some _), None, FrozenRef =>
-      (* no shared tag and frozen ref on unfrozen stack *)
-      None
-  | AliasB (Some t1), Some t2, FrozenRef =>
-      (* shared tag, frozen stack and frozen ref:
-          stack must be frozen at t2 before the tag t1 *)
+  | AliasB (Some t1), Some t2, _ =>
+      (* shared tag, frozen stack: stack must be frozen at t2 before the tag's t1 *)
       if decide (t2 <= t1) then Some None else None
-  | AliasB None, Some _, _ =>
+  | AliasB _, Some _, _ =>
       (* raw tag, frozen stack: good *)
       Some None
   | _ , _, _ =>
-      (* otherwise, look for the bor in the stack *)
+      (* otherwise, look for bor on the stack *)
       (match_deref stack.(borrows) bor) ≫= (Some ∘ Some)
   end.
 
-Inductive check_derefN α (bor: borrow) (kind: ref_kind) l : nat → Prop :=
+(* Perform the deref check on a block of continuous memory.
+ * This implements Stacks::deref. *)
+Inductive derefN α (bor: borrow) (kind: ref_kind) l : nat → Prop :=
 | DRNBase
-  : check_derefN α bor kind l O
+  : derefN α bor kind l O
 | DRNRecursive n stack
     (STACK: α !! l = Some stack)
-    (DR1 : is_Some (check_deref1 stack bor kind))
-    (DRN : check_derefN α bor kind (l +ₗ 1) n)
-  : check_derefN α bor kind l (S n).
+    (DR1 : is_Some (deref1 stack bor kind))
+    (DRN : derefN α bor kind (l +ₗ 1) n)
+  : derefN α bor kind l (S n).
+
+(* Fixpoint visit_ref (l: loc) (t: type) (f: loc → Prop) : Prop :=
+  match t with
+  | Scala _ => True
+  | Reference => f l
+  | Unsafe t1 => visit_ref l t1 f
+  | Union t1 t2 => visit_ref l t1 f ∧ visit_ref l t2 f
+  | Product t1 t2 => visit_ref l t1 f ∧ visit_ref (l +ₗ Z.pos (tsize t2)) t2 f
+  end. *)
+
+Fixpoint visit_freeze_sensitive
+  (l: loc) (t: type) (f: loc → (* size *) positive → (* frozen *) bool → Prop) : Prop :=
+  match t with
+  | Unsafe t' =>
+      (* Everything bellow UnsafeCell is NOT frozen. *)
+      f l (tsize t') false
+  | Union _ _ =>
+      (* If it's a union, look at the type to see if there is Unsafe *)
+      if is_freeze t
+      (* No UnsafeCell, perform `f _ _ true` on the whole block *)
+      then f l (tsize t) true
+      (* There can be UnsafeCell, perform `f _ _ false` on the whole block *)
+      else f l (tsize t) false
+  | Scala n => f l n true
+  | Reference _ _ => f l 1%positive true
+  | Product t1 t2 => visit_freeze_sensitive l t1 f ∧
+                     visit_freeze_sensitive (l +ₗ (Z.pos (tsize t1))) t2 f
+  end.
+
+(* Perform the deref check on a block of continuous memory where some of them
+ * can be inside UnsafeCells, which are described by the type `t` of the block.
+ * This implements EvalContextExt::ptr_dereference. *)
+(* TODO?: bound check of l for size (tsize t)? alloc.check_bounds(this, ptr, size)?; *)
+Definition ptr_deref α (l: loc) (lbor: borrow) (t: type) (mut: option mutability) : Prop :=
+  match lbor, mut with
+  | _, None =>
+      (* This is a raw pointer, no checks. *)
+      True
+  | AliasB (Some _), Some mut =>
+      (* must be immutable reference *)
+      mut = Immutable ∧
+      (* We need freeze-sensitive check, depending on whether some memory is in
+         UnsafeCell or not *)
+      visit_freeze_sensitive l t
+          (λ l' sz frozen,
+              (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
+              let kind := if frozen then FrozenRef else RawRef in
+                derefN α lbor kind l' (Pos.to_nat sz))
+  | _, Some mut =>
+      (* Otherwise, just treat this as one big chunk. *)
+      let kind := match mut with Mutable => UniqueRef | _ => RawRef end in
+      derefN α lbor kind l (Pos.to_nat (tsize t))
+  end.
+
 
 (** Reborrow *)
-
 Definition bor_redundant_check
-  (stack: bor_stack) (bor': borrow) (kind: ref_kind) (idx: option time): Prop :=
+  (stack: bstack) (bor': borrow) (kind: ref_kind) (idx: option time): Prop :=
   match (check_deref1 stack bor' kind) with
   | Some idx' => match idx, idx' with
                  | _, None => True
@@ -594,7 +714,7 @@ Definition add_barrier (stack: list stack_item) (c: call_id) : list stack_item :
   | _ => FnBarrier c :: stack
   end.
 
-Inductive push_borrow (stack: bor_stack) : borrow → ref_kind → bor_stack → Prop :=
+Inductive push_borrow (stack: bstack) : borrow → ref_kind → bstack → Prop :=
 | PBShrFrozen (t t': time)
     (* Already frozen earlier at t, nothing to do *)
     (FROZEN: stack.(frozen_since) = Some t)
@@ -620,8 +740,8 @@ Inductive push_borrow (stack: bor_stack) : borrow → ref_kind → bor_stack →
   : push_borrow stack (UniqB t') kind (mkBorStack (Uniq t' :: stack.(borrows)) None).
 
 Inductive reborrow1
-  (stack: bor_stack) (bor: borrow) (kind: ref_kind) β :
-  option call_id → borrow → bor_stack → Prop :=
+  (stack: bstack) (bor: borrow) (kind: ref_kind) β :
+  option call_id → borrow → bstack → Prop :=
 | RB1Redundant bor' ptr_idx
     (OLD_DEREF: check_deref1 stack bor kind = Some ptr_idx)
     (REDUNDANT: bor_redundant_check stack bor' kind ptr_idx)
@@ -649,7 +769,7 @@ Inductive reborrowN α β (bor: borrow) (kind: ref_kind) (l: loc)
     (REBORN: reborrowN (<[l := stack']> α) β bor kind (l +ₗ 1) n bar bor' α')
   : reborrowN α β bor kind l (S n) bar bor' α'.
 
-(** Implements miri::Stacks::reborrow *)
+(** Implements Stacks::reborrow *)
 Inductive reborrowBlock α β bor kind l n bar bor' α': Prop :=
 | RBBBase bar'
     (UNIQUE: is_unique bor' ↔ kind = UniqueRef)
@@ -759,3 +879,5 @@ Inductive instrumented_step σ α β (clock: time):
     instrumented_step σ α β
                       (Some $ RetagEvt x l n bor bor' bar)
                       (<[ x := LitV $ LitLoc l bor' ]> σ) α'. *)
+
+(** COMBINED SEMANTICS -------------------------------------------------------*)
