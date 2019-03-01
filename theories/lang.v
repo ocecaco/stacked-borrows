@@ -570,6 +570,22 @@ Definition access1 (stack: bstack) bor access β : option bstack :=
 
 (* Perform the access check on a block of continuous memory.
  * This implements Stacks::access. *)
+Fixpoint accessN α β l (bor: borrow) (n: nat) (kind: access_kind) : option bstacks :=
+  match n with
+  | O => Some α
+  | S n =>
+      let l' := (l +ₗ n) in
+      match (α !! l') with
+      | Some stack => match (access1 stack bor kind β) with
+                      | Some stack' =>
+                          accessN (<[l' := stack']> α) β l bor n kind
+                      | _ => None
+                      end
+      | _ => None
+      end
+  end.
+
+(* Alternative definition as Inductive predicate.
 Inductive accessN α β (bor: borrow) (kind: access_kind) l : nat → bstacks → Prop :=
 | ACNBase
   : accessN α β bor kind l O α
@@ -578,6 +594,7 @@ Inductive accessN α β (bor: borrow) (kind: access_kind) l : nat → bstacks �
     (ACC1 : access1 stack bor kind β = Some stack')
     (ACCN : accessN (<[l := stack']> α) β bor kind (l +ₗ 1) n α')
   : accessN α β bor kind l (S n) α'.
+*)
 
 (** Deref check *)
 (* Find the item that matches `bor`, then return its index (0 is the bottom of
@@ -624,6 +641,18 @@ Definition deref1
 
 (* Perform the deref check on a block of continuous memory.
  * This implements Stacks::deref. *)
+Fixpoint derefN α l (bor: borrow) (n: nat) (kind: ref_kind) : option unit :=
+match n with
+| O => Some ()
+| S n =>
+    let l' := (l +ₗ n) in
+    match (α !! l') with
+    | Some stack => if (deref1 stack bor kind) then derefN α l bor n kind else None
+    | _ => None
+    end
+end.
+
+(* Alternative definition as Inductive predicate.
 Inductive derefN α (bor: borrow) (kind: ref_kind) l : nat → Prop :=
 | DRNBase
   : derefN α bor kind l O
@@ -632,41 +661,63 @@ Inductive derefN α (bor: borrow) (kind: ref_kind) l : nat → Prop :=
     (DR1 : is_Some (deref1 stack bor kind))
     (DRN : derefN α bor kind (l +ₗ 1) n)
   : derefN α bor kind l (S n).
+*)
 
-(* Fixpoint visit_ref (l: loc) (t: type) (f: loc → Prop) : Prop :=
-  match t with
-  | Scala _ => True
-  | Reference => f l
-  | Unsafe t1 => visit_ref l t1 f
-  | Union t1 t2 => visit_ref l t1 f ∧ visit_ref l t2 f
-  | Product t1 t2 => visit_ref l t1 f ∧ visit_ref (l +ₗ Z.pos (tsize t2)) t2 f
-  end. *)
+Definition unsafe_action
+  {A: Type} (f: A → loc → nat → bool → option A) (a: A) (l: loc)
+  (last frozen_size unsafe_size: nat) :
+  option (A * (nat * nat)) :=
+  (* anything between the last UnsafeCell and this UnsafeCell is frozen *)
+  match f a (l +ₗ last) frozen_size true with
+  | Some a' =>
+      (* This UnsafeCell is not frozen *)
+      let cur_ptr := (last + frozen_size)%nat in
+      match f a' (l +ₗ cur_ptr) unsafe_size false with
+      | Some a'' => Some (a'', ((cur_ptr + unsafe_size)%nat, O))
+      | _ => None
+      end
+  | _ => None
+  end.
 
-Fixpoint visit_freeze_sensitive
-  (l: loc) (t: type) (f: loc → (* size *) positive → (* frozen *) bool → Prop) : Prop :=
+Fixpoint visit_freeze_sensitive' {A: Type}
+  (l: loc) (t: type) (f: A → loc → nat → bool → option A) (a: A)
+  (last cur_dist: nat) :
+  option (A * (nat * nat)) :=
   match t with
-  | Unsafe t' =>
-      (* Everything bellow UnsafeCell is NOT frozen. *)
-      f l (tsize t') false
+  | Scala n => Some (a, (last, cur_dist + Pos.to_nat n)%nat)
+  | Reference _ _ => Some (a, (last, S cur_dist))
+  | Unsafe t1 =>
+      unsafe_action f a l last cur_dist (Pos.to_nat (tsize t1))
   | Union _ _ =>
       (* If it's a union, look at the type to see if there is Unsafe *)
       if is_freeze t
-      (* No UnsafeCell, perform `f _ _ true` on the whole block *)
-      then f l (tsize t) true
-      (* There can be UnsafeCell, perform `f _ _ false` on the whole block *)
-      else f l (tsize t) false
-  | Scala n => f l n true
-  | Reference _ _ => f l 1%positive true
-  | Product t1 t2 => visit_freeze_sensitive l t1 f ∧
-                     visit_freeze_sensitive (l +ₗ (Z.pos (tsize t1))) t2 f
+      (* No UnsafeCell, continue *)
+      then Some (a, (last, cur_dist + (Pos.to_nat (tsize t)))%nat)
+      (* There can be UnsafeCell, perform `f a _ _ false` on the whole block *)
+      else unsafe_action f a l last cur_dist (Pos.to_nat (tsize t))
+  | Product t1 t2 =>
+      match visit_freeze_sensitive' l t1 f a last cur_dist with
+      | Some (a', (last', cur_dist')) =>
+          visit_freeze_sensitive' l t2 f a' last' cur_dist'
+      | _ => None
+      end
+  end.
+
+Definition visit_freeze_sensitive {A: Type}
+  (l: loc) (t: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
+  match visit_freeze_sensitive' l t f a O O with
+  | Some (a', (last', cur_dist')) =>
+      (* the last bit is not inside UnsafeCell *)
+      f a' (l +ₗ last') cur_dist' true
+  | _ => None
   end.
 
 (* Perform the deref check on a block of continuous memory where some of them
  * can be inside UnsafeCells, which are described by the type `t` of the block.
  * This implements EvalContextExt::ptr_dereference. *)
 (* TODO?: bound check of l for size (tsize t)? alloc.check_bounds(this, ptr, size)?; *)
-Definition ptr_deref α (l: loc) (lbor: borrow) (t: type) (mut: option mutability) : Prop :=
-  match lbor, mut with
+Definition ptr_deref α (l: loc) (bor: borrow) (t: type) (mut: option mutability) : Prop :=
+  match bor, mut with
   | _, None =>
       (* This is a raw pointer, no checks. *)
       True
@@ -675,45 +726,57 @@ Definition ptr_deref α (l: loc) (lbor: borrow) (t: type) (mut: option mutabilit
       mut = Immutable ∧
       (* We need freeze-sensitive check, depending on whether some memory is in
          UnsafeCell or not *)
-      visit_freeze_sensitive l t
-          (λ l' sz frozen,
+      is_Some (
+        visit_freeze_sensitive l t
+          (λ _ l' sz frozen,
               (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
               let kind := if frozen then FrozenRef else RawRef in
-                derefN α lbor kind l' (Pos.to_nat sz))
+                derefN α l' bor sz kind) ())
   | _, Some mut =>
       (* Otherwise, just treat this as one big chunk. *)
       let kind := match mut with Mutable => UniqueRef | _ => RawRef end in
-      derefN α lbor kind l (Pos.to_nat (tsize t))
+      is_Some (derefN α l bor (Pos.to_nat (tsize t)) kind)
   end.
 
 
 (** Reborrow *)
-Definition bor_redundant_check
-  (stack: bstack) (bor': borrow) (kind: ref_kind) (idx: option time): Prop :=
-  match (check_deref1 stack bor' kind) with
-  | Some idx' => match idx, idx' with
-                 | _, None => True
-                 | Some t, Some t' => t <= t'
-                 | None, Some _ => False
-                 end
-  | None => False
-  end.
-Instance bor_redundant_check_dec stack bor' kind idx :
-  Decision (bor_redundant_check stack bor' kind idx).
-Proof.
-  rewrite /bor_redundant_check.
-  destruct (check_deref1 stack bor' kind) as [idx'|]; [|solve_decision].
-  destruct idx as [t|], idx' as [t'|]; solve_decision.
-Qed.
 
-Definition add_barrier (stack: list stack_item) (c: call_id) : list stack_item :=
-  match stack with
+(* This implements Stack::barrier. *)
+Definition add_barrier (stack: bstack) (c: call_id) : bstack :=
+  match stack.(borrows) with
   | FnBarrier c' :: stack' =>
       (* Avoid stacking multiple identical barriers on top of each other. *)
-      if decide (c' = c) then stack else FnBarrier c :: stack
-  | _ => FnBarrier c :: stack
+      if decide (c' = c) then stack else mkBorStack (FnBarrier c :: stack') stack.(frozen_since)
+  | _ => mkBorStack (FnBarrier c :: stack.(borrows)) stack.(frozen_since)
   end.
 
+(* This implements Stack::create. *)
+Definition create_borrow (stack: bstack) bor (kind: ref_kind) : option bstack :=
+  match kind with
+  | FrozenRef =>
+      match bor, stack.(frozen_since) with
+      (* Already frozen earlier at t' ≤ t, nothing to do *)
+      | AliasB (Some t), Some t' =>
+          if (decide (t' ≤ t)%nat) then Some stack else None
+      (* Not frozen, freeze now at t *)
+      | AliasB (Some t), None => Some (mkBorStack stack.(borrows) (Some t))
+      | _, _ => None
+      end
+  | _ =>
+      match bor, stack.(frozen_since) with
+      (* Not frozen, add new item *)
+      | UniqB t, None => Some (mkBorStack (Uniq t :: stack.(borrows)) None)
+      (* Not frozen, try to add new item, unless it's redundant *)
+      | AliasB _, None => let bors' := (match stack.(borrows) with
+                                        (* avoid stacking multiple Raw's *)
+                                        | Raw :: _ => stack.(borrows)
+                                        | _ => Raw :: stack.(borrows)
+                                        end) in Some (mkBorStack bors' None)
+      | _, _ => None
+      end
+  end.
+
+(*
 Inductive push_borrow (stack: bstack) : borrow → ref_kind → bstack → Prop :=
 | PBShrFrozen (t t': time)
     (* Already frozen earlier at t, nothing to do *)
@@ -726,90 +789,95 @@ Inductive push_borrow (stack: bstack) : borrow → ref_kind → bstack → Prop 
   : push_borrow stack (AliasB (Some t')) FrozenRef (mkBorStack stack.(borrows) (Some t'))
 | PBPushShr ot kind bors'
     (* Not frozen, try to add new item, unless it's redundant *)
-    (UNFROZEN: stack.(frozen_since) = None)
-    (NOTFREEZE: kind ≠ FrozenRef)
+    (UNFROZEN: stack.(frozen_since) = None ∧ kind ≠ FrozenRef)
     (STACK: bors' = match stack.(borrows) with
+                    (* avoid stacking multiple Raw's *)
                     | Raw :: _ => stack.(borrows)
                     | _ => Raw :: stack.(borrows)
                     end)
   : push_borrow stack (AliasB ot) kind (mkBorStack bors' None)
 | PBPushUniq t' kind
     (* Not frozen, add new item *)
-    (UNFROZEN: stack.(frozen_since) = None)
-    (NOTFREEZE: kind ≠ FrozenRef)
-  : push_borrow stack (UniqB t') kind (mkBorStack (Uniq t' :: stack.(borrows)) None).
+    (UNFROZEN: stack.(frozen_since) = None ∧ kind ≠ FrozenRef)
+  : push_borrow stack (UniqB t') kind (mkBorStack (Uniq t' :: stack.(borrows)) None). *)
+
+
+Definition bor_redundant_check
+  (stack: bstack) (bor': borrow) (kind': ref_kind) (idx: option time): Prop :=
+  match idx, (deref1 stack bor' kind') with
+  | _, Some None => True
+  | Some t, Some (Some t') => (t ≤ t')%nat
+  | _,_ => False
+  end.
+Instance bor_redundant_check_dec stack bor' kind idx :
+  Decision (bor_redundant_check stack bor' kind idx).
+Proof.
+  rewrite /bor_redundant_check.
+  destruct idx as [t|]; destruct (deref1 stack bor' kind) as [[t'|]|]; solve_decision.
+Qed.
 
 Inductive reborrow1
-  (stack: bstack) (bor: borrow) (kind: ref_kind) β :
+  (stack: bstack) (bor: borrow) (kind': ref_kind) β :
   option call_id → borrow → bstack → Prop :=
 | RB1Redundant bor' ptr_idx
-    (OLD_DEREF: check_deref1 stack bor kind = Some ptr_idx)
-    (REDUNDANT: bor_redundant_check stack bor' kind ptr_idx)
+    (* Try deref1 with old tag `bor` but new `kind'`*)
+    (OLD_DEREF: deref1 stack bor kind' = Some ptr_idx)
+    (* Redundant check when there's no barrier *)
+    (REDUNDANT: bor_redundant_check stack bor' kind' ptr_idx)
     (SHARED   : is_aliasing bor')
-  : reborrow1 stack bor kind β None bor' stack
-| RB1NonRedundantNoBarrier bor' bors' stack' ptr_idx
-    (OLD_DEREF : check_deref1 stack bor kind = Some ptr_idx)
-    (REDUNDANT : ¬ bor_redundant_check stack bor' kind ptr_idx)
-    (REACTIVATE: access1 stack.(borrows) bor (to_access_kind kind) β = Some bors')
-    (PUSH: push_borrow (mkBorStack bors' None) bor' kind stack')
-  : reborrow1 stack bor kind β None bor' stack'
-| RB1NonRedundantBarrier c bor' bors' stack'
-    (OLD_DEREF : is_Some (check_deref1 stack bor kind))
-    (REACTIVATE: access1 stack.(borrows) bor (to_access_kind kind) β = Some bors')
-    (PUSH: push_borrow (mkBorStack (add_barrier bors' c) None) bor' kind stack')
-  : reborrow1 stack bor kind β (Some c) bor' stack'.
+  : reborrow1 stack bor kind' β None bor' stack
+| RB1NonRedundantNoBarrier bor' stack1 stack' ptr_idx
+    (OLD_DEREF : deref1 stack bor kind' = Some ptr_idx)
+    (REDUNDANT : ¬ bor_redundant_check stack bor' kind' ptr_idx)
+    (REACTIVATE: access1 stack bor (to_access_kind kind') β = Some stack1)
+    (PUSH: push_borrow stack1 bor' kind' stack')
+  : reborrow1 stack bor kind' β None bor' stack'
+| RB1NonRedundantBarrier c bor' stack1 stack'
+    (OLD_DEREF : is_Some (deref1 stack bor kind'))
+    (REACTIVATE: access1 stack bor (to_access_kind kind') β = Some stack1)
+    (PUSH: push_borrow (add_barrier stack1 c) bor' kind' stack')
+  : reborrow1 stack bor kind' β (Some c) bor' stack'.
 
-Inductive reborrowN α β (bor: borrow) (kind: ref_kind) (l: loc)
-  : nat → option call_id → borrow → stacks → Prop :=
+Inductive reborrowN α β (bor: borrow) (kind': ref_kind) (l: loc)
+  : nat → option call_id → borrow → bstacks → Prop :=
 | RBNBase bar bor'
-  : reborrowN α β bor kind l O bar bor' α
+  : reborrowN α β bor kind' l O bar bor' α
 | RBNRecursive n stack stack' bar bor' α'
     (STACK: α !! l = Some stack)
-    (REBOR1: reborrow1 stack bor kind β bar bor' stack')
-    (REBORN: reborrowN (<[l := stack']> α) β bor kind (l +ₗ 1) n bar bor' α')
-  : reborrowN α β bor kind l (S n) bar bor' α'.
+    (REBOR1: reborrow1 stack bor kind' β bar bor' stack')
+    (REBORN: reborrowN (<[l := stack']> α) β bor kind' (l +ₗ 1) n bar bor' α')
+  : reborrowN α β bor kind' l (S n) bar bor' α'.
 
-(** Implements Stacks::reborrow *)
-Inductive reborrowBlock α β bor kind l n bar bor' α': Prop :=
+(* This implements Stacks::reborrow *)
+Inductive reborrowBlock α β l bor n bar bor' kind' α': Prop :=
 | RBBBase bar'
-    (UNIQUE: is_unique bor' ↔ kind = UniqueRef)
-    (BAR: bar' = match kind with
+    (UNIQUE: is_unique bor' ↔ kind' = UniqueRef)
+    (BAR: bar' = match kind' with
                  | RawRef => None
                  | _ => bar
                  end)
-    (BOR: reborrowN α β bor kind l n bar' bor' α').
+    (BOR: reborrowN α β bor kind' l n bar' bor' α').
 
-(* ranges (rs: list (nat*nat)): (unsafe_start, len)
-  [l, l +ₗ r.1) : not unsafe cell, just use FrozenRef
-  [l +ₗ r.1, l +ₗ r.1 +ₗ r.2) : unsafe cell, use RawRef
-  If there is no UnsafeCell, pass in rs = [(n,O)] where n is the size.
-*)
-Inductive reborrowFreezeSensitive α β bor l t
-  : list (nat * nat) → option call_id → stacks → Prop :=
-| RBRBase bar
-  : reborrowFreezeSensitive α β bor l t [] bar α
-| RBRRecursive bar α1 α2 α3 r rs
-    (RBFreeze: reborrowBlock α β bor FrozenRef l r.1 bar (AliasB (Some t)) α1)
-    (RBUnsafe: reborrowBlock α1 β bor RawRef (l +ₗ r.1) r.2 None (AliasB (Some t)) α2)
-    (RBRN:     reborrowFreezeSensitive α2 β bor (l +ₗ r.1 +ₗ r.2) t rs bar α3)
-  : reborrowFreezeSensitive α β bor l t (r :: rs) bar α3.
+(* This implements EvalContextPrivExt::reborrow *)
+(* TODO?: alloc.check_bounds(this, ptr, size)?; *)
+Definition reborrow α β l bor (t: type) (bar: option call_id) bor' α' : Prop :=
+  match bor' with
+  | AliasB (Some _) =>
+      (* We need freeze-sensitive reborrow, depending on whether some memory is
+         in UnsafeCell or not *)
+      visit_freeze_sensitive l t
+          (λ l' sz frozen,
+              (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
+              let kind' := if frozen then FrozenRef else RawRef in
+                reborrowBlock α β l' bor (Pos.to_nat sz) bar bor' kind')
+  | _ =>
+      (* Just treat this as one big chunk. *)
+      let kind' := match bor' with UniqB _ => UniqueRef | _ => RawRef end in
+      reborrowBlock α β l bor (Pos.to_nat (tsize t)) bar bor' kind' α'
+  end.
 
-(* Freeze-sensitive reborrow of non-UnsafeCell *)
-Lemma reborrow_freeze_block α β bor l n t bar α':
-  reborrowBlock α β bor FrozenRef l n bar (AliasB (Some t)) α' ↔
-  reborrowFreezeSensitive α β bor l t [(n,O)] bar α'.
-Proof.
-  split; move => H; inversion H.
-  - econstructor; [..|econstructor; auto|by econstructor];
-      [by econstructor; eauto|naive_solver|econstructor].
-  - simplify_eq; simpl in *.
-    have ?: α1 = α'; last by subst.
-    inversion RBRN; subst. inversion RBUnsafe. inversion BOR; by subst.
-Qed.
-
-(** Implements miri::EvalContextPrivExt::reborrow *)
-Inductive reborrow α β bor l
-  : nat + list (nat * nat) → option call_id → borrow → stacks → Prop :=
+Inductive reborrow α β l bor (t: type)
+  : option call_id → borrow → stacks → Prop :=
 | RBBlock n bar bor' α'
   (* Only Unique or Raw reborrow *)
   (RBB: match bor' with
