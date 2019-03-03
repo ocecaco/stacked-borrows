@@ -29,6 +29,8 @@ Inductive ref_kind :=
   | FrozenRef (* & *)
   | RawRef    (* * (raw) or & to UnsafeCell, or Box *)
   .
+Definition is_unique_ref (kind: ref_kind) : bool :=
+  match kind with UniqueRef => true | _ => false end.
 
 Inductive type :=
   | Scala (sz: positive)
@@ -65,9 +67,9 @@ Inductive borrow :=
   .
 
 Definition is_unique (bor: borrow) :=
-  match bor with | UniqB _ => True | _ => False end.
+  match bor with | UniqB _ => true | _ => false end.
 Definition is_aliasing (bor: borrow) :=
-  match bor with | AliasB _ => True | _ => False end.
+  match bor with | AliasB _ => true | _ => false end.
 
 (* Retag types *)
 Inductive retag_kind := | FnEntry (c: call_id) | TwoPhase | RawRt | Default.
@@ -679,6 +681,10 @@ Definition unsafe_action
   | _ => None
   end.
 
+(* visit the type left-to-right, where `last` is the offset of `l` from the last
+UnsafeCell, and `cur_dist` is the distance between `last` and the current offset
+which is the start of the sub-type `t`. `a` of type A is the accumulator for the
+visit. *)
 Fixpoint visit_freeze_sensitive' {A: Type}
   (l: loc) (t: type) (f: A → loc → nat → bool → option A) (a: A)
   (last cur_dist: nat) :
@@ -687,6 +693,7 @@ Fixpoint visit_freeze_sensitive' {A: Type}
   | Scala n => Some (a, (last, cur_dist + Pos.to_nat n)%nat)
   | Reference _ _ => Some (a, (last, S cur_dist))
   | Unsafe t1 =>
+      (* apply the action `f` and return new `last` and `cur_dist` *)
       unsafe_action f a l last cur_dist (Pos.to_nat (tsize t1))
   | Union _ _ =>
       (* If it's a union, look at the type to see if there is Unsafe *)
@@ -696,6 +703,8 @@ Fixpoint visit_freeze_sensitive' {A: Type}
       (* There can be UnsafeCell, perform `f a _ _ false` on the whole block *)
       else unsafe_action f a l last cur_dist (Pos.to_nat (tsize t))
   | Product t1 t2 =>
+      (* this implements left-to-right search on the type, which guarantees
+         that the indices are increasing. *)
       match visit_freeze_sensitive' l t1 f a last cur_dist with
       | Some (a', (last', cur_dist')) =>
           visit_freeze_sensitive' l t2 f a' last' cur_dist'
@@ -707,7 +716,7 @@ Definition visit_freeze_sensitive {A: Type}
   (l: loc) (t: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
   match visit_freeze_sensitive' l t f a O O with
   | Some (a', (last', cur_dist')) =>
-      (* the last bit is not inside UnsafeCell *)
+      (* the last block is not inside UnsafeCell *)
       f a' (l +ₗ last') cur_dist' true
   | _ => None
   end.
@@ -776,32 +785,6 @@ Definition create_borrow (stack: bstack) bor (kind: ref_kind) : option bstack :=
       end
   end.
 
-(*
-Inductive push_borrow (stack: bstack) : borrow → ref_kind → bstack → Prop :=
-| PBShrFrozen (t t': time)
-    (* Already frozen earlier at t, nothing to do *)
-    (FROZEN: stack.(frozen_since) = Some t)
-    (EARLIER: (t ≤ t')%nat)
-  : push_borrow stack (AliasB (Some t')) FrozenRef stack
-| PBShrFreeze (t': time)
-    (* Not frozen, freeze now at t' *)
-    (UNFROZEN: stack.(frozen_since) = None)
-  : push_borrow stack (AliasB (Some t')) FrozenRef (mkBorStack stack.(borrows) (Some t'))
-| PBPushShr ot kind bors'
-    (* Not frozen, try to add new item, unless it's redundant *)
-    (UNFROZEN: stack.(frozen_since) = None ∧ kind ≠ FrozenRef)
-    (STACK: bors' = match stack.(borrows) with
-                    (* avoid stacking multiple Raw's *)
-                    | Raw :: _ => stack.(borrows)
-                    | _ => Raw :: stack.(borrows)
-                    end)
-  : push_borrow stack (AliasB ot) kind (mkBorStack bors' None)
-| PBPushUniq t' kind
-    (* Not frozen, add new item *)
-    (UNFROZEN: stack.(frozen_since) = None ∧ kind ≠ FrozenRef)
-  : push_borrow stack (UniqB t') kind (mkBorStack (Uniq t' :: stack.(borrows)) None). *)
-
-
 Definition bor_redundant_check
   (stack: bstack) (bor': borrow) (kind': ref_kind) (idx: option time): Prop :=
   match idx, (deref1 stack bor' kind') with
@@ -816,6 +799,40 @@ Proof.
   destruct idx as [t|]; destruct (deref1 stack bor' kind) as [[t'|]|]; solve_decision.
 Qed.
 
+Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
+  β (bar: option call_id) : option bstack :=
+  match (deref1 stack bor kind') with
+  | Some ptr_idx =>
+      match bar, ptr_idx, deref1 stack bor' kind' with
+      | None, _, Some None =>
+          (* bor' must be aliasing *)
+          if is_aliasing bor' then Some stack else None
+      | None, Some ptr_idx, Some (Some new_idx) =>
+          if decide (ptr_idx ≤ new_idx)%nat
+          then (* bor' must be aliasing *)
+               if is_aliasing bor' then Some stack else None
+          else (* check for access with bor, then reborrow with bor' *)
+               match access1 stack bor (to_access_kind kind') β with
+               | Some stack1 => create_borrow stack1 bor' kind'
+               | None => None
+               end
+      | None, _ ,_ =>
+          (* check for access with bor, then reborrow with bor' *)
+          match access1 stack bor (to_access_kind kind') β with
+          | Some stack1 => create_borrow stack1 bor' kind'
+          | None => None
+          end
+      | Some c, _, _ =>
+          (* check for access with bor, then add barrier & reborrow with bor' *)
+          match access1 stack bor (to_access_kind kind') β with
+          | Some stack1 => create_borrow (add_barrier stack1 c) bor' kind'
+          | None => None
+          end
+      end
+  | None => None
+  end.
+
+(*
 Inductive reborrow1
   (stack: bstack) (bor: borrow) (kind': ref_kind) β :
   option call_id → borrow → bstack → Prop :=
@@ -836,9 +853,25 @@ Inductive reborrow1
     (OLD_DEREF : is_Some (deref1 stack bor kind'))
     (REACTIVATE: access1 stack bor (to_access_kind kind') β = Some stack1)
     (PUSH: push_borrow (add_barrier stack1 c) bor' kind' stack')
-  : reborrow1 stack bor kind' β (Some c) bor' stack'.
+  : reborrow1 stack bor kind' β (Some c) bor' stack'. *)
 
-Inductive reborrowN α β (bor: borrow) (kind': ref_kind) (l: loc)
+Fixpoint reborrowN α β l n bor bor' kind' bar : option bstacks :=
+match n with
+| O => Some α
+| S n =>
+    let l' := (l +ₗ n) in
+    match (α !! l') with
+    | Some stack =>
+        match reborrow1 stack bor bor' kind' β bar with
+        | Some stack' =>
+            reborrowN (<[l' := stack']> α) β l n bor bor' kind' bar
+        | _ => None
+        end
+    | _ => None
+    end
+end.
+
+(* Inductive reborrowN α β (bor: borrow) (kind': ref_kind) (l: loc)
   : nat → option call_id → borrow → bstacks → Prop :=
 | RBNBase bar bor'
   : reborrowN α β bor kind' l O bar bor' α
@@ -846,10 +879,15 @@ Inductive reborrowN α β (bor: borrow) (kind': ref_kind) (l: loc)
     (STACK: α !! l = Some stack)
     (REBOR1: reborrow1 stack bor kind' β bar bor' stack')
     (REBORN: reborrowN (<[l := stack']> α) β bor kind' (l +ₗ 1) n bar bor' α')
-  : reborrowN α β bor kind' l (S n) bar bor' α'.
+  : reborrowN α β bor kind' l (S n) bar bor' α'. *)
 
 (* This implements Stacks::reborrow *)
-Inductive reborrowBlock α β l bor n bar bor' kind' α': Prop :=
+Definition reborrowBlock α β l n bor bor' kind' bar : option bstacks :=
+  if xorb (is_unique bor') (is_unique_ref kind') then None
+  else let bar' := match kind' with RawRef => None | _ => bar end in
+       reborrowN α β l n bor bor' kind' bar.
+
+(* Inductive reborrowBlock α β l bor n bar bor' kind' α': Prop :=
 | RBBBase bar'
     (UNIQUE: is_unique bor' ↔ kind' = UniqueRef)
     (BAR: bar' = match kind' with
@@ -857,26 +895,27 @@ Inductive reborrowBlock α β l bor n bar bor' kind' α': Prop :=
                  | _ => bar
                  end)
     (BOR: reborrowN α β bor kind' l n bar' bor' α').
+ *)
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
-Definition reborrow α β l bor (t: type) (bar: option call_id) bor' α' : Prop :=
+Definition reborrow α β l bor (t: type) (bar: option call_id) bor' :=
   match bor' with
   | AliasB (Some _) =>
       (* We need freeze-sensitive reborrow, depending on whether some memory is
          in UnsafeCell or not *)
       visit_freeze_sensitive l t
-          (λ l' sz frozen,
+          (λ α' l' sz frozen,
               (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
               let kind' := if frozen then FrozenRef else RawRef in
-                reborrowBlock α β l' bor (Pos.to_nat sz) bar bor' kind')
+                reborrowBlock α' β l' sz bor bor' kind' bar) α
   | _ =>
       (* Just treat this as one big chunk. *)
       let kind' := match bor' with UniqB _ => UniqueRef | _ => RawRef end in
-      reborrowBlock α β l bor (Pos.to_nat (tsize t)) bar bor' kind' α'
+      reborrowBlock α β l (Pos.to_nat (tsize t)) bor bor' kind' bar
   end.
 
-Inductive reborrow α β l bor (t: type)
+(* Inductive reborrow α β l bor (t: type)
   : option call_id → borrow → stacks → Prop :=
 | RBBlock n bar bor' α'
   (* Only Unique or Raw reborrow *)
@@ -889,7 +928,7 @@ Inductive reborrow α β l bor (t: type)
 | RBRange t rs bar α'
   (* Freezing possibly with UnsafeCell *)
   (RBF: reborrowFreezeSensitive α β bor l t rs bar α')
-  : reborrow α β bor l (inr rs) bar (AliasB (Some t)) α'.
+  : reborrow α β bor l (inr rs) bar (AliasB (Some t)) α'. *)
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
