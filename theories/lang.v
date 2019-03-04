@@ -33,29 +33,29 @@ Definition is_unique_ref (kind: ref_kind) : bool :=
   match kind with UniqueRef => true | _ => false end.
 
 Inductive type :=
-  | Scala (sz: positive)
-  | Reference (kind: mutability) (t: type)
-  | Unsafe (t: type)
-  | Union (t1: type) (t2: type)
-  | Product (t1: type) (t2: type)
-  (* TODO: | Sum (t1: type) (t2: type) *)
+  | Scala (sz: nat)
+  | Reference (kind: option mutability) (T: type)
+  | Unsafe (T: type)
+  | Union (T1: type) (T2: type)
+  | Product (T1: type) (T2: type)
+  (* TODO: | Sum (T1: type) (T2: type) *)
   .
 
-Fixpoint tsize (t: type) : positive :=
-  match t with
+Fixpoint tsize (T: type) : nat :=
+  match T with
   | Scala sz => sz
-  | Reference _ _ => 1%positive     (* We do not go beyond pointers *)
-  | Unsafe t1 => tsize t1
-  | Union t1 t2 => Pos.max (tsize t1) (tsize t2)
-  | Product t1 t2 => (tsize t1) + (tsize t2)
+  | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
+  | Unsafe T => tsize T
+  | Union T1 T2 => Nat.max (tsize T1) (tsize T2)
+  | Product T1 T2 => (tsize T1) + (tsize T2)
   end.
 
 (* Type doesn't contain UnsafeCells. *)
-Fixpoint is_freeze (t: type) : bool :=
-  match t with
+Fixpoint is_freeze (T: type) : bool :=
+  match T with
   | Scala _ | Reference _ _ => true
   | Unsafe _ => false
-  | Union t1 t2 | Product t1 t2 => is_freeze t1 && is_freeze t2
+  | Union T1 T2 | Product T1 T2 => is_freeze T1 && is_freeze T2
   end.
 
 (** Instrumented states *)
@@ -70,6 +70,7 @@ Definition is_unique (bor: borrow) :=
   match bor with | UniqB _ => true | _ => false end.
 Definition is_aliasing (bor: borrow) :=
   match bor with | AliasB _ => true | _ => false end.
+Notation borrow_default := (AliasB None).
 
 (* Retag types *)
 Inductive retag_kind := | FnEntry (c: call_id) | TwoPhase | RawRt | Default.
@@ -92,7 +93,7 @@ Record bstack := mkBorStack {
 Definition is_frozen (s : bstack) : Prop := is_Some s.(frozen_since).
 Definition bstacks := gmap loc bstack.
 
-Implicit Type (α: bstacks) (β: barriers).
+Implicit Type (α: bstacks) (β: barriers) (t: time) (c: call_id) (T: type).
 
 
 (*** BASE SEMANTICS --------------------------------------------------------***)
@@ -173,10 +174,10 @@ Inductive expr :=
 (* lvalue *)
 | Place (l: loc) (tag: borrow)    (* A place is a tagged pointer: every access
                                      to memory revolves around a place. *)
-| Deref (e: expr) (t: type) (kind: ref_kind)
+| Deref (e: expr) (T: type) (kind: ref_kind)
                                   (* Deference a pointer `e` into a place
                                      presenting the location that `e` points to.
-                                     The location has type `t` and the pointer
+                                     The location has type `T` and the pointer
                                      has reference kind `kind`. *)
 | Ref (e: expr)                   (* Turn a place `e` into a pointer value. *)
 | Field (e1 e2: expr)             (* Create a place that points to a component
@@ -185,14 +186,14 @@ Inductive expr :=
 | Read (e : expr)                 (* Read from the place `e` *)
 | Write (e1 e2: expr)             (* Write the value `e2` to the place `e1` *)
 | CAS (e0 e1 e2 : expr)           (* CAS the value `e2` for `e1` to the place `e0` *)
-| Alloc (t: type) (amod: alloc_mod) (* Allocate a place of type `t` *)
-| Free (e : expr) (t: type)       (* Free the place `e` of type `t` *)
+| Alloc (T: type) (amod: alloc_mod) (* Allocate a place of type `T` *)
+| Free (e : expr) (T: type)       (* Free the place `e` of type `T` *)
 (* function call tracking *)
 | NewCall                         (* Issue a fresh id for the call *)
 | EndCall (e: expr)               (* End the call with id `e` *)
 (* retag *)
-| Retag (e: expr) (t: type) (kind: retag_kind)
-                                  (* Retag the place `e` of type `t` with retag
+| Retag (e: expr) (T: type) (kind: retag_kind)
+                                  (* Retag the place `e` of type `T` with retag
                                      kind `kind`. *)
 (* case *)
 | Case (e : expr) (el : list expr)
@@ -307,13 +308,13 @@ Inductive ectx_item :=
 | CasLCtx (e1 e2: expr)
 | CasMCtx (v0 : val) (e2 : expr)
 | CasRCtx (v0 : val) (v1 : val)
-| FreeCtx (t: type)
-| DerefCtx (t: type) (kind: ref_kind)
+| FreeCtx (T: type)
+| DerefCtx (T: type) (kind: ref_kind)
 | RefCtx
 | FieldLCtx (e : expr)
 | FieldRCtx (v : val)
 | EndCallCtx
-| RetagCtx (t: type) (kind: retag_kind)
+| RetagCtx (T: type) (kind: retag_kind)
 | CaseCtx (el : list expr).
 
 Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
@@ -412,10 +413,10 @@ Inductive event :=
 | DeallocEvt (l: loc) (n : positive) (lbor: borrow)
 | ReadEvt (l: loc) (lbor: borrow) (v: immediate)
 | WriteEvt (l: loc) (lbor: borrow) (v: immediate)
-| DerefEvt (l: loc) (lbor: borrow) (t: type) (ref: ref_kind)
+| DerefEvt (l: loc) (lbor: borrow) (T: type) (ref: ref_kind)
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
-| RetagEvt (x l: loc) (t: type) (bor bor': borrow)
+| RetagEvt (x l: loc) (T: type) (bor bor': borrow)
            (mut: option mutability) (rt: retag_kind)
 .
 
@@ -442,17 +443,17 @@ Inductive base_step :
               (Some $ WriteEvt l lbor v)
               (Lit LitPoison) (<[l:=v]>σ)
               []
-| AllocBS t l lbor amod σ :
+| AllocBS T l lbor amod σ :
     (∀ m, σ !! (l +ₗ m) = None) →
-    base_step (Alloc t amod) σ
-              (Some $ AllocEvt l (tsize t) lbor amod)
-              (Place l lbor) (init_mem l (Pos.to_nat (tsize t)) σ)
+    base_step (Alloc T amod) σ
+              (Some $ AllocEvt l (Pos.of_nat (tsize T)) lbor amod)
+              (Place l lbor) (init_mem l (tsize T) σ)
               []
-| FreeBS t l lbor σ :
-    (∀ m, is_Some (σ !! (l +ₗ m)) ↔ 0 ≤ m < Z.pos (tsize t)) →
-    base_step (Free (Place l lbor) t) σ
-              (Some $ DeallocEvt l (tsize t) lbor)
-              (Lit LitPoison) (free_mem l (Pos.to_nat (tsize t)) σ)
+| FreeBS T l lbor σ :
+    (∀ m, is_Some (σ !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
+    base_step (Free (Place l lbor) T) σ
+              (Some $ DeallocEvt l (Pos.of_nat (tsize T)) lbor)
+              (Lit LitPoison) (free_mem l (tsize T) σ)
               []
 | NewCallBS call σ:
     base_step NewCall σ
@@ -464,18 +465,18 @@ Inductive base_step :
 | RefBS l lbor σ :
     is_Some (σ !! l) →
     base_step (Ref (Place l lbor)) σ None (Lit (LitLoc l lbor)) σ []
-| DerefBS l lbor ref t σ :
+| DerefBS l lbor ref T σ :
     is_Some (σ !! l) →
-    base_step (Deref (Lit (LitLoc l lbor)) t ref) σ
-              (Some $ DerefEvt l lbor t ref)
+    base_step (Deref (Lit (LitLoc l lbor)) T ref) σ
+              (Some $ DerefEvt l lbor T ref)
               (Place l lbor) σ
               []
 | FieldBS l lbor z σ :
     base_step (Field (Place l lbor) (Lit $ LitInt z)) σ
               None (Place (l +ₗ z) lbor) σ []
-| RetagBS x xbor l lbor lbor' om t kind σ:
-    base_step (Retag (Place x xbor) t kind) σ
-              (Some $ RetagEvt x l t lbor lbor' om kind) (Lit LitPoison) σ []
+| RetagBS x xbor l lbor lbor' om T kind σ:
+    base_step (Retag (Place x xbor) T kind) σ
+              (Some $ RetagEvt x l T lbor lbor' om kind) (Lit LitPoison) σ []
 | CaseBS i el e σ :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
@@ -686,28 +687,28 @@ UnsafeCell, and `cur_dist` is the distance between `last` and the current offset
 which is the start of the sub-type `t`. `a` of type A is the accumulator for the
 visit. *)
 Fixpoint visit_freeze_sensitive' {A: Type}
-  (l: loc) (t: type) (f: A → loc → nat → bool → option A) (a: A)
+  (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A)
   (last cur_dist: nat) :
   option (A * (nat * nat)) :=
-  match t with
-  | Scala n => Some (a, (last, cur_dist + Pos.to_nat n)%nat)
+  match T with
+  | Scala n => Some (a, (last, cur_dist + n)%nat)
   | Reference _ _ => Some (a, (last, S cur_dist))
-  | Unsafe t1 =>
+  | Unsafe T =>
       (* apply the action `f` and return new `last` and `cur_dist` *)
-      unsafe_action f a l last cur_dist (Pos.to_nat (tsize t1))
+      unsafe_action f a l last cur_dist (tsize T)
   | Union _ _ =>
       (* If it's a union, look at the type to see if there is Unsafe *)
-      if is_freeze t
+      if is_freeze T
       (* No UnsafeCell, continue *)
-      then Some (a, (last, cur_dist + (Pos.to_nat (tsize t)))%nat)
+      then Some (a, (last, cur_dist + (tsize T))%nat)
       (* There can be UnsafeCell, perform `f a _ _ false` on the whole block *)
-      else unsafe_action f a l last cur_dist (Pos.to_nat (tsize t))
-  | Product t1 t2 =>
+      else unsafe_action f a l last cur_dist (tsize T)
+  | Product T1 T2 =>
       (* this implements left-to-right search on the type, which guarantees
          that the indices are increasing. *)
-      match visit_freeze_sensitive' l t1 f a last cur_dist with
+      match visit_freeze_sensitive' l T1 f a last cur_dist with
       | Some (a', (last', cur_dist')) =>
-          visit_freeze_sensitive' l t2 f a' last' cur_dist'
+          visit_freeze_sensitive' l T2 f a' last' cur_dist'
       | _ => None
       end
   end.
@@ -725,7 +726,7 @@ Definition visit_freeze_sensitive {A: Type}
  * can be inside UnsafeCells, which are described by the type `t` of the block.
  * This implements EvalContextExt::ptr_dereference. *)
 (* TODO?: bound check of l for size (tsize t)? alloc.check_bounds(this, ptr, size)?; *)
-Definition ptr_deref α (l: loc) (bor: borrow) (t: type) (mut: option mutability) : Prop :=
+Definition ptr_deref α (l: loc) (bor: borrow) T (mut: option mutability) : Prop :=
   match bor, mut with
   | _, None =>
       (* This is a raw pointer, no checks. *)
@@ -736,7 +737,7 @@ Definition ptr_deref α (l: loc) (bor: borrow) (t: type) (mut: option mutability
       (* We need freeze-sensitive check, depending on whether some memory is in
          UnsafeCell or not *)
       is_Some (
-        visit_freeze_sensitive l t
+        visit_freeze_sensitive l T
           (λ _ l' sz frozen,
               (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
               let kind := if frozen then FrozenRef else RawRef in
@@ -744,7 +745,7 @@ Definition ptr_deref α (l: loc) (bor: borrow) (t: type) (mut: option mutability
   | _, Some mut =>
       (* Otherwise, just treat this as one big chunk. *)
       let kind := match mut with Mutable => UniqueRef | _ => RawRef end in
-      is_Some (derefN α l bor (Pos.to_nat (tsize t)) kind)
+      is_Some (derefN α l bor (tsize T) kind)
   end.
 
 
@@ -899,20 +900,20 @@ Definition reborrowBlock α β l n bor bor' kind' bar : option bstacks :=
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
-Definition reborrow α β l bor (t: type) (bar: option call_id) bor' :=
+Definition reborrow α β l bor T (bar: option call_id) bor' :=
   match bor' with
   | AliasB (Some _) =>
       (* We need freeze-sensitive reborrow, depending on whether some memory is
          in UnsafeCell or not *)
-      visit_freeze_sensitive l t
+      visit_freeze_sensitive l T
           (λ α' l' sz frozen,
               (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
               let kind' := if frozen then FrozenRef else RawRef in
                 reborrowBlock α' β l' sz bor bor' kind' bar) α
   | _ =>
       (* Just treat this as one big chunk. *)
-      let kind' := match bor' with UniqB _ => UniqueRef | _ => RawRef end in
-      reborrowBlock α β l (Pos.to_nat (tsize t)) bor bor' kind' bar
+      let kind' := if is_unique bor' then UniqueRef else RawRef in
+      reborrowBlock α β l (tsize T) bor bor' kind' bar
   end.
 
 (* Inductive reborrow α β l bor (t: type)
@@ -929,6 +930,58 @@ Definition reborrow α β l bor (t: type) (bar: option call_id) bor' :=
   (* Freezing possibly with UnsafeCell *)
   (RBF: reborrowFreezeSensitive α β bor l t rs bar α')
   : reborrow α β bor l (inr rs) bar (AliasB (Some t)) α'. *)
+
+(* Retag one pointer *)
+(* This implements EvalContextPrivExt::retag_reference *)
+Definition retag_ref α β (clock: nat) l bor (T: type) (mut: option mutability)
+  (bar: option call_id) (two_phase: bool) : option (borrow * bstacks * nat) :=
+  match tsize T with
+  | O => (* Nothing to do for zero-sized types *)
+      Some (bor, α, clock)
+  | _ => let bor' := match mut with
+                     | None => borrow_default | Some Mutable => UniqB clock
+                     | Some Immutable => AliasB (Some clock)
+                     end in
+         (* reborrow bor with bor' *)
+         match reborrow α β l bor T bar bor' with
+         | Some α' => if two_phase
+                      then match mut with
+                           | Some Mutable => (* two-phase only for mut borrow *)
+                                let bor'' := AliasB (Some (S clock)) in
+                                (* second reborrow, no barrier *)
+                                match reborrow α' β l bor T None bor'' with
+                                | Some α'' => Some (bor'', α'', S (S clock))
+                                | None => None
+                                end
+                           | _ => None
+                           end
+                      else Some (bor', α', S clock)
+         | None => None
+         end
+  end.
+
+Fixpoint retag' σ α β l (bor: borrow) T
+  (mut: option mutability) (bar: option call_id) (two_phase: bool) :
+  option (mem * bstacks) :=
+  match T with
+  | Scala _ => Some (σ, α)
+  | Unsafe T => retag' σ α β l bor T mut bar two_phase
+  | Union _ _ => None (*TODO: what TODO??? *)
+  | Product T1 T2 =>
+      match retag' σ α β l bor T1 mut bar two_phase with
+      | Some (σ', α') =>
+          retag' σ' α' β (l +ₗ (tsize T1)) bor T2 mut bar two_phase
+      | None => None
+      end
+  | Reference mut T => None
+  end.
+
+(* This implements EvalContextExt::retag *)
+Definition retag σ α β x T (kind: retag_kind) : option (mem * bstacks) :=
+  match σ !! x with
+  | Some (LitV (LitLoc l bor)) => None
+  | _ => None
+  end.
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
