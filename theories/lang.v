@@ -202,8 +202,21 @@ Inductive expr :=
 | Fork (e : expr)
 .
 
+Bind Scope expr_scope with expr.
+Delimit Scope expr_scope with E.
 Arguments App _%E _%E.
 Arguments Case _%E _%E.
+Arguments BinOp _ _%E _%E.
+Arguments Case _%E _%E.
+Arguments Fork _%E.
+Arguments Read _%E.
+Arguments Write _%E _%E.
+Arguments CAS _%E _%E _%E.
+Arguments Free _%E _.
+Arguments Deref _%E _ _.
+Arguments Ref _%E.
+Arguments Field _%E _%E.
+Arguments Retag _%E _ _.
 
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
@@ -264,14 +277,14 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Read e => Read (subst x es e)
   | Write e1 e2 => Write (subst x es e1) (subst x es e2)
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
-  | Alloc t amod => Alloc t amod
-  | Free e t => Free (subst x es e) t
-  | Deref e t mut => Deref (subst x es e) t mut
+  | Alloc T amod => Alloc T amod
+  | Free e T => Free (subst x es e) T
+  | Deref e T mut => Deref (subst x es e) T mut
   | Ref e => Ref (subst x es e)
   | Field e1 e2 => Field (subst x es e1) (subst x es e2)
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
-  | Retag e t kind => Retag (subst x es e) t kind
+  | Retag e T kind => Retag (subst x es e) T kind
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
   end.
@@ -331,13 +344,13 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | CasLCtx e1 e2 => CAS e e1 e2
   | CasMCtx v0 e2 => CAS (of_val v0) e e2
   | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
-  | FreeCtx t=> Free e t
-  | DerefCtx t mut => Deref e t mut
+  | FreeCtx T => Free e T
+  | DerefCtx T mut => Deref e T mut
   | RefCtx => Ref e
   | FieldLCtx e2 => Field e e2
   | FieldRCtx v1 => Field (of_val v1) e
   | EndCallCtx => EndCall e
-  | RetagCtx t kind => Retag e t kind
+  | RetagCtx T kind => Retag e T kind
   | CaseCtx el => Case e el
   end.
 
@@ -1085,7 +1098,7 @@ Inductive head_step :
       (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) (Some evt) h' α' β' clock')
   : head_step e σ [] e' (mkState h' α' β' clock') [] .
 
-(** Properties of the Language *)
+(** Some properties *)
 Lemma to_of_val v : to_val (of_val v) = Some v.
 Proof.
   by destruct v as [[]|]; simplify_option_eq; [| |done|]; repeat f_equal;
@@ -1253,12 +1266,39 @@ Proof.
 Qed.
 Instance retag_kind_eq_dec : EqDecision retag_kind.
 Proof. solve_decision. Defined.
+Instance retag_kind_countable : Countable retag_kind.
+Proof.
+  refine (inj_countable
+          (λ k, match k with
+              | FnEntry n => inl $ inl n
+              | TwoPhase => inl $ inr ()
+              | RawRt => inr $ inl ()
+              | Default => inr $ inr ()
+              end)
+          (λ s, match s with
+              | inl (inl n) => Some $ FnEntry n
+              | inl (inr _) => Some TwoPhase
+              | inr (inl _) => Some RawRt
+              | inr (inr _) => Some Default
+              end) _); by intros [].
+Qed.
 Instance alloc_mod_eq_dec : EqDecision alloc_mod.
 Proof. solve_decision. Defined.
+Instance alloc_mod_countable : Countable alloc_mod.
+Proof.
+  refine (inj_countable
+          (λ m, match m with
+              | Heap => Some ()
+              | Stack => None
+              end)
+          (λ s, match s with
+              | Some _ => Some Heap
+              | None => Some Stack
+              end) _); by intros [].
+Qed.
 
 Instance type_eq_dec : EqDecision type.
 Proof. solve_decision. Defined.
-Instance type_inhabited : Inhabited type := populate (Scala 0).
 Instance type_countable : Countable type.
 Proof.
   refine (inj_countable'
@@ -1332,12 +1372,74 @@ Proof.
     clear FIX. naive_solver.
 Qed.
 
-Instance expr_inhabited : Inhabited expr := populate (Lit LitPoison).
 Instance expr_dec_eq : EqDecision expr.
 Proof.
   refine (λ e1 e2, cast_if (decide (expr_beq e1 e2))); by rewrite -expr_beq_correct.
 Defined.
-Instance val_inhabited : Inhabited val := populate (ImmV $ LitV LitPoison).
+Instance expr_countable : Countable expr.
+Proof.
+  refine (inj_countable'
+    (fix go e := match e with
+      | Var x => GenNode 0 [GenLeaf $ inl $ inl $ inl $ inl x]
+      | Lit l => GenNode 1 [GenLeaf $ inl $ inl $ inl $ inr l]
+      | Rec f xl e => GenNode 2 [GenLeaf $ inl $ inl $ inr $ inl f;
+                                 GenLeaf $ inl $ inl $ inr $ inr xl; go e]
+      | Place l tag => GenNode 3 [GenLeaf $ inl $ inr $ inl $ inl l;
+                                  GenLeaf $ inl $ inr $ inl $ inr tag]
+      | BinOp op e1 e2 => GenNode 4 [GenLeaf $ inl $ inr $ inr $ inl op;
+                                     go e1; go e2]
+      | App e el => GenNode 5 (go e :: (go <$> el))
+      | Read e => GenNode 6 [go e]
+      | Write e1 e2 => GenNode 7 [go e1; go e2]
+      | CAS e0 e1 e2 => GenNode 8 [go e0; go e1; go e2]
+      | Free e T => GenNode 9 [GenLeaf $ inl $ inr $ inr $ inr T; go e]
+      | Alloc T amod => GenNode 10 [GenLeaf $ inr $ inl $ inl $ inl T;
+                                    GenLeaf $ inr $ inl $ inl $ inr amod]
+      | Deref e T mut => GenNode 11 [GenLeaf $ inr $ inl $ inr $ inl T;
+                                     GenLeaf $ inr $ inl $ inr $ inr mut;
+                                     go e]
+      | Ref e => GenNode 12 [go e]
+      | Field e1 e2 => GenNode 13 [go e1; go e2]
+      | NewCall => GenNode 14 []
+      | EndCall e => GenNode 15 [go e]
+      | Retag e T kind => GenNode 16 [GenLeaf $ inr $ inr $ inl T;
+                                      GenLeaf $ inr $ inr $ inr kind;
+                                      go e]
+      | Case e el => GenNode 17 (go e :: (go <$> el))
+      | Fork e => GenNode 18 [go e]
+     end)
+    (fix go s := match s with
+     | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
+     | GenNode 1 [GenLeaf (inl (inl (inl (inr l))))] => Lit l
+     | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
+                  GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)
+     | GenNode 3 [GenLeaf (inl (inr (inl (inl l))));
+                  GenLeaf (inl (inr (inl (inr tag))))] => Place l tag
+     | GenNode 4 [GenLeaf (inl (inr (inr (inl op)))); e1; e2] => BinOp op (go e1) (go e2)
+     | GenNode 5 (e :: el) => App (go e) (go <$> el)
+     | GenNode 6 [e] => Read (go e)
+     | GenNode 7 [e1; e2] => Write (go e1) (go e2)
+     | GenNode 8 [e0; e1; e2] => CAS (go e0) (go e1) (go e2)
+     | GenNode 9 [GenLeaf (inl (inr (inr (inr T)))); e] => Free (go e) T
+     | GenNode 10 [GenLeaf (inr (inl (inl (inl T))));
+                   GenLeaf (inr (inl (inl (inr amod))))] => Alloc T amod
+     | GenNode 11 [GenLeaf (inr (inl (inr (inl T))));
+                   GenLeaf (inr (inl (inr (inr mut)))); e] => Deref (go e) T mut
+     | GenNode 12 [e] => Ref (go e)
+     | GenNode 13 [e1; e2] => Field (go e1) (go e2)
+     | GenNode 14 [] => NewCall
+     | GenNode 15 [e] => EndCall (go e)
+     | GenNode 16 [GenLeaf (inr (inr (inl T)));
+                   GenLeaf (inr (inr (inr kind))); e] => Retag (go e) T kind
+     | GenNode 17 (e :: el) => Case (go e) (go <$> el)
+     | GenNode 18 [e] => Fork (go e)
+     | _ => Lit LitPoison
+     end) _).
+  fix FIX 1. intros []; f_equal=>//; revert el; clear -FIX.
+  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
+  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
+Qed.
+
 Instance val_dec_eq : EqDecision val.
 Proof.
   refine (λ v1 v2, cast_if (decide (of_val v1 = of_val v2))); abstract naive_solver.
@@ -1356,8 +1458,46 @@ Proof.
               match decide _ with left C => Some $ ImmV $ @RecV f xl e C | _ => None end
           | inr (l, bor) => Some $ PlaceV l bor
           end) _).
-  intros [[]|] =>//. by rewrite decide_left.
+  intros [[]|] =>//; by rewrite decide_left.
 Qed.
 
+Instance type_inhabited : Inhabited type := populate (Scala 0).
+Instance expr_inhabited : Inhabited expr := populate (Lit LitPoison).
+Instance val_inhabited : Inhabited val := populate (ImmV $ LitV LitPoison).
+Instance state_Inhabited : Inhabited state.
+Proof. do 2!econstructor; exact: inhabitant. Qed.
+
+Canonical Structure locC := leibnizC loc.
 Canonical Structure valC := leibnizC val.
 Canonical Structure exprC := leibnizC expr.
+Canonical Structure stateC := leibnizC state.
+
+(** Define some derived forms. *)
+Notation Lam xl e := (Rec BAnon xl e).
+Notation Let x e1 e2 := (App (Lam [x] e2) [e1]).
+Notation Seq e1 e2 := (Let BAnon e1 e2).
+Notation LamV xl e := (RecV BAnon xl e).
+Notation LetCtx x e2 := (AppRCtx (LamV [x] e2) [] []).
+Notation SeqCtx e2 := (LetCtx BAnon e2).
+Notation Skip := (Seq (Lit LitPoison) (Lit LitPoison)).
+Notation If e0 e1 e2 := (Case e0 [e2;e1]).
+
+Coercion lit_of_bool : bool >-> lit.
+Coercion LitInt : Z >-> lit.
+
+(** Shifting for locations *)
+Lemma shift_loc_assoc l n n' : l +ₗ n +ₗ n' = l +ₗ (n + n').
+Proof. rewrite /shift_loc /=. f_equal. lia. Qed.
+Lemma shift_loc_0 l : l +ₗ 0 = l.
+Proof. destruct l as [b o]. rewrite /shift_loc /=. f_equal. lia. Qed.
+
+Lemma shift_loc_assoc_nat l (n n' : nat) : l +ₗ n +ₗ n' = l +ₗ (n + n')%nat.
+Proof. rewrite /shift_loc /=. f_equal. lia. Qed.
+Lemma shift_loc_0_nat l : l +ₗ 0%nat = l.
+Proof. destruct l as [b o]. rewrite /shift_loc /=. f_equal. lia. Qed.
+
+Instance shift_loc_inj l : Inj (=) (=) (shift_loc l).
+Proof. destruct l as [b o]; intros n n' [=?]; lia. Qed.
+
+Lemma shift_loc_block l n : (l +ₗ n).1 = l.1.
+Proof. done. Qed.
