@@ -32,9 +32,10 @@ Inductive ref_kind :=
 Definition is_unique_ref (kind: ref_kind) : bool :=
   match kind with UniqueRef => true | _ => false end.
 
+Inductive pointer_kind := RefPtr (mut: mutability) | RawPtr | BoxPtr .
 Inductive type :=
   | Scala (sz: nat)
-  | Reference (kind: option mutability) (T: type)
+  | Reference (kind: pointer_kind) (T: type)
   | Unsafe (T: type)
   | Union (T1: type) (T2: type)
   | Product (T1: type) (T2: type)
@@ -102,25 +103,25 @@ Implicit Type (α: bstacks) (β: barriers) (t: time) (c: call_id) (T: type).
 Inductive bin_op :=
   | AddOp     (* + addition       *)
   | SubOp     (* - subtraction    *)
-  | MulOp     (* * multiplication *)
+(* | MulOp     (* * multiplication *)
   | DivOp     (* / division       *)
   | RemOp     (* % modulus        *)
   | BitXorOp  (* ^ bit xor        *)
   | BitAndOp  (* & bit and        *)
   | BitOrOp   (* | bit or         *)
   | ShlOp     (* << shift left    *)
-  | ShrOp     (* >> shift right   *)
+  | ShrOp     (* >> shift right   *) *)
   | EqOp      (* == equality      *)
   | LtOp      (* < less than      *)
   | LeOp      (* <= less than or equal to *)
-  | NeOp      (* != not equal to  *)
+(* | NeOp      (* != not equal to  *)
   | GeOp      (* >= greater than or equal to *)
-  | GtOp      (* > greater than   *)
+  | GtOp      (* > greater than   *) *)
   | OffsetOp  (* . offset         *)
   .
 
 (** Base values *)
-Inductive base_lit :=
+Inductive lit :=
 | LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
 
 (** Allocation destination *)
@@ -164,7 +165,7 @@ Qed.
 (** Expressions *)
 Inductive expr :=
 (* base values *)
-| Lit (l : base_lit)
+| Lit (l : lit)
 (* base lambda calculus *)
 | Var (x : string)
 | App (e : expr) (el : list expr)
@@ -174,11 +175,11 @@ Inductive expr :=
 (* lvalue *)
 | Place (l: loc) (tag: borrow)    (* A place is a tagged pointer: every access
                                      to memory revolves around a place. *)
-| Deref (e: expr) (T: type) (kind: ref_kind)
+| Deref (e: expr) (T: type) (mut: option mutability)
                                   (* Deference a pointer `e` into a place
                                      presenting the location that `e` points to.
                                      The location has type `T` and the pointer
-                                     has reference kind `kind`. *)
+                                     has mutable kind `mut`. *)
 | Ref (e: expr)                   (* Turn a place `e` into a pointer value. *)
 | Field (e1 e2: expr)             (* Create a place that points to a component
                                      of the place `e1`. *)
@@ -212,7 +213,8 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | BinOp _ e1 e2 | Write e1 e2  | Field e1 e2 =>
     is_closed X e1 && is_closed X e2
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
-  | Read e | Deref e _ _ | Ref e | Free e _ | EndCall e | Retag e _ _ | Fork e => is_closed X e
+  | Read e | Deref e _ _ | Ref e | Free e _ | EndCall e | Retag e _ _ | Fork e =>
+      is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 
@@ -223,7 +225,7 @@ Instance closed_decision env e : Decision (Closed env e).
 Proof. rewrite /Closed. apply _. Qed.
 
 Inductive immediate :=
-| LitV (l : base_lit)
+| LitV (l : lit)
 | RecV (f : binder) (xl : list binder) (e : expr) `{Closed (f :b: xl +b+ []) e}.
 
 Inductive val :=
@@ -264,7 +266,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
   | Alloc t amod => Alloc t amod
   | Free e t => Free (subst x es e) t
-  | Deref e t kind => Deref (subst x es e) t kind
+  | Deref e t mut => Deref (subst x es e) t mut
   | Ref e => Ref (subst x es e)
   | Field e1 e2 => Field (subst x es e1) (subst x es e2)
   | NewCall => NewCall
@@ -309,7 +311,7 @@ Inductive ectx_item :=
 | CasMCtx (v0 : val) (e2 : expr)
 | CasRCtx (v0 : val) (v1 : val)
 | FreeCtx (T: type)
-| DerefCtx (T: type) (kind: ref_kind)
+| DerefCtx (T: type) (mut: option mutability)
 | RefCtx
 | FieldLCtx (e : expr)
 | FieldRCtx (v : val)
@@ -330,7 +332,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | CasMCtx v0 e2 => CAS (of_val v0) e e2
   | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
   | FreeCtx t=> Free e t
-  | DerefCtx t kind => Deref e t kind
+  | DerefCtx t mut => Deref e t mut
   | RefCtx => Ref e
   | FieldLCtx e2 => Field e e2
   | FieldRCtx v1 => Field (of_val v1) e
@@ -341,7 +343,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
 
 (** Main state: a heap of immediates. *)
 Definition mem := gmap loc immediate.
-Implicit Type (σ: mem).
+Implicit Type (h: mem).
 
 (** The stepping relation *)
 (* Be careful to make sure that poison is always stuck when used for anything
@@ -349,25 +351,25 @@ Implicit Type (σ: mem).
 Definition Z_of_bool (b : bool) : Z :=
   if b then 1 else 0.
 
-Definition lit_of_bool (b : bool) : base_lit :=
+Definition lit_of_bool (b : bool) : lit :=
   LitInt $ Z_of_bool b.
 
-Fixpoint init_mem (l:loc) (n:nat) σ : mem :=
+Fixpoint init_mem (l:loc) (n:nat) h : mem :=
   match n with
-  | O => σ
-  | S n => <[l:=LitV LitPoison]>(init_mem (l +ₗ 1) n σ)
+  | O => h
+  | S n => <[l:=LitV LitPoison]>(init_mem (l +ₗ 1) n h)
   end.
 
-Fixpoint free_mem (l:loc) (n:nat) σ : mem :=
+Fixpoint free_mem (l:loc) (n:nat) h : mem :=
   match n with
-  | O => σ
-  | S n => delete l (free_mem (l +ₗ 1) n σ)
+  | O => h
+  | S n => delete l (free_mem (l +ₗ 1) n h)
   end.
 
-Inductive lit_eq σ : base_lit → base_lit → Prop :=
+Inductive lit_eq h : lit → lit → Prop :=
 (* No refl case for poison *)
-| IntRefl z : lit_eq σ (LitInt z) (LitInt z)
-| LocRefl l tag1 tag2 : lit_eq σ (LitLoc l tag1) (LitLoc l tag2)
+| IntRefl z : lit_eq h (LitInt z) (LitInt z)
+| LocRefl l tag1 tag2 : lit_eq h (LitLoc l tag1) (LitLoc l tag2)
 (* Comparing unallocated pointers can non-deterministically say they are equal
    even if they are not.  Given that our `free` actually makes addresses
    re-usable, this may not be strictly necessary, but it is the most
@@ -376,13 +378,13 @@ Inductive lit_eq σ : base_lit → base_lit → Prop :=
    <https://internals.rust-lang.org/t/comparing-dangling-pointers/3019> for some
    more background. *)
 | LocUnallocL l1 l2 tag1 tag2 :
-    σ !! l1 = None →
-    lit_eq σ (LitLoc l1 tag1) (LitLoc l2 tag2)
+    h !! l1 = None →
+    lit_eq h (LitLoc l1 tag1) (LitLoc l2 tag2)
 | LocUnallocR l1 l2 tag1 tag2 :
-    σ !! l2 = None →
-    lit_eq σ (LitLoc l1 tag1) (LitLoc l2 tag2).
+    h !! l2 = None →
+    lit_eq h (LitLoc l1 tag1) (LitLoc l2 tag2).
 
-Inductive lit_neq : base_lit → base_lit → Prop :=
+Inductive lit_neq : lit → lit → Prop :=
 | IntNeq z1 z2 :
     z1 ≠ z2 → lit_neq (LitInt z1) (LitInt z2)
 | LocNeq l1 l2 tag1 tag2 :
@@ -392,19 +394,21 @@ Inductive lit_neq : base_lit → base_lit → Prop :=
 | LocNeqNullL l tag :
     lit_neq (LitInt 0) (LitLoc l tag).
 
-Inductive bin_op_eval σ : bin_op → base_lit → base_lit → base_lit → Prop :=
+Inductive bin_op_eval h : bin_op → lit → lit → lit → Prop :=
 | BinOpPlus z1 z2 :
-    bin_op_eval σ AddOp (LitInt z1) (LitInt z2) (LitInt (z1 + z2))
+    bin_op_eval h AddOp (LitInt z1) (LitInt z2) (LitInt (z1 + z2))
 | BinOpMinus z1 z2 :
-    bin_op_eval σ SubOp (LitInt z1) (LitInt z2) (LitInt (z1 - z2))
+    bin_op_eval h SubOp (LitInt z1) (LitInt z2) (LitInt (z1 - z2))
 | BinOpLe z1 z2 :
-    bin_op_eval σ LeOp (LitInt z1) (LitInt z2) (lit_of_bool $ bool_decide (z1 ≤ z2))
+    bin_op_eval h LeOp (LitInt z1) (LitInt z2) (lit_of_bool $ bool_decide (z1 ≤ z2))
+| BinOpLt z1 z2 :
+    bin_op_eval h LtOp (LitInt z1) (LitInt z2) (lit_of_bool $ bool_decide (z1 < z2))
 | BinOpEqTrue l1 l2 :
-    lit_eq σ l1 l2 → bin_op_eval σ EqOp l1 l2 (lit_of_bool true)
+    lit_eq h l1 l2 → bin_op_eval h EqOp l1 l2 (lit_of_bool true)
 | BinOpEqFalse l1 l2 :
-    lit_neq l1 l2 → bin_op_eval σ EqOp l1 l2 (lit_of_bool false)
+    lit_neq l1 l2 → bin_op_eval h EqOp l1 l2 (lit_of_bool false)
 | BinOpOffset l z tag :
-    bin_op_eval σ OffsetOp (LitLoc l tag) (LitInt z) (LitLoc (l +ₗ z) tag).
+    bin_op_eval h OffsetOp (LitLoc l tag) (LitInt z) (LitLoc (l +ₗ z) tag).
 
 Definition stuck_term := App (Lit $ LitInt 0) [].
 
@@ -413,76 +417,75 @@ Inductive event :=
 | DeallocEvt (l: loc) (n : positive) (lbor: borrow)
 | ReadEvt (l: loc) (lbor: borrow) (v: immediate)
 | WriteEvt (l: loc) (lbor: borrow) (v: immediate)
-| DerefEvt (l: loc) (lbor: borrow) (T: type) (ref: ref_kind)
+| DerefEvt (l: loc) (lbor: borrow) (T: type) (mut: option mutability)
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
-| RetagEvt (x l: loc) (T: type) (bor bor': borrow)
-           (mut: option mutability) (rt: retag_kind)
+| RetagEvt (x: loc) (T: type) (kind: retag_kind)
 .
 
 Inductive base_step :
   expr → mem → option event → expr → mem → list expr → Prop :=
-| BinOpBS op l1 l2 l' σ :
-    bin_op_eval σ op l1 l2 l' →
-    base_step (BinOp op (Lit l1) (Lit l2)) σ None (Lit l') σ []
-| BetaBS f xl e e' el σ :
+| BinOpBS op l1 l2 l' h :
+    bin_op_eval h op l1 l2 l' →
+    base_step (BinOp op (Lit l1) (Lit l2)) h None (Lit l') h []
+| BetaBS f xl e e' el h :
     Forall (λ ei, is_Some (to_val ei)) el →
     Closed (f :b: xl +b+ []) e →
     subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
-    base_step (App (Rec f xl e) el) σ None e' σ []
-| ReadBS l v lbor σ :
-    σ !! l = Some v →
-    base_step (Read (Place l lbor)) σ
+    base_step (App (Rec f xl e) el) h None e' h []
+| ReadBS l v lbor h :
+    h !! l = Some v →
+    base_step (Read (Place l lbor)) h
               (Some $ ReadEvt l lbor v)
-              (of_val (ImmV v)) σ
+              (of_val (ImmV v)) h
               []
-| WriteBS l e v lbor σ :
-    is_Some (σ !! l) →
+| WriteBS l e v lbor h :
+    is_Some (h !! l) →
     to_val e = Some (ImmV v) →
-    base_step (Write (Place l lbor) e) σ
+    base_step (Write (Place l lbor) e) h
               (Some $ WriteEvt l lbor v)
-              (Lit LitPoison) (<[l:=v]>σ)
+              (Lit LitPoison) (<[l:=v]>h)
               []
-| AllocBS T l lbor amod σ :
-    (∀ m, σ !! (l +ₗ m) = None) →
-    base_step (Alloc T amod) σ
+| AllocBS T l lbor amod h :
+    (∀ m, h !! (l +ₗ m) = None) →
+    base_step (Alloc T amod) h
               (Some $ AllocEvt l (Pos.of_nat (tsize T)) lbor amod)
-              (Place l lbor) (init_mem l (tsize T) σ)
+              (Place l lbor) (init_mem l (tsize T) h)
               []
-| FreeBS T l lbor σ :
-    (∀ m, is_Some (σ !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
-    base_step (Free (Place l lbor) T) σ
+| FreeBS T l lbor h :
+    (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
+    base_step (Free (Place l lbor) T) h
               (Some $ DeallocEvt l (Pos.of_nat (tsize T)) lbor)
-              (Lit LitPoison) (free_mem l (tsize T) σ)
+              (Lit LitPoison) (free_mem l (tsize T) h)
               []
-| NewCallBS call σ:
-    base_step NewCall σ
-              (Some $ NewCallEvt call) (Lit $ LitInt call) σ []
-| EndCallBS call σ:
+| NewCallBS call h:
+    base_step NewCall h
+              (Some $ NewCallEvt call) (Lit $ LitInt call) h []
+| EndCallBS call h:
     (0 ≤ call) →
-    base_step (EndCall (Lit $ LitInt call)) σ
-              (Some $ EndCallEvt (Z.to_nat call)) (Lit LitPoison) σ []
-| RefBS l lbor σ :
-    is_Some (σ !! l) →
-    base_step (Ref (Place l lbor)) σ None (Lit (LitLoc l lbor)) σ []
-| DerefBS l lbor ref T σ :
-    is_Some (σ !! l) →
-    base_step (Deref (Lit (LitLoc l lbor)) T ref) σ
+    base_step (EndCall (Lit $ LitInt call)) h
+              (Some $ EndCallEvt (Z.to_nat call)) (Lit LitPoison) h []
+| RefBS l lbor h :
+    is_Some (h !! l) →
+    base_step (Ref (Place l lbor)) h None (Lit (LitLoc l lbor)) h []
+| DerefBS l lbor ref T h :
+    is_Some (h !! l) →
+    base_step (Deref (Lit (LitLoc l lbor)) T ref) h
               (Some $ DerefEvt l lbor T ref)
-              (Place l lbor) σ
+              (Place l lbor) h
               []
-| FieldBS l lbor z σ :
-    base_step (Field (Place l lbor) (Lit $ LitInt z)) σ
-              None (Place (l +ₗ z) lbor) σ []
-| RetagBS x xbor l lbor lbor' om T kind σ:
-    base_step (Retag (Place x xbor) T kind) σ
-              (Some $ RetagEvt x l T lbor lbor' om kind) (Lit LitPoison) σ []
-| CaseBS i el e σ :
+| FieldBS l lbor z h :
+    base_step (Field (Place l lbor) (Lit $ LitInt z)) h
+              None (Place (l +ₗ z) lbor) h []
+| RetagBS x xbor T kind h:
+    base_step (Retag (Place x xbor) T kind) h
+              (Some $ RetagEvt x T kind) (Lit LitPoison) h []
+| CaseBS i el e h :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
-    base_step (Case (Lit $ LitInt i) el) σ None e σ []
-| ForkBS e σ:
-    base_step (Fork e) σ None (Lit LitPoison) σ [e].
+    base_step (Case (Lit $ LitInt i) el) h None e h []
+| ForkBS e h:
+    base_step (Fork e) h None (Lit LitPoison) h [e].
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
@@ -560,12 +563,12 @@ Fixpoint access1'
   end.
 
 (* This implements Stack::access. *)
-Definition access1 (stack: bstack) bor access β : option bstack :=
-  match stack.(frozen_since), access with
+Definition access1 β (stack: bstack) bor (kind: access_kind) : option bstack :=
+  match stack.(frozen_since), kind with
   (* accept all reads if frozen *)
   | Some _, AccessRead => Some stack
   (* otherwise, unfreeze *)
-  | _,_ => match access1' stack.(borrows) bor access β with
+  | _,_ => match access1' stack.(borrows) bor kind β with
            | Some stack' => Some (mkBorStack stack' None)
            | _ => None
            end
@@ -573,13 +576,13 @@ Definition access1 (stack: bstack) bor access β : option bstack :=
 
 (* Perform the access check on a block of continuous memory.
  * This implements Stacks::access. *)
-Fixpoint accessN α β l (bor: borrow) (n: nat) (kind: access_kind) : option bstacks :=
+Fixpoint accessN α β l (bor: borrow) (n: nat) kind : option bstacks :=
   match n with
   | O => Some α
   | S n =>
       let l' := (l +ₗ n) in
       match (α !! l') with
-      | Some stack => match (access1 stack bor kind β) with
+      | Some stack => match (access1 β stack bor kind) with
                       | Some stack' =>
                           accessN (<[l' := stack']> α) β l bor n kind
                       | _ => None
@@ -813,19 +816,19 @@ Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
           then (* bor' must be aliasing *)
                if is_aliasing bor' then Some stack else None
           else (* check for access with bor, then reborrow with bor' *)
-               match access1 stack bor (to_access_kind kind') β with
+               match access1 β stack bor (to_access_kind kind') with
                | Some stack1 => create_borrow stack1 bor' kind'
                | None => None
                end
       | None, _ ,_ =>
           (* check for access with bor, then reborrow with bor' *)
-          match access1 stack bor (to_access_kind kind') β with
+          match access1 β stack bor (to_access_kind kind') with
           | Some stack1 => create_borrow stack1 bor' kind'
           | None => None
           end
       | Some c, _, _ =>
           (* check for access with bor, then add barrier & reborrow with bor' *)
-          match access1 stack bor (to_access_kind kind') β with
+          match access1 β stack bor (to_access_kind kind') with
           | Some stack1 => create_borrow (add_barrier stack1 c) bor' kind'
           | None => None
           end
@@ -933,8 +936,8 @@ Definition reborrow α β l bor T (bar: option call_id) bor' :=
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
-Definition retag_ref α β (clock: nat) l bor (T: type) (mut: option mutability)
-  (bar: option call_id) (two_phase: bool) : option (borrow * bstacks * nat) :=
+Definition retag_ref α β (clock: time) l bor (T: type) (mut: option mutability)
+  (bar: option call_id) (two_phase: bool) : option (borrow * bstacks * time) :=
   match tsize T with
   | O => (* Nothing to do for zero-sized types *)
       Some (bor, α, clock)
@@ -960,84 +963,401 @@ Definition retag_ref α β (clock: nat) l bor (T: type) (mut: option mutability)
          end
   end.
 
-Fixpoint retag' σ α β l (bor: borrow) T
-  (mut: option mutability) (bar: option call_id) (two_phase: bool) :
-  option (mem * bstacks) :=
-  match T with
-  | Scala _ => Some (σ, α)
-  | Unsafe T => retag' σ α β l bor T mut bar two_phase
-  | Union _ _ => None (*TODO: what TODO??? *)
-  | Product T1 T2 =>
-      match retag' σ α β l bor T1 mut bar two_phase with
-      | Some (σ', α') =>
-          retag' σ' α' β (l +ₗ (tsize T1)) bor T2 mut bar two_phase
-      | None => None
-      end
-  | Reference mut T => None
-  end.
-
+Definition is_two_phase (kind: retag_kind) : bool :=
+  match kind with TwoPhase => true | _ => false end.
+Definition adding_barrier (kind: retag_kind) : option call_id :=
+  match kind with FnEntry c => Some c | _ => None end.
 (* This implements EvalContextExt::retag *)
-Definition retag σ α β x T (kind: retag_kind) : option (mem * bstacks) :=
-  match σ !! x with
-  | Some (LitV (LitLoc l bor)) => None
-  | _ => None
+Fixpoint retag h α (clock: time) β x T (kind: retag_kind) :
+  option (mem * bstacks * time) :=
+  match T with
+  | Scala _ | Union _ _ => Some (h, α, clock)
+  | Unsafe T => retag h α clock β x T kind
+  | Product T1 T2 =>
+      match retag h α clock β x T1 kind with
+      | Some (h', α', clock') =>
+          retag h' α' clock' β (x +ₗ (tsize T1)) T2 kind
+      | _ => None
+      end
+  | Reference pkind Tref =>
+      match h !! x with
+      | Some (LitV (LitLoc l bor)) =>
+            match pkind, kind with
+            (* Reference pointer *)
+            | RefPtr mut, _ =>
+                match retag_ref α β clock l bor Tref (Some mut)
+                                (adding_barrier kind) (is_two_phase kind) with
+                | Some (bor', α', clock') =>
+                    Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
+                | _ => None
+                end
+            (* RawPtr can only be Raw-retagged, no barrier *)
+            | RawPtr, RawRt =>
+                match retag_ref α β clock l bor Tref None None false with
+                | Some (bor', α', clock') =>
+                    Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
+                | _ => None
+                end
+            (* Box pointer *)
+            | BoxPtr, _ =>
+                match retag_ref α β clock l bor Tref (Some Mutable)
+                                None (is_two_phase kind) with
+                | Some (bor', α', clock') =>
+                    Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
+                | _ => None
+                end
+            | _, _ => None
+            end
+      | _ => None
+      end
   end.
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
-Inductive instrumented_step σ α β (clock: time):
-  option event → mem → stacks → barriers → time → Prop :=
+Inductive instrumented_step h α β (clock: time):
+  option event → mem → bstacks → barriers → time → Prop :=
 | DefaultIS :
-    instrumented_step σ α β clock None σ α β clock
-| AllocHeapIS σ' l n :
-    instrumented_step σ α β clock
-                      (Some $ AllocEvt l n (AliasB None) Heap) σ'
+    instrumented_step h α β clock None h α β clock
+(* This implements EvalContextExt::tag_new_allocation for heap locations. *)
+| AllocHeapIS l n :
+    instrumented_step h α β clock
+                      (Some $ AllocEvt l n borrow_default Heap) h
                       (init_stacks l (Pos.to_nat n) α Raw) β clock
-| AllocStackIS σ' t x n :
-    instrumented_step σ α β clock
-                      (Some $ AllocEvt x n (UniqB t) Stack) σ'
-                      (init_stacks x (Pos.to_nat n) α (Uniq clock)) β (clock + 1)
-| ReadFrozenIS l v lbor stack :
+(* This implements EvalContextExt::tag_new_allocation for stack variables. *)
+| AllocStackIS t x n :
+    (* UniqB t is the first borrow of the variable x,
+       used when accessing x directly (not through another pointer) *)
+    instrumented_step h α β clock
+                      (Some $ AllocEvt x n (UniqB t) Stack) h
+                      (init_stacks x (Pos.to_nat n) α (Uniq clock)) β (S clock)
+(* This implements AllocationExtra::memory_read, but only for size 1. *)
+| Read1IS l v lbor stack stack' :
     (α !! l = Some stack) →
-    is_frozen stack →
-    instrumented_step σ α β clock
-                      (Some $ ReadEvt l lbor v) σ α β clock
-| ReadUnfrozenIS l v lbor stack stack':
+    (access1 β stack lbor AccessRead = Some stack') →
+    instrumented_step h α β clock
+                      (Some $ ReadEvt l lbor v) h (<[l := stack']> α) β clock
+(* This implements AllocationExtra::memory_written, but only for size 1. *)
+| WriteIS l v lbor stack stack' :
     (α !! l = Some stack) →
-    (¬ is_frozen stack) →
-    (access1 stack.(borrows) lbor AccessRead β = Some stack') →
-    instrumented_step σ α β clock
-                      (Some $ ReadEvt l lbor v) σ
-                      (<[ l := mkBorStack stack' None ]> α) β clock
-| WriteIS σ' l v lbor stack stack' :
-    (α !! l = Some stack) →
-    (access1 stack.(borrows) lbor AccessWrite β = Some stack') →
-    instrumented_step σ α β clock
-                      (Some $ WriteEvt l lbor v) σ'
-                      (<[ l := mkBorStack stack' None ]> α) β clock
-| DeallocIS σ' l n lbor stack stack' :
-    (α !! l = Some stack) →
-    (access1 stack.(borrows) lbor AccessDealloc β = Some stack') →
-    instrumented_step σ α β clock
-                      (Some $ DeallocEvt l n lbor) σ'
-                      (<[ l := mkBorStack stack' None ]> α) β clock
-| DerefIS l n lbor kind :
-    check_derefN α lbor kind l n →
-    instrumented_step σ α β clock
-                      (Some $ DerefEvt l lbor kind) σ α β clock
+    (access1 β stack lbor AccessWrite = Some stack') →
+    instrumented_step h α β clock
+                      (Some $ WriteEvt l lbor v) h (<[l := stack']> α) β clock
+(* This implements AllocationExtra::memory_deallocated. *)
+| DeallocIS α' l n lbor :
+    (accessN α β l lbor (Pos.to_nat n) AccessDealloc = Some α') →
+    instrumented_step h α β clock
+                      (Some $ DeallocEvt l n lbor) h α' β clock
 | NewCallIS:
-    let call : call_id := fresh_generic (dom (gset call_id) β) in
-    instrumented_step σ α β clock
-                      (Some $ NewCallEvt call) σ α (<[call := true]>β) clock
+    let call : call_id := fresh (dom (gset call_id) β) in
+    instrumented_step h α β clock
+                      (Some $ NewCallEvt call) h α (<[call := true]>β) clock
 | EndCallIS call
-    (ACTIVE: β !! call = Some true):
-    instrumented_step σ α β clock
-                      (Some $ EndCallEvt call) σ α (<[call := false]>β) clock.
-(* | RetagIS α' x l n bor bor' rkind bar :
-    (σ !! x = Some $ LitV $ LitLoc l bor) →
-    (reborrowN α β bor rkind l (Pos.to_nat n) bar bor' α') →
-    instrumented_step σ α β
-                      (Some $ RetagEvt x l n bor bor' bar)
-                      (<[ x := LitV $ LitLoc l bor' ]> σ) α'. *)
+    (ACTIVE: β !! call = Some true) :
+    instrumented_step h α β clock
+                      (Some $ EndCallEvt call) h α (<[call := false]>β) clock
+(* Deferencing a pointer value to a place *)
+| DerefIS l lbor T mut
+    (DEREF: ptr_deref α l lbor T mut) :
+    instrumented_step h α β clock
+                      (Some $ DerefEvt l lbor T mut) h α β clock
+| RetagIS h' α' clock' x T kind
+    (RETAG: retag h α clock β x T kind = Some (h', α', clock')) :
+    instrumented_step h α β clock
+                      (Some $ RetagEvt x T kind) h' α' β clock'.
 
 (** COMBINED SEMANTICS -------------------------------------------------------*)
+Record state := mkState {
+  cheap: mem;
+  cstk : bstacks;
+  cbar : barriers;
+  cclk : time;
+}.
+
+Implicit Type (σ: state).
+
+Inductive head_step :
+  expr → state → list Empty_set → expr → state → list expr → Prop :=
+  | BaseHS σ e e' efs h'
+      (BaseStep : base_step e σ.(cheap) None e' h' efs)
+  : head_step e σ [] e' (mkState h' σ.(cstk) σ.(cbar) σ.(cclk)) efs
+  | InstrHS σ e e' evt h0 h' α' β' clock'
+      (BaseStep : base_step e σ.(cheap) (Some evt) e' h0 [])
+      (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) (Some evt) h' α' β' clock')
+  : head_step e σ [] e' (mkState h' α' β' clock') [] .
+
+(** Properties of the Language *)
+Lemma to_of_val v : to_val (of_val v) = Some v.
+Proof.
+  by destruct v as [[]|]; simplify_option_eq; [| |done|]; repeat f_equal;
+    try apply (proof_irrel _).
+Qed.
+Lemma of_to_val e v : to_val e = Some v → of_val v = e.
+Proof. destruct e=>//=; [|case decide => ? //|]; by intros [= <-]. Qed.
+Instance of_val_inj : Inj (=) (=) of_val.
+Proof. by intros ?? Hv; apply (inj Some); rewrite -!to_of_val Hv. Qed.
+
+Instance fill_item_inj Ki : Inj (=) (=) (fill_item Ki).
+Proof. destruct Ki; intros ???; simplify_eq/=; auto with f_equal. Qed.
+Lemma fill_item_val Ki e :
+  is_Some (to_val (fill_item Ki e)) → is_Some (to_val e).
+Proof. intros [v ?]. destruct Ki; simplify_option_eq; eauto. Qed.
+
+Lemma list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2 :
+  to_val e1 = None → to_val e2 = None →
+  map of_val vl1 ++ e1 :: el1 = map of_val vl2 ++ e2 :: el2 →
+  vl1 = vl2 ∧ el1 = el2.
+Proof.
+  revert vl2; induction vl1; destruct vl2; intros H1 H2; inversion 1.
+  - done.
+  - subst. by rewrite to_of_val in H1.
+  - subst. by rewrite to_of_val in H2.
+  - destruct (IHvl1 vl2); auto. split; f_equal; auto. by apply (inj of_val).
+Qed.
+
+Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
+  to_val e1 = None → to_val e2 = None →
+  fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
+Proof.
+  destruct Ki1 as [| | |v1 vl1 el1| | | | | | | | | | | | | |],
+           Ki2 as [| | |v2 vl2 el2| | | | | | | | | | | | | |];
+  intros He1 He2 EQ; try discriminate; simplify_eq/=;
+    repeat match goal with
+    | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H
+    end; auto.
+  destruct (list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2); auto. congruence.
+Qed.
+
+(** Closed expressions *)
+Lemma is_closed_weaken X Y e : is_closed X e → X ⊆ Y → is_closed Y e.
+Proof.
+  revert e X Y. fix FIX 1; destruct e=>X Y/=; try naive_solver.
+  - rewrite !andb_True. intros [He Hel] HXY. split. by eauto.
+    induction el=>/=; naive_solver.
+  - naive_solver set_solver.
+  - rewrite !andb_True. intros [He Hel] HXY. split. by eauto.
+    induction el=>/=; naive_solver.
+Qed.
+
+Lemma is_closed_weaken_nil X e : is_closed [] e → is_closed X e.
+Proof. intros. by apply is_closed_weaken with [], list_subseteq_nil. Qed.
+
+Lemma is_closed_subst X e x es : is_closed X e → x ∉ X → subst x es e = e.
+Proof.
+  revert e X. fix FIX 1; destruct e=> X /=; rewrite ?bool_decide_spec ?andb_True=> He ?;
+    repeat case_bool_decide; simplify_eq/=; f_equal;
+    try by intuition eauto with set_solver.
+  - case He=> _. clear He. induction el=>//=. rewrite andb_True=>?.
+    f_equal; intuition eauto with set_solver.
+  - case He=> _. clear He. induction el=>//=. rewrite andb_True=>?.
+    f_equal; intuition eauto with set_solver.
+Qed.
+
+Lemma is_closed_nil_subst e x es : is_closed [] e → subst x es e = e.
+Proof. intros. apply is_closed_subst with []; set_solver. Qed.
+
+Lemma is_closed_of_val X v : is_closed X (of_val v).
+Proof. apply is_closed_weaken_nil. destruct v as [[]|]; simpl; auto. Qed.
+
+Lemma subst_is_closed X x es e :
+  is_closed X es → is_closed (x::X) e → is_closed X (subst x es e).
+Proof.
+  revert e X. fix FIX 1; destruct e=>X //=; repeat (case_bool_decide=>//=);
+    try naive_solver; rewrite ?andb_True; intros.
+  - set_solver.
+  - split; first naive_solver. induction el; naive_solver.
+  - eauto using is_closed_weaken with set_solver.
+  - eapply is_closed_weaken; first done.
+    destruct (decide (BNamed x = f)), (decide (BNamed x ∈ xl)); set_solver.
+  - split; first naive_solver. induction el; naive_solver.
+Qed.
+
+Lemma subst'_is_closed X b es e :
+  is_closed X es → is_closed (b:b:X) e → is_closed X (subst' b es e).
+Proof. destruct b; first done. apply subst_is_closed. Qed.
+
+(** Equality and other typeclass stuff *)
+Instance binder_countable : Countable binder.
+Proof.
+  refine (inj_countable'
+    (λ b, match b with BAnon => None | BNamed s => Some s end)
+    (from_option BNamed BAnon) _); by intros [].
+Qed.
+
+Instance bin_op_eq_dec : EqDecision bin_op.
+Proof. solve_decision. Defined.
+Instance bin_op_countable : Countable bin_op.
+Proof.
+  refine (inj_countable'
+    (λ o, match o with AddOp => 0 | SubOp => 1 | LeOp => 2 |
+                  LtOp => 3 | EqOp => 4 | OffsetOp => 5 end)
+    (λ x, match x with 0 => AddOp | 1 => SubOp | 2 => LeOp |
+                  3 => LtOp | 4 => EqOp | _ => OffsetOp end) _); by intros [].
+Qed.
+
+Instance borrow_eq_dec : EqDecision borrow.
+Proof. solve_decision. Defined.
+Instance borrow_countable : Countable borrow.
+Proof.
+  refine (inj_countable
+          (λ b, match b with
+              | UniqB n => inl n
+              | AliasB n => inr n
+              end)
+          (λ s, match s with
+              | inl n => Some $ UniqB n
+              | inr n => Some $ AliasB n
+              end) _); by intros [].
+Qed.
+
+Instance lit_eq_dec : EqDecision lit.
+Proof. solve_decision. Defined.
+Instance lit_countable : Countable lit.
+Proof.
+  refine (inj_countable
+          (λ v, match v with
+              | LitPoison => inl ()
+              | LitLoc l bor => inr (inl (l,bor))
+              | LitInt n => inr (inr n)
+              end)
+          (λ s, match s with
+              | inl () => Some LitPoison
+              | inr (inl (l,bor)) => Some $ LitLoc l bor
+              | inr (inr n) => Some $ LitInt n
+              end) _); by intros [].
+Qed.
+
+Instance mutability_eq_dec : EqDecision mutability.
+Proof. solve_decision. Defined.
+Instance mutability_countable : Countable mutability.
+Proof.
+  refine (inj_countable'
+    (λ m, match m with Mutable => 0 | Immutable => 1 end)
+    (λ x, match x with 0 => Mutable | _ => Immutable end) _); by intros [].
+Qed.
+
+Instance pointer_kind_eq_dec : EqDecision pointer_kind.
+Proof. solve_decision. Defined.
+Instance pointer_kind_countable : Countable pointer_kind.
+Proof.
+  refine (inj_countable
+          (λ k, match k with
+              | RefPtr mut => inl $ inl mut
+              | RawPtr => inl $ inr ()
+              | BoxPtr => inr ()
+              end)
+          (λ s, match s with
+              | inl (inl mut) => Some $ RefPtr mut
+              | inl (inr _) => Some  RawPtr
+              | inr _ => Some BoxPtr
+              end) _); by intros [].
+Qed.
+Instance retag_kind_eq_dec : EqDecision retag_kind.
+Proof. solve_decision. Defined.
+Instance alloc_mod_eq_dec : EqDecision alloc_mod.
+Proof. solve_decision. Defined.
+
+Instance type_eq_dec : EqDecision type.
+Proof. solve_decision. Defined.
+Instance type_inhabited : Inhabited type := populate (Scala 0).
+Instance type_countable : Countable type.
+Proof.
+  refine (inj_countable'
+    (fix go T := match T with
+     | Scala sz => GenNode 0 [GenLeaf $ inl sz]
+     | Reference kind T => GenNode 1 [GenLeaf $ inr kind; go T]
+     | Unsafe T => GenNode 2 [go T]
+     | Union T1 T2 => GenNode 3 [go T1; go T2]
+     | Product T1 T2 => GenNode 4 [go T1; go T2]
+     end)
+    (fix go s := match s with
+     | GenNode 0 [GenLeaf (inl sz)] => Scala sz
+     | GenNode 1 [GenLeaf (inr kind); T] => Reference kind (go T)
+     | GenNode 2 [T] => Unsafe (go T)
+     | GenNode 3 [T1; T2] => Union (go T1) (go T2)
+     | GenNode 4 [T1; T2] => Product (go T1) (go T2)
+     | _ => Scala 0
+     end) _).
+  fix FIX 1. intros []; f_equal=>//.
+Qed.
+
+Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
+  let fix expr_list_beq el el' :=
+    match el, el' with
+    | [], [] => true
+    | eh::eq, eh'::eq' => expr_beq eh eh' && expr_list_beq eq eq'
+    | _, _ => false
+    end
+  in
+  match e, e' with
+  | Lit l, Lit l' => bool_decide (l = l')
+  | Var x, Var x' => bool_decide (x = x')
+  | App e el, App e' el' | Case e el, Case e' el' =>
+    expr_beq e e' && expr_list_beq el el'
+  | Rec f xl e, Rec f' xl' e' =>
+    bool_decide (f = f') && bool_decide (xl = xl') && expr_beq e e'
+  | BinOp op e1 e2, BinOp op' e1' e2' =>
+    bool_decide (op = op') && expr_beq e1 e1' && expr_beq e2 e2'
+  | Place l bor, Place l' bor' => bool_decide (l = l') && bool_decide (bor = bor')
+  | Deref e T mut, Deref e' T' mut' =>
+      bool_decide (T = T') && bool_decide (mut = mut') && expr_beq e e'
+  | NewCall, NewCall => true
+  | Retag e T kind, Retag e' T' kind' =>
+      bool_decide (T = T') && bool_decide (kind = kind') && expr_beq e e'
+  | Read e, Read e' | Ref e, Ref e' | EndCall e, EndCall e' => expr_beq e e'
+  | Write e1 e2, Write e1' e2'| Field e1 e2, Field e1' e2' =>
+      expr_beq e1 e1' && expr_beq e2 e2'
+  | CAS e0 e1 e2, CAS e0' e1' e2' =>
+      expr_beq e0 e0' && expr_beq e1 e1' && expr_beq e2 e2'
+  | Fork e, Fork e' => expr_beq e e'
+  | Alloc T am, Alloc T' am' => bool_decide (T = T') && bool_decide (am = am')
+  | Free e T, Free e' T' => bool_decide (T = T') && expr_beq e e'
+  | _, _ => false
+  end.
+
+Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
+Proof.
+  revert e1 e2; fix FIX 1;
+    destruct e1 as [| |? el1| | | | | | | | | | | | | | |? el1|],
+             e2 as [| |? el2| | | | | | | | | | | | | | |? el2|];
+    simpl; try done;
+    rewrite ?andb_True ?bool_decide_spec ?FIX;
+    try (split; intro; [destruct_and?|split_and?]; congruence).
+  - match goal with |- context [?F el1 el2] => assert (F el1 el2 ↔ el1 = el2) end.
+    { revert el2. induction el1 as [|el1h el1q]; destruct el2; try done.
+      specialize (FIX el1h). naive_solver. }
+    clear FIX. naive_solver.
+  - match goal with |- context [?F el1 el2] => assert (F el1 el2 ↔ el1 = el2) end.
+    { revert el2. induction el1 as [|el1h el1q]; destruct el2; try done.
+      specialize (FIX el1h). naive_solver. }
+    clear FIX. naive_solver.
+Qed.
+
+Instance expr_inhabited : Inhabited expr := populate (Lit LitPoison).
+Instance expr_dec_eq : EqDecision expr.
+Proof.
+  refine (λ e1 e2, cast_if (decide (expr_beq e1 e2))); by rewrite -expr_beq_correct.
+Defined.
+Instance val_inhabited : Inhabited val := populate (ImmV $ LitV LitPoison).
+Instance val_dec_eq : EqDecision val.
+Proof.
+  refine (λ v1 v2, cast_if (decide (of_val v1 = of_val v2))); abstract naive_solver.
+Defined.
+Instance val_countable : Countable val.
+Proof.
+  refine (inj_countable
+    (λ v, match v with
+          | ImmV (LitV l) => inl $ inl l
+          | ImmV (RecV f xl e) => inl $ inr (f, xl, e)
+          | PlaceV l bor => inr (l, bor)
+          end)
+    (λ x, match x with
+          | inl (inl l) => Some $ ImmV $ LitV l
+          | inl (inr (f, xl, e)) =>
+              match decide _ with left C => Some $ ImmV $ @RecV f xl e C | _ => None end
+          | inr (l, bor) => Some $ PlaceV l bor
+          end) _).
+  intros [[]|] =>//. by rewrite decide_left.
+Qed.
+
+Canonical Structure valC := leibnizC val.
+Canonical Structure exprC := leibnizC expr.
