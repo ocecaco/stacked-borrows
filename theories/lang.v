@@ -1171,6 +1171,9 @@ Proof. intros. apply is_closed_subst with []; set_solver. Qed.
 Lemma is_closed_of_val X v : is_closed X (of_val v).
 Proof. apply is_closed_weaken_nil. destruct v as [[]|]; simpl; auto. Qed.
 
+Lemma is_closed_to_val X e v : to_val e = Some v → is_closed X e.
+Proof. intros <-%of_to_val. apply is_closed_of_val. Qed.
+
 Lemma subst_is_closed X x es e :
   is_closed X es → is_closed (x::X) e → is_closed X (subst x es e).
 Proof.
@@ -1476,7 +1479,7 @@ Canonical Structure stateC := leibnizC state.
 Notation Lam xl e := (Rec BAnon xl e).
 Notation Let x e1 e2 := (App (Lam [x] e2) [e1]).
 Notation Seq e1 e2 := (Let BAnon e1 e2).
-Notation LamV xl e := (RecV BAnon xl e).
+Notation LamV xl e := (ImmV (RecV BAnon xl e)).
 Notation LetCtx x e2 := (AppRCtx (LamV [x] e2) [] []).
 Notation SeqCtx e2 := (LetCtx BAnon e2).
 Notation Skip := (Seq (Lit LitPoison) (Lit LitPoison)).

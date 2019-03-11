@@ -1,0 +1,5 @@
+-Q theories stbor
+-arg -w -arg -notation-overridden,-projection-no-head-constant,-redundant-canonical-projection
+theories/lang.v
+theories/notation.v
+theories/tactics.v
