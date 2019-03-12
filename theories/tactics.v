@@ -8,8 +8,8 @@ expressions into this type we can implement substitution, closedness
 checking, atomic checking, and conversion into values, by computation. *)
 Module W.
 Inductive expr :=
-| Val (v : val) (e : lang.expr) (H : to_val e = Some v)
-| ClosedExpr (e : lang.expr) `{!Closed [] e}
+| Val (v : val) (e : bor_lang.expr) (H : to_val e = Some v)
+| ClosedExpr (e : bor_lang.expr) `{!Closed [] e}
 | Lit (l : lit)
 | Var (x : string)
 | Rec (f : binder) (xl : list binder) (e : expr)
@@ -30,61 +30,61 @@ Inductive expr :=
 | Case (e : expr) (el : list expr)
 | Fork (e : expr).
 
-Fixpoint to_expr (e : expr) : lang.expr :=
+Fixpoint to_expr (e : expr) : bor_lang.expr :=
   match e with
   | Val v e' _ => e'
   | ClosedExpr e => e
-  | Lit l => lang.Lit l
-  | Var x => lang.Var x
-  | Rec f xl e => lang.Rec f xl (to_expr e)
-  | BinOp op e1 e2 => lang.BinOp op (to_expr e1) (to_expr e2)
-  | App e el => lang.App (to_expr e) (map to_expr el)
-  | Place l tag => lang.Place l tag
-  | Deref e T mut => lang.Deref (to_expr e) T mut
-  | Ref e => lang.Ref (to_expr e)
-  | Field e1 e2 => lang.Field (to_expr e1) (to_expr e2)
-  | Read e => lang.Read (to_expr e)
-  | Write e1 e2 => lang.Write (to_expr e1) (to_expr e2)
-  | CAS e0 e1 e2 => lang.CAS (to_expr e0) (to_expr e1) (to_expr e2)
-  | Alloc T amod => lang.Alloc T amod
-  | Free e T => lang.Free (to_expr e) T
-  | NewCall => lang.NewCall
-  | EndCall e => lang.EndCall (to_expr e)
-  | Retag e T kind => lang.Retag (to_expr e) T kind
-  | Case e el => lang.Case (to_expr e) (map to_expr el)
-  | Fork e => lang.Fork (to_expr e)
+  | Lit l => bor_lang.Lit l
+  | Var x => bor_lang.Var x
+  | Rec f xl e => bor_lang.Rec f xl (to_expr e)
+  | BinOp op e1 e2 => bor_lang.BinOp op (to_expr e1) (to_expr e2)
+  | App e el => bor_lang.App (to_expr e) (map to_expr el)
+  | Place l tag => bor_lang.Place l tag
+  | Deref e T mut => bor_lang.Deref (to_expr e) T mut
+  | Ref e => bor_lang.Ref (to_expr e)
+  | Field e1 e2 => bor_lang.Field (to_expr e1) (to_expr e2)
+  | Read e => bor_lang.Read (to_expr e)
+  | Write e1 e2 => bor_lang.Write (to_expr e1) (to_expr e2)
+  | CAS e0 e1 e2 => bor_lang.CAS (to_expr e0) (to_expr e1) (to_expr e2)
+  | Alloc T amod => bor_lang.Alloc T amod
+  | Free e T => bor_lang.Free (to_expr e) T
+  | NewCall => bor_lang.NewCall
+  | EndCall e => bor_lang.EndCall (to_expr e)
+  | Retag e T kind => bor_lang.Retag (to_expr e) T kind
+  | Case e el => bor_lang.Case (to_expr e) (map to_expr el)
+  | Fork e => bor_lang.Fork (to_expr e)
   end.
 
 Ltac of_expr e :=
   lazymatch e with
-  | lang.Lit ?l => constr:(Lit l)
-  | lang.Var ?x => constr:(Var x)
-  | lang.Rec ?f ?xl ?e => let e := of_expr e in constr:(Rec f xl e)
-  | lang.BinOp ?op ?e1 ?e2 =>
+  | bor_lang.Lit ?l => constr:(Lit l)
+  | bor_lang.Var ?x => constr:(Var x)
+  | bor_lang.Rec ?f ?xl ?e => let e := of_expr e in constr:(Rec f xl e)
+  | bor_lang.BinOp ?op ?e1 ?e2 =>
     let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(BinOp op e1 e2)
-  | lang.App ?e ?el =>
+  | bor_lang.App ?e ?el =>
     let e := of_expr e in let el := of_expr el in constr:(App e el)
-  | lang.Place ?l ?tag => constr:(Place l tag)
-  | lang.Deref ?e ?T ?mut => let e := of_expr e in constr:(Deref e T mut)
-  | lang.Ref ?e => let e := of_expr e in constr:(Ref e)
-  | lang.Field ?e1 ?e2 =>
+  | bor_lang.Place ?l ?tag => constr:(Place l tag)
+  | bor_lang.Deref ?e ?T ?mut => let e := of_expr e in constr:(Deref e T mut)
+  | bor_lang.Ref ?e => let e := of_expr e in constr:(Ref e)
+  | bor_lang.Field ?e1 ?e2 =>
     let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Field e1 e2)
-  | lang.Read ?e => let e := of_expr e in constr:(Read e)
-  | lang.Write ?e1 ?e2 =>
+  | bor_lang.Read ?e => let e := of_expr e in constr:(Read e)
+  | bor_lang.Write ?e1 ?e2 =>
     let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Write e1 e2)
-  | lang.CAS ?e0 ?e1 ?e2 =>
+  | bor_lang.CAS ?e0 ?e1 ?e2 =>
      let e0 := of_expr e0 in let e1 := of_expr e1 in let e2 := of_expr e2 in
      constr:(CAS e0 e1 e2)
-  | lang.Alloc ?T ?amod => constr:(Alloc T amod)
-  | lang.Free ?e ?T => let e := of_expr e in constr:(Free e T)
-  | lang.NewCall => constr:(NewCall)
-  | lang.EndCall ?e => let e := of_expr e in constr:(EndCall e)
-  | lang.Retag ?e ?T ?kind => let e := of_expr e in constr:(Retag e T kind)
-  | lang.Case ?e ?el =>
+  | bor_lang.Alloc ?T ?amod => constr:(Alloc T amod)
+  | bor_lang.Free ?e ?T => let e := of_expr e in constr:(Free e T)
+  | bor_lang.NewCall => constr:(NewCall)
+  | bor_lang.EndCall ?e => let e := of_expr e in constr:(EndCall e)
+  | bor_lang.Retag ?e ?T ?kind => let e := of_expr e in constr:(Retag e T kind)
+  | bor_lang.Case ?e ?el =>
      let e := of_expr e in let el := of_expr el in constr:(Case e el)
-  | lang.Fork ?e => let e := of_expr e in constr:(Fork e)
-  | @nil lang.expr => constr:(@nil expr)
-  | @cons lang.expr ?e ?el =>
+  | bor_lang.Fork ?e => let e := of_expr e in constr:(Fork e)
+  | @nil bor_lang.expr => constr:(@nil expr)
+  | @cons bor_lang.expr ?e ?el =>
     let e := of_expr e in let el := of_expr el in constr:(e::el)
   | to_expr ?e => e
   | of_val ?v => constr:(Val v (of_val v) (to_of_val v))
@@ -107,7 +107,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
     is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
-Lemma is_closed_correct X e : is_closed X e → lang.is_closed X (to_expr e).
+Lemma is_closed_correct X e : is_closed X e → bor_lang.is_closed X (to_expr e).
 Proof.
   revert e X. fix FIX 1; destruct e=>/=;
     try naive_solver eauto using is_closed_to_val, is_closed_weaken_nil.
@@ -138,7 +138,7 @@ Lemma to_val_is_Some e :
   is_Some (to_val e) → ∃ v, of_val v = to_expr e.
 Proof. intros [v ?]; exists v; eauto using to_val_Some. Qed.
 Lemma to_val_is_Some' e :
-  is_Some (to_val e) → is_Some (lang.to_val (to_expr e)).
+  is_Some (to_val e) → is_Some (bor_lang.to_val (to_expr e)).
 Proof. intros [v ?]%to_val_is_Some. exists v. rewrite -to_of_val. by f_equal. Qed.
 
 Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
@@ -167,7 +167,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Fork e => Fork (subst x es e)
   end.
 Lemma to_expr_subst x er e :
-  to_expr (subst x er e) = lang.subst x (to_expr er) (to_expr e).
+  to_expr (subst x er e) = bor_lang.subst x (to_expr er) (to_expr e).
 Proof.
   revert e x er. fix FIX 1; destruct e=>/= ? er; repeat case_bool_decide;
     f_equal; eauto using is_closed_nil_subst, is_closed_to_val, eq_sym.
@@ -175,7 +175,7 @@ Proof.
   - induction el=>//=. f_equal; auto.
 Qed.
 
-(* Definition is_atomic (e: expr) : bool :=
+Definition is_atomic (e: expr) : bool :=
   match e with
   | Read e | Free e _ => bool_decide (is_Some (to_val e))
   | Write e1 e2 =>
@@ -190,14 +190,15 @@ Proof.
   intros He. apply ectx_language_atomic.
   - intros σ e' σ' ef.
     destruct e; simpl; try done; repeat (case_match; try done);
-    inversion 1; try (apply val_irreducible; rewrite ?language.to_of_val; naive_solver eauto); [].
-    rewrite -[stuck_term](fill_empty). apply stuck_irreducible.
+    inversion 1; inversion BaseStep;
+    try (apply val_irreducible; rewrite ?language.to_of_val; naive_solver eauto).
+
   - apply ectxi_language_sub_redexes_are_values=> /= Ki e' Hfill.
     revert He. destruct e; simpl; try done; repeat (case_match; try done);
     rewrite ?bool_decide_spec;
     destruct Ki; inversion Hfill; subst; clear Hfill;
     try naive_solver eauto using to_val_is_Some'.
-Qed. *)
+Qed.
 End W.
 
 Ltac solve_closed :=
@@ -225,13 +226,13 @@ Ltac solve_as_val :=
   end.
 Hint Extern 10 (AsVal _) => solve_as_val : typeclass_instances.
 
-(* Ltac solve_atomic :=
+Ltac solve_atomic :=
   match goal with
   | |- Atomic ?s ?e =>
      let e' := W.of_expr e in change (Atomic s (W.to_expr e'));
      apply W.is_atomic_correct; vm_compute; exact I
   end.
-Hint Extern 0 (Atomic _ _) => solve_atomic : typeclass_instances. *)
+Hint Extern 0 (Atomic _ _) => solve_atomic : typeclass_instances.
 
 (** Substitution *)
 Ltac simpl_subst :=
@@ -277,7 +278,7 @@ Ltac reshape_val e tac :=
   | Place ?l ?tag => constr:(PlaceV l tag)
   end in let v := go e in tac v.
 
-(* Ltac reshape_expr e tac :=
+Ltac reshape_expr e tac :=
   let rec go_fun K f vs es :=
     match es with
     | ?e :: ?es => reshape_val e ltac:(fun v => go_fun K f (v :: vs) es)
@@ -300,6 +301,12 @@ Ltac reshape_val e tac :=
      | go (CasMCtx v0 e2 :: K) e1 ])
   | CAS ?e0 ?e1 ?e2 => go (CasLCtx e1 e2 :: K) e0
   | Free ?e ?T => go (FreeCtx T :: K) e
+  | Deref ?e ?T ?mut => go (DerefCtx T mut :: K) e
+  | Ref ?e => go (RefCtx :: K) e
+  | Field ?e1 ?e2 =>
+    reshape_val e1 ltac:(fun v1 => go (FieldRCtx v1 :: K) e2)
+  | EndCall ?e => go (EndCallCtx :: K) e
+  | Retag ?e ?T ?kind => go (RetagCtx T kind :: K) e
   | Case ?e ?el => go (CaseCtx el :: K) e
   end
-  in go (@nil ectx_item) e. *)
+  in go (@nil ectx_item) e.

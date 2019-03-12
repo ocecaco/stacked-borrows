@@ -3,6 +3,7 @@ From stdpp Require Export strings.
 From stdpp Require Import gmap infinite.
 Set Default Proof Using "Type".
 
+Module bor_lang.
 Open Scope Z_scope.
 
 (** Locations *)
@@ -481,10 +482,10 @@ Inductive base_step :
 | RefBS l lbor h :
     is_Some (h !! l) →
     base_step (Ref (Place l lbor)) h None (Lit (LitLoc l lbor)) h []
-| DerefBS l lbor ref T h :
+| DerefBS l lbor mut T h :
     is_Some (h !! l) →
-    base_step (Deref (Lit (LitLoc l lbor)) T ref) h
-              (Some $ DerefEvt l lbor T ref)
+    base_step (Deref (Lit (LitLoc l lbor)) T mut) h
+              (Some $ DerefEvt l lbor T mut)
               (Place l lbor) h
               []
 | FieldBS l lbor z h :
@@ -604,17 +605,6 @@ Fixpoint accessN α β l (bor: borrow) (n: nat) kind : option bstacks :=
       end
   end.
 
-(* Alternative definition as Inductive predicate.
-Inductive accessN α β (bor: borrow) (kind: access_kind) l : nat → bstacks → Prop :=
-| ACNBase
-  : accessN α β bor kind l O α
-| ACNRecursive n stack stack' α'
-    (STACK: α !! l = Some stack)
-    (ACC1 : access1 stack bor kind β = Some stack')
-    (ACCN : accessN (<[l := stack']> α) β bor kind (l +ₗ 1) n α')
-  : accessN α β bor kind l (S n) α'.
-*)
-
 (** Deref check *)
 (* Find the item that matches `bor`, then return its index (0 is the bottom of
  * the stack). *)
@@ -670,17 +660,6 @@ match n with
     | _ => None
     end
 end.
-
-(* Alternative definition as Inductive predicate.
-Inductive derefN α (bor: borrow) (kind: ref_kind) l : nat → Prop :=
-| DRNBase
-  : derefN α bor kind l O
-| DRNRecursive n stack
-    (STACK: α !! l = Some stack)
-    (DR1 : is_Some (deref1 stack bor kind))
-    (DRN : derefN α bor kind (l +ₗ 1) n)
-  : derefN α bor kind l (S n).
-*)
 
 Definition unsafe_action
   {A: Type} (f: A → loc → nat → bool → option A) (a: A) (l: loc)
@@ -849,29 +828,6 @@ Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
   | None => None
   end.
 
-(*
-Inductive reborrow1
-  (stack: bstack) (bor: borrow) (kind': ref_kind) β :
-  option call_id → borrow → bstack → Prop :=
-| RB1Redundant bor' ptr_idx
-    (* Try deref1 with old tag `bor` but new `kind'`*)
-    (OLD_DEREF: deref1 stack bor kind' = Some ptr_idx)
-    (* Redundant check when there's no barrier *)
-    (REDUNDANT: bor_redundant_check stack bor' kind' ptr_idx)
-    (SHARED   : is_aliasing bor')
-  : reborrow1 stack bor kind' β None bor' stack
-| RB1NonRedundantNoBarrier bor' stack1 stack' ptr_idx
-    (OLD_DEREF : deref1 stack bor kind' = Some ptr_idx)
-    (REDUNDANT : ¬ bor_redundant_check stack bor' kind' ptr_idx)
-    (REACTIVATE: access1 stack bor (to_access_kind kind') β = Some stack1)
-    (PUSH: push_borrow stack1 bor' kind' stack')
-  : reborrow1 stack bor kind' β None bor' stack'
-| RB1NonRedundantBarrier c bor' stack1 stack'
-    (OLD_DEREF : is_Some (deref1 stack bor kind'))
-    (REACTIVATE: access1 stack bor (to_access_kind kind') β = Some stack1)
-    (PUSH: push_borrow (add_barrier stack1 c) bor' kind' stack')
-  : reborrow1 stack bor kind' β (Some c) bor' stack'. *)
-
 Fixpoint reborrowN α β l n bor bor' kind' bar : option bstacks :=
 match n with
 | O => Some α
@@ -888,31 +844,11 @@ match n with
     end
 end.
 
-(* Inductive reborrowN α β (bor: borrow) (kind': ref_kind) (l: loc)
-  : nat → option call_id → borrow → bstacks → Prop :=
-| RBNBase bar bor'
-  : reborrowN α β bor kind' l O bar bor' α
-| RBNRecursive n stack stack' bar bor' α'
-    (STACK: α !! l = Some stack)
-    (REBOR1: reborrow1 stack bor kind' β bar bor' stack')
-    (REBORN: reborrowN (<[l := stack']> α) β bor kind' (l +ₗ 1) n bar bor' α')
-  : reborrowN α β bor kind' l (S n) bar bor' α'. *)
-
 (* This implements Stacks::reborrow *)
 Definition reborrowBlock α β l n bor bor' kind' bar : option bstacks :=
   if xorb (is_unique bor') (is_unique_ref kind') then None
   else let bar' := match kind' with RawRef => None | _ => bar end in
        reborrowN α β l n bor bor' kind' bar.
-
-(* Inductive reborrowBlock α β l bor n bar bor' kind' α': Prop :=
-| RBBBase bar'
-    (UNIQUE: is_unique bor' ↔ kind' = UniqueRef)
-    (BAR: bar' = match kind' with
-                 | RawRef => None
-                 | _ => bar
-                 end)
-    (BOR: reborrowN α β bor kind' l n bar' bor' α').
- *)
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
@@ -931,21 +867,6 @@ Definition reborrow α β l bor T (bar: option call_id) bor' :=
       let kind' := if is_unique bor' then UniqueRef else RawRef in
       reborrowBlock α β l (tsize T) bor bor' kind' bar
   end.
-
-(* Inductive reborrow α β l bor (t: type)
-  : option call_id → borrow → stacks → Prop :=
-| RBBlock n bar bor' α'
-  (* Only Unique or Raw reborrow *)
-  (RBB: match bor' with
-        | UniqB _ => reborrowBlock α β bor UniqueRef l n bar bor' α'
-        | AliasB None => reborrowBlock α β bor RawRef l n bar bor' α'
-        | _ => False
-        end)
-  : reborrow α β bor l (inl n) bar bor' α'
-| RBRange t rs bar α'
-  (* Freezing possibly with UnsafeCell *)
-  (RBF: reborrowFreezeSensitive α β bor l t rs bar α')
-  : reborrow α β bor l (inr rs) bar (AliasB (Some t)) α'. *)
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
@@ -1098,48 +1019,6 @@ Inductive head_step :
       (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) (Some evt) h' α' β' clock')
   : head_step e σ [] e' (mkState h' α' β' clock') [] .
 
-(** Some properties *)
-Lemma to_of_val v : to_val (of_val v) = Some v.
-Proof.
-  by destruct v as [[]|]; simplify_option_eq; [| |done|]; repeat f_equal;
-    try apply (proof_irrel _).
-Qed.
-Lemma of_to_val e v : to_val e = Some v → of_val v = e.
-Proof. destruct e=>//=; [|case decide => ? //|]; by intros [= <-]. Qed.
-Instance of_val_inj : Inj (=) (=) of_val.
-Proof. by intros ?? Hv; apply (inj Some); rewrite -!to_of_val Hv. Qed.
-
-Instance fill_item_inj Ki : Inj (=) (=) (fill_item Ki).
-Proof. destruct Ki; intros ???; simplify_eq/=; auto with f_equal. Qed.
-Lemma fill_item_val Ki e :
-  is_Some (to_val (fill_item Ki e)) → is_Some (to_val e).
-Proof. intros [v ?]. destruct Ki; simplify_option_eq; eauto. Qed.
-
-Lemma list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2 :
-  to_val e1 = None → to_val e2 = None →
-  map of_val vl1 ++ e1 :: el1 = map of_val vl2 ++ e2 :: el2 →
-  vl1 = vl2 ∧ el1 = el2.
-Proof.
-  revert vl2; induction vl1; destruct vl2; intros H1 H2; inversion 1.
-  - done.
-  - subst. by rewrite to_of_val in H1.
-  - subst. by rewrite to_of_val in H2.
-  - destruct (IHvl1 vl2); auto. split; f_equal; auto. by apply (inj of_val).
-Qed.
-
-Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
-  to_val e1 = None → to_val e2 = None →
-  fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
-Proof.
-  destruct Ki1 as [| | |v1 vl1 el1| | | | | | | | | | | | | |],
-           Ki2 as [| | |v2 vl2 el2| | | | | | | | | | | | | |];
-  intros He1 He2 EQ; try discriminate; simplify_eq/=;
-    repeat match goal with
-    | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H
-    end; auto.
-  destruct (list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2); auto. congruence.
-Qed.
-
 (** Closed expressions *)
 Lemma is_closed_weaken X Y e : is_closed X e → X ⊆ Y → is_closed Y e.
 Proof.
@@ -1170,6 +1049,17 @@ Proof. intros. apply is_closed_subst with []; set_solver. Qed.
 
 Lemma is_closed_of_val X v : is_closed X (of_val v).
 Proof. apply is_closed_weaken_nil. destruct v as [[]|]; simpl; auto. Qed.
+
+Lemma to_of_val v : to_val (of_val v) = Some v.
+Proof.
+  by destruct v as [[]|]; simplify_option_eq; [| |done|]; repeat f_equal;
+    try apply (proof_irrel _).
+Qed.
+Lemma of_to_val e v : to_val e = Some v → of_val v = e.
+Proof. destruct e=>//=; [|case decide => ? //|]; by intros [= <-]. Qed.
+
+Instance of_val_inj : Inj (=) (=) of_val.
+Proof. by intros ?? Hv; apply (inj Some); rewrite -!to_of_val Hv. Qed.
 
 Lemma is_closed_to_val X e v : to_val e = Some v → is_closed X e.
 Proof. intros <-%of_to_val. apply is_closed_of_val. Qed.
@@ -1475,7 +1365,66 @@ Canonical Structure valC := leibnizC val.
 Canonical Structure exprC := leibnizC expr.
 Canonical Structure stateC := leibnizC state.
 
-(** Define some derived forms. *)
+(** Basic properties about the language *)
+
+Instance fill_item_inj Ki : Inj (=) (=) (fill_item Ki).
+Proof. destruct Ki; intros ???; simplify_eq/=; auto with f_equal. Qed.
+
+Lemma fill_item_val Ki e :
+  is_Some (to_val (fill_item Ki e)) → is_Some (to_val e).
+Proof. intros [v ?]. destruct Ki; simplify_option_eq; eauto. Qed.
+
+Lemma list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2 :
+  to_val e1 = None → to_val e2 = None →
+  map of_val vl1 ++ e1 :: el1 = map of_val vl2 ++ e2 :: el2 →
+  vl1 = vl2 ∧ el1 = el2.
+Proof.
+  revert vl2; induction vl1; destruct vl2; intros H1 H2; inversion 1.
+  - done.
+  - subst. by rewrite to_of_val in H1.
+  - subst. by rewrite to_of_val in H2.
+  - destruct (IHvl1 vl2); auto. split; f_equal; auto. by apply (inj of_val).
+Qed.
+
+Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
+  to_val e1 = None → to_val e2 = None →
+  fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
+Proof.
+  destruct Ki1 as [| | |v1 vl1 el1| | | | | | | | | | | | | |],
+           Ki2 as [| | |v2 vl2 el2| | | | | | | | | | | | | |];
+  intros He1 He2 EQ; try discriminate; simplify_eq/=;
+    repeat match goal with
+    | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H
+    end; auto.
+  destruct (list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2); auto. congruence.
+Qed.
+
+Lemma val_head_stuck e1 σ1 κ e2 σ2 efs : head_step e1 σ1 κ e2 σ2 efs → to_val e1 = None.
+Proof. destruct 1; inversion BaseStep; naive_solver. Qed.
+
+Lemma head_ctx_step_val Ki e σ1 κ e2 σ2 efs :
+  head_step (fill_item Ki e) σ1 κ e2 σ2 efs → is_Some (to_val e).
+Proof.
+  destruct Ki; inversion_clear 1; inversion_clear BaseStep;
+    simplify_option_eq; eauto; [done|].
+  eapply (Forall_forall (λ ei, is_Some (to_val ei))); eauto. set_solver.
+Qed.
+
+Lemma bor_lang_mixin : EctxiLanguageMixin of_val to_val fill_item head_step.
+Proof.
+  split; apply _ || eauto using to_of_val, of_to_val, val_head_stuck,
+    fill_item_val, fill_item_no_val_inj, head_ctx_step_val.
+Qed.
+End bor_lang.
+
+(** Language *)
+Canonical Structure bor_ectxi_lang := EctxiLanguage bor_lang.bor_lang_mixin.
+Canonical Structure bor_ectx_lang := EctxLanguageOfEctxi bor_ectxi_lang.
+Canonical Structure bor_lang := LanguageOfEctx bor_ectx_lang.
+
+Export bor_lang.
+
+(** Some derived forms. *)
 Notation Lam xl e := (Rec BAnon xl e).
 Notation Let x e1 e2 := (App (Lam [x] e2) [e1]).
 Notation Seq e1 e2 := (Let BAnon e1 e2).
