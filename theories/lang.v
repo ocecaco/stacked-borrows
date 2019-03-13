@@ -1,6 +1,5 @@
 From iris.program_logic Require Export language ectx_language ectxi_language.
-From stdpp Require Export strings.
-From stdpp Require Import gmap infinite.
+From stdpp Require Export strings gmap infinite.
 Set Default Proof Using "Type".
 
 Module bor_lang.

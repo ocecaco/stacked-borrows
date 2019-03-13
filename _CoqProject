@@ -3,3 +3,4 @@
 theories/lang.v
 theories/notation.v
 theories/tactics.v
+theories/steps.v
