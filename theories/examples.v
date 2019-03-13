@@ -176,6 +176,6 @@ Definition demo2 : val :=
   !(ᵛ*imm{int} (!"y"))
   (* Check read  y   with Uniq(y) : OK! *)
   (* Check deref int with Alias(1): UB! because the stack is not frozen with a
-                                    timestamp less than or equal to 1. *)
+                                    timestamp less than or equal to the tag. *)
   (* Check read  int with Alias(1): unreachable *)
   .
