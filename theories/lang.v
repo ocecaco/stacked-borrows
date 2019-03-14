@@ -426,8 +426,8 @@ Inductive bin_op_eval h : bin_op → lit → lit → lit → Prop :=
 Definition stuck_term := App (Lit $ LitInt 0) [].
 
 Inductive event :=
-| AllocEvt (l : loc) (n: positive) (lbor: borrow) (amod: alloc_mod)
-| DeallocEvt (l: loc) (n : positive) (lbor: borrow)
+| AllocEvt (l : loc) (lbor: borrow) (T: type) (amod: alloc_mod)
+| DeallocEvt (l: loc) (lbor: borrow) (T: type)
 | ReadEvt (l: loc) (lbor: borrow) (v: immediate)
 | WriteEvt (l: loc) (lbor: borrow) (v: immediate)
 | DerefEvt (l: loc) (lbor: borrow) (T: type) (mut: option mutability)
@@ -462,22 +462,22 @@ Inductive base_step :
 | AllocBS T l lbor amod h :
     (∀ m, h !! (l +ₗ m) = None) →
     base_step (Alloc T amod) h
-              (Some $ AllocEvt l (Pos.of_nat (tsize T)) lbor amod)
+              (Some $ AllocEvt l lbor T amod)
               (Place l lbor) (init_mem l (tsize T) h)
               []
 | FreeBS T l lbor h :
     (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
     base_step (Free (Place l lbor) T) h
-              (Some $ DeallocEvt l (Pos.of_nat (tsize T)) lbor)
+              (Some $ DeallocEvt l lbor T)
               (Lit LitPoison) (free_mem l (tsize T) h)
               []
 | NewCallBS call h:
     base_step NewCall h
               (Some $ NewCallEvt call) (Lit $ LitInt call) h []
 | EndCallBS call h:
-    (0 ≤ call) →
+    (0 ≤ call)%nat →
     base_step (EndCall (Lit $ LitInt call)) h
-              (Some $ EndCallEvt (Z.to_nat call)) (Lit LitPoison) h []
+              (Some $ EndCallEvt call) (Lit LitPoison) h []
 | RefBS l lbor h :
     is_Some (h !! l) →
     base_step (Ref (Place l lbor)) h None (Lit (LitLoc l lbor)) h []
@@ -952,17 +952,17 @@ Inductive instrumented_step h α β (clock: time):
 | DefaultIS :
     instrumented_step h α β clock None h α β clock
 (* This implements EvalContextExt::tag_new_allocation for heap locations. *)
-| AllocHeapIS l n :
+| AllocHeapIS h' l T :
     instrumented_step h α β clock
-                      (Some $ AllocEvt l n borrow_default Heap) h
-                      (init_stacks l (Pos.to_nat n) α Raw) β clock
+                      (Some $ AllocEvt l borrow_default T Heap) h'
+                      (init_stacks l (tsize T) α Raw) β clock
 (* This implements EvalContextExt::tag_new_allocation for stack variables. *)
-| AllocStackIS t x n :
+| AllocStackIS h' t x T :
     (* UniqB t is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     instrumented_step h α β clock
-                      (Some $ AllocEvt x n (UniqB t) Stack) h
-                      (init_stacks x (Pos.to_nat n) α (Uniq clock)) β (S clock)
+                      (Some $ AllocEvt x (UniqB t) T Stack) h'
+                      (init_stacks x (tsize T) α (Uniq clock)) β (S clock)
 (* This implements AllocationExtra::memory_read, but only for size 1. *)
 | Read1IS l v lbor stack stack' :
     (α !! l = Some stack) →
@@ -970,16 +970,16 @@ Inductive instrumented_step h α β (clock: time):
     instrumented_step h α β clock
                       (Some $ ReadEvt l lbor v) h (<[l := stack']> α) β clock
 (* This implements AllocationExtra::memory_written, but only for size 1. *)
-| WriteIS l v lbor stack stack' :
+| WriteIS h' l v lbor stack stack' :
     (α !! l = Some stack) →
     (access1 β stack lbor AccessWrite = Some stack') →
     instrumented_step h α β clock
-                      (Some $ WriteEvt l lbor v) h (<[l := stack']> α) β clock
+                      (Some $ WriteEvt l lbor v) h' (<[l := stack']> α) β clock
 (* This implements AllocationExtra::memory_deallocated. *)
-| DeallocIS α' l n lbor :
-    (accessN α β l lbor (Pos.to_nat n) AccessDealloc = Some α') →
+| DeallocIS α' h' l lbor T :
+    (accessN α β l lbor (tsize T) AccessDealloc = Some α') →
     instrumented_step h α β clock
-                      (Some $ DeallocEvt l n lbor) h α' β clock
+                      (Some $ DeallocEvt l lbor T) h' α' β clock
 | NewCallIS:
     let call : call_id := fresh (dom (gset call_id) β) in
     instrumented_step h α β clock
