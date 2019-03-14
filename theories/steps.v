@@ -144,3 +144,33 @@ Proof.
       * move => /(state_wf_stack_item _ WF _ _ _ Eq).
         destruct si; [simpl; lia|done..].
 Qed.
+
+Lemma foldr_gmap_delete_lookup `{Countable K} {A C: Type}
+  (ma: gmap K A) (ka: A) (cs: list C) (f: C → K) (k: K):
+  (foldr (λ (c: C) ma, delete (f c) ma) ma cs) !! k = Some ka →
+  ma !! k = Some ka.
+Proof.
+  induction cs as [|a' ? IHm]; simpl; [naive_solver|].
+  case (decide (f a' = k)) => [->|?].
+  - by rewrite lookup_delete.
+  - by rewrite lookup_delete_ne.
+Qed.
+
+Lemma dealloc_step_wf σ σ' e e' l bor T:
+  base_step e σ.(cheap) (Some $ DeallocEvt l bor T) e' σ'.(cheap) [] →
+  instrumented_step σ.(cheap) σ.(cstk) σ.(cbar) σ.(cclk)
+                    (Some $ DeallocEvt l bor T)
+                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+  Wf σ → Wf σ'.
+Proof.
+  destruct σ as [h stk bar clk].
+  destruct σ' as [h' stk' bar' clk']. simpl.
+  intros BS IS WF. inversion BS. clear BS. simplify_eq.
+  inversion IS. clear IS. simplify_eq. constructor; simpl.
+  - admit. (* TODO: doesn't hold yet *)
+  - intros l1 l2 bor1. rewrite free_mem_foldr.
+    intros Eq%foldr_gmap_delete_lookup.
+    apply (state_wf_mem_bor _ WF _ _ _ Eq).
+  - admit. (* TODO: stk' is sub map of stk *)
+  - admit.
+Abort.
