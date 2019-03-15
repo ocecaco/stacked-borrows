@@ -204,5 +204,6 @@ Proof.
     apply (state_wf_mem_bor _ WF _ _ _ Eq).
   - intros ?? Eq%foldr_gmap_delete_lookup.
     apply (state_wf_stack_frozen _ WF _ _ Eq).
-  - intros ??? Eq%foldr_gmap_delete_lookup. admit.
-Abort.
+  - intros ??? Eq%foldr_gmap_delete_lookup.
+    apply (state_wf_stack_item _ WF _ _ _ Eq).
+Qed.
