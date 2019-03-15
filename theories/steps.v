@@ -63,7 +63,7 @@ Lemma init_stacks_foldr l n h si:
   fold_right (λ (i: nat) hi, <[(l +ₗ i):=mkBorStack [si] None]> hi) h (seq 0 n).
 Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 
-Lemma foldr_gmap_dom `{Countable K} {A B C: Type}
+Lemma foldr_gmap_insert_dom `{Countable K} {A B C: Type}
   (ma: gmap K A) (mb: gmap K B) (a: A) (b: B) (cs: list C) (f: C → K):
   dom (gset K) ma ≡ dom (gset K) mb →
   dom (gset K) (foldr (λ (c: C) ma, <[f c := a]> ma) ma cs)
@@ -118,7 +118,7 @@ Proof.
       move => ?? si Eq In. move : (state_wf_stack_item _ WF _ _ _ Eq In).
       destruct si; [simpl; lia|done..].
   - inversion IS; clear IS; simplify_eq; constructor; cbn -[ init_mem].
-    + rewrite Eqs init_stacks_foldr init_mem_foldr. apply foldr_gmap_dom, WF.
+    + rewrite Eqs init_stacks_foldr init_mem_foldr. apply foldr_gmap_insert_dom, WF.
     + intros l1 l2 bor. rewrite init_mem_foldr.
       intros [|Eq]%foldr_gmap_insert_lookup; [done|].
       by apply (state_wf_mem_bor _ WF _ _ _ Eq).
@@ -129,7 +129,7 @@ Proof.
       intros [->|Eq]%foldr_gmap_insert_lookup.
       * by intros ->%elem_of_list_singleton.
       * by apply (state_wf_stack_item _ WF _ _ _ Eq).
-    + rewrite Eqs init_stacks_foldr init_mem_foldr. apply foldr_gmap_dom, WF.
+    + rewrite Eqs init_stacks_foldr init_mem_foldr. apply foldr_gmap_insert_dom, WF.
     + intros l1 l2 bor. rewrite init_mem_foldr.
       intros [|Eq]%foldr_gmap_insert_lookup; [done|].
       move : (state_wf_mem_bor _ WF _ _ _ Eq).
@@ -156,6 +156,35 @@ Proof.
   - by rewrite lookup_delete_ne.
 Qed.
 
+Lemma accessN_dealloc_delete' α β l bor n α' (m: nat):
+  accessN α β (l +ₗ m) bor n AccessDealloc = Some α' →
+  α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq m n).
+Proof.
+  revert α.
+  induction n as [|n IHn]; intros α; [by move => [->]|].
+  rewrite /accessN. case_match; [|done].
+  case_match; [|done].
+  move => /IHn ->. clear. revert α m. induction n; intros α m.
+  - by rewrite /= shift_loc_0.
+  - simpl. f_equal.
+    by rewrite shift_loc_assoc -Nat2Z.inj_add -Nat.add_succ_comm Nat2Z.inj_add
+               -shift_loc_assoc IHn.
+Qed.
+Lemma accessN_dealloc_delete α β l bor n α':
+  accessN α β l bor n AccessDealloc = Some α' →
+  α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq O n).
+Proof. intros. eapply accessN_dealloc_delete'. by rewrite shift_loc_0. Qed.
+
+Lemma foldr_gmap_delete_dom `{Countable K} {A B C: Type}
+  (ma: gmap K A) (mb: gmap K B) (cs: list C) (f: C → K):
+  dom (gset K) ma ≡ dom (gset K) mb →
+  dom (gset K) (foldr (λ (c: C) ma, delete (f c) ma) ma cs)
+  ≡ dom (gset K) (foldr (λ (c: C) mb, delete (f c) mb) mb cs).
+Proof.
+  intros. induction cs; simpl; [done|].
+  by rewrite 2!dom_delete IHcs.
+Qed.
+
 Lemma dealloc_step_wf σ σ' e e' l bor T:
   base_step e σ.(cheap) (Some $ DeallocEvt l bor T) e' σ'.(cheap) [] →
   instrumented_step σ.(cheap) σ.(cstk) σ.(cbar) σ.(cclk)
@@ -166,11 +195,14 @@ Proof.
   destruct σ as [h stk bar clk].
   destruct σ' as [h' stk' bar' clk']. simpl.
   intros BS IS WF. inversion BS. clear BS. simplify_eq.
-  inversion IS. clear IS. simplify_eq. constructor; simpl.
-  - admit. (* TODO: doesn't hold yet *)
-  - intros l1 l2 bor1. rewrite free_mem_foldr.
+  inversion IS. clear IS. simplify_eq.
+  rewrite (accessN_dealloc_delete stk bar' l bor (tsize T) stk'); [|done].
+  constructor; simpl.
+  - rewrite free_mem_foldr. apply foldr_gmap_delete_dom, WF.
+  - intros ???. rewrite free_mem_foldr.
     intros Eq%foldr_gmap_delete_lookup.
     apply (state_wf_mem_bor _ WF _ _ _ Eq).
-  - admit. (* TODO: stk' is sub map of stk *)
-  - admit.
+  - intros ?? Eq%foldr_gmap_delete_lookup.
+    apply (state_wf_stack_frozen _ WF _ _ Eq).
+  - intros ??? Eq%foldr_gmap_delete_lookup. admit.
 Abort.
