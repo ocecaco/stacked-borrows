@@ -34,7 +34,7 @@ Definition demo0 : val :=
   λ: [<>],
   (* let x = &mut 1u8; *)
   let: "x" := new_pointer_int (ᵗ&mut int) Stack [new_int 1 Heap] in
-  (* stack of int: [Raw], not frozen *)
+  (* stack of int: [Uniq(?)], not frozen *)
   (* stack of x  : [Uniq(x)], not frozen *)
   (* x uses Alias(None) for the int *)
 
@@ -67,11 +67,15 @@ Definition demo0 : val :=
   (* Check write int with Uniq(0): OK! but pop Uniq(1) to reactivate Uniq(0) *)
   (* stack of int: [Uniq(0); Raw], not frozen *)
 
-
-  !ᵛ*mut{int} (!"y")
+  !ᵛ*mut{int} (!"y") ;;
   (* Check read  y   with Uniq(y): OK! *)
   (* Check deref int with Uniq(1): UB! Uniq(1) not on stack of int! *)
-  (* Check read  int with Uniq(1): unreachable *)
+  (* Check read  int with Uniq(1): UNREACHABLE *)
+
+  (* UNREACHABLE *)
+  Free "y" (ᵗ&mut int) ;;
+  Free (ᵛ*mut{int} (!"x")) int ;;
+  Free "x" (ᵗ&mut int)
   .
 
 (* DB *)
@@ -123,10 +127,15 @@ Definition demo1 : val :=
   (* Check deref y1  with Alias(1): OK! because the stack is frozen_since(1) *)
   (* Check read  int with Alias(1): OK! because the stack is frozen *)
 
-  !ᵛ*imm{int} (!"y2")
+  !ᵛ*imm{int} (!"y2") ;;
   (* Check read  y2  with Uniq(y2): OK! *)
   (* Check deref y2  with Alias(2): OK! because the stack is frozen_since(1) *)
   (* Check read  int with Alias(2): OK! because the stack is frozen *)
+
+  Free "y2" (ᵗ& int) ;;
+  Free "y1" (ᵗ& int) ;;
+  Free (ᵛ*mut{int} (!"x")) int ;;
+  Free "x" (ᵗ&mut int)
   .
 
 (* UB *)
@@ -176,12 +185,18 @@ Definition demo2 : val :=
                                            Furthermore, the stack is unfrozen. *)
   (* stack of int: [Raw; Uniq(0); Raw], not frozen *)
 
-  !ᵛ*imm{int} (!"y")
+  !ᵛ*imm{int} (!"y") ;;
   (* Check read  y   with Uniq(y) : OK! *)
   (* Check deref int with Alias(1): UB! because the stack is not frozen with a
                                     timestamp less than or equal to the tag.
                                     The type int doesn't contain UnsafeCell. *)
-  (* Check read  int with Alias(1): unreachable *)
+  (* Check read  int with Alias(1): UNREACHABLE *)
+
+  (* UNREACHABLE *)
+  Free "y" (ᵗ& int) ;;
+  Free "z" (ᵗ* int) ;;
+  Free (ᵛ*mut{int} (!"x")) int ;;
+  Free "x" (ᵗ&mut int)
   .
 
 (* UB *)
@@ -236,7 +251,7 @@ Definition demo4 : val :=
   (* Check write int with Uniq(0): OK! because Uniq(0) is on the stack *)
   (* stack of int: [Uniq(0); Raw], not frozen *)
 
-  !ᵛ*raw{int} (!"y1")
+  !ᵛ*raw{int} (!"y1") ;;
   (* Check read  y1  with Uniq(y1)   : OK! *)
   (* Check deref int with Alias(None): OK! because Raw is on the stack *)
   (* Check read  int with Alias(None): OK! because Raw is on the stack *)
@@ -244,4 +259,9 @@ Definition demo4 : val :=
   (* TODO: so why is this UB?!? The example in the blog post assumes the stack
      to be [Uniq(0)], but here we are with [Uniq(0); Raw], due to the
      initialization of the stack for heap locations *)
+
+  Free "y1" (ᵗ* int) ;;
+  Free "y2" (ᵗ* int) ;;
+  Free (ᵛ*mut{int} (!"x")) int ;;
+  Free "x" (ᵗ&mut int)
   .
