@@ -39,7 +39,7 @@ Inductive type :=
   | Unsafe (T: type)
   | Union (T1: type) (T2: type)
   | Product (T1: type) (T2: type)
-  (* TODO: | Sum (T1: type) (T2: type) *)
+  | Sum (T1: type) (T2: type)
   .
 
 Fixpoint tsize (T: type) : nat :=
@@ -49,6 +49,7 @@ Fixpoint tsize (T: type) : nat :=
   | Unsafe T => tsize T
   | Union T1 T2 => Nat.max (tsize T1) (tsize T2)
   | Product T1 T2 => (tsize T1) + (tsize T2)
+  | Sum T1 T2 => 1 + Nat.max (tsize T1) (tsize T2)
   end.
 
 (* Type doesn't contain UnsafeCells. *)
@@ -56,7 +57,7 @@ Fixpoint is_freeze (T: type) : bool :=
   match T with
   | Scala _ | Reference _ _ => true
   | Unsafe _ => false
-  | Union T1 T2 | Product T1 T2 => is_freeze T1 && is_freeze T2
+  | Union T1 T2 | Product T1 T2 | Sum T1 T2 => is_freeze T1 && is_freeze T2
   end.
 
 (** Instrumented states *)
@@ -165,15 +166,17 @@ Qed.
 (** Expressions *)
 Inductive expr :=
 (* base values *)
-| Lit (l : lit)
+| Lit (l: lit)
+| TVal (el: list expr)
 (* base lambda calculus *)
 | Var (x : string)
-| App (e : expr) (el : list expr)
+| App (e1 e2 : expr)
 | Rec (f : binder) (xl : list binder) (e : expr)
 (* bin op *)
 | BinOp (op : bin_op) (e1 e2 : expr)
-(* lvalue *)
-| Place (l: loc) (tag: borrow)    (* A place is a tagged pointer: every access
+(* place operation *)
+| Place (l: loc) (T: type) (tag: borrow)
+                                  (* A place is a tagged pointer: every access
                                      to memory revolves around a place. *)
 | Deref (e: expr) (T: type) (mut: option mutability)
                                   (* Deference a pointer `e` into a place
@@ -184,20 +187,22 @@ Inductive expr :=
 | Field (e1 e2: expr)             (* Create a place that points to a component
                                      of the place `e1`. *)
 (* mem op *)
-| Read (e : expr)                 (* Read from the place `e` *)
-| Write (e1 e2: expr)             (* Write the value `e2` to the place `e1` *)
-| CAS (e0 e1 e2 : expr)           (* CAS the value `e2` for `e1` to the place `e0` *)
+| Copy (e : expr)                 (* Read from the place `e` *)
+| Write (e1 e2: expr) (* Write the value `e2` to the place `e1` *)
 | Alloc (T: type) (amod: alloc_mod) (* Allocate a place of type `T` *)
-| Free (e : expr) (T: type)       (* Free the place `e` of type `T` *)
+| Free (e : expr)                 (* Free the place `e` of type `T` *)
+(* atomic mem op *)
+| CAS (e0 e1 e2 : expr)           (* CAS the value `e2` for `e1` to the place `e0` *)
+| AtomWrite (e1 e2: expr)
+| AtomRead (e: expr)
 (* function call tracking *)
 | NewCall                         (* Issue a fresh id for the call *)
 | EndCall (e: expr)               (* End the call with id `e` *)
 (* retag *)
-| Retag (e: expr) (T: type) (kind: retag_kind)
-                                  (* Retag the place `e` of type `T` with retag
-                                     kind `kind`. *)
+| Retag (e: expr) (kind: retag_kind)
+                                  (* Retag the place `e` with retag kind `kind`. *)
 (* case *)
-| Case (e : expr) (el : list expr)
+| Case (e : expr) (el: list expr)
 (* concurrency *)
 | Fork (e : expr)
 .
@@ -209,25 +214,28 @@ Arguments Case _%E _%E.
 Arguments BinOp _ _%E _%E.
 Arguments Case _%E _%E.
 Arguments Fork _%E.
-Arguments Read _%E.
+Arguments Copy _%E.
 Arguments Write _%E _%E.
 Arguments CAS _%E _%E _%E.
-Arguments Free _%E _.
+Arguments AtomWrite _%E _%E.
+Arguments AtomRead _%E.
+Arguments Free _%E.
 Arguments Deref _%E _ _.
 Arguments Ref _%E.
 Arguments Field _%E _%E.
-Arguments Retag _%E _ _.
+Arguments Retag _%E _.
 
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
-  | Lit _ | Place _ _ | Alloc _ _ | NewCall => true
+  | Lit _ | Place _ _ _ | Alloc _ _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | Write e1 e2  | Field e1 e2 =>
-    is_closed X e1 && is_closed X e2
-  | App e el | Case e el => is_closed X e && forallb (is_closed X) el
-  | Read e | Deref e _ _ | Ref e | Free e _ | EndCall e | Retag e _ _ | Fork e =>
-      is_closed X e
+  | BinOp _ e1 e2 | AtomWrite e1 e2 | Field e1 e2
+  | App e1 e2 | Write e1 e2 => is_closed X e1 && is_closed X e2
+  | TVal el => forallb (is_closed X) el
+  | Case e el => is_closed X e && forallb (is_closed X) el
+  | AtomRead e | Copy e | Deref e _ _ | Ref e
+  | Free e | EndCall e | Retag e _ | Fork e => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 
@@ -243,24 +251,25 @@ Inductive immediate :=
 
 Inductive val :=
 | ImmV (v: immediate)
-| PlaceV (l: loc) (tag: borrow)
+| PlaceV (l: loc) (T: type) (tag: borrow)
 .
 
 Bind Scope val_scope with val.
 
 Definition of_val (v : val) : expr :=
   match v with
-  | ImmV (RecV f x e) => Rec f x e
   | ImmV (LitV l) => Lit l
-  | PlaceV l tag => Place l tag
+  | ImmV (RecV f xl e) => Rec f xl e
+  | PlaceV l T tag => Place l T tag
   end.
+
 
 Definition to_val (e : expr) : option val :=
   match e with
   | Rec f xl e =>
     if decide (Closed (f :b: xl +b+ []) e) then Some (ImmV (RecV f xl e)) else None
   | Lit l => Some (ImmV (LitV l))
-  | Place l tag => Some (PlaceV l tag)
+  | Place l T tag => Some (PlaceV l T tag)
   | _ => None
   end.
 
@@ -269,22 +278,25 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   match e with
   | Var y => if bool_decide (y = x) then es else Var y
   | Lit l => Lit l
+  | TVal el => TVal (map (subst x es) el)
   | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e
-  | Place l tag => Place l tag
+  | Place l T tag => Place l T tag
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
-  | App e el => App (subst x es e) (map (subst x es) el)
-  | Read e => Read (subst x es e)
+  | App e1 e2 => App (subst x es e1) (subst x es e2)
+  | Copy e => Copy (subst x es e)
   | Write e1 e2 => Write (subst x es e1) (subst x es e2)
-  | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
   | Alloc T amod => Alloc T amod
-  | Free e T => Free (subst x es e) T
+  | Free e => Free (subst x es e)
+  | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
+  | AtomWrite e1 e2 => AtomWrite (subst x es e1) (subst x es e2)
+  | AtomRead e => AtomRead (subst x es e)
   | Deref e T mut => Deref (subst x es e) T mut
   | Ref e => Ref (subst x es e)
   | Field e1 e2 => Field (subst x es e1) (subst x es e2)
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
-  | Retag e T kind => Retag (subst x es e) T kind
+  | Retag e kind => Retag (subst x es e) kind
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
   end.
@@ -315,42 +327,44 @@ Qed.
 Inductive ectx_item :=
 | BinOpLCtx (op : bin_op) (e2 : expr)
 | BinOpRCtx (op : bin_op) (v1 : val)
-| AppLCtx (e2 : list expr)
-| AppRCtx (v : val) (vl : list val) (el : list expr)
-| ReadCtx
+| TValCtx (vl : list val) (el : list expr)
+| AppLCtx (e : expr)
+| AppRCtx (v : val)
+| CopyCtx
 | WriteLCtx (e : expr)
 | WriteRCtx (v : val)
 | CasLCtx (e1 e2: expr)
 | CasMCtx (v0 : val) (e2 : expr)
 | CasRCtx (v0 : val) (v1 : val)
-| FreeCtx (T: type)
+| FreeCtx
 | DerefCtx (T: type) (mut: option mutability)
 | RefCtx
 | FieldLCtx (e : expr)
 | FieldRCtx (v : val)
 | EndCallCtx
-| RetagCtx (T: type) (kind: retag_kind)
+| RetagCtx (kind: retag_kind)
 | CaseCtx (el : list expr).
 
 Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   match Ki with
   | BinOpLCtx op e2 => BinOp op e e2
   | BinOpRCtx op v1 => BinOp op (of_val v1) e
+  | TValCtx vl el => TVal ((of_val <$> vl) ++ e :: el)
   | AppLCtx e2 => App e e2
-  | AppRCtx v vl el => App (of_val v) ((of_val <$> vl) ++ e :: el)
-  | ReadCtx => Read e
+  | AppRCtx v => App (of_val v) e
+  | CopyCtx => Copy e
   | WriteLCtx e2 => Write e e2
   | WriteRCtx v1 => Write (of_val v1) e
   | CasLCtx e1 e2 => CAS e e1 e2
   | CasMCtx v0 e2 => CAS (of_val v0) e e2
   | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
-  | FreeCtx T => Free e T
+  | FreeCtx => Free e
   | DerefCtx T mut => Deref e T mut
   | RefCtx => Ref e
   | FieldLCtx e2 => Field e e2
   | FieldRCtx v1 => Field (of_val v1) e
   | EndCallCtx => EndCall e
-  | RetagCtx T kind => Retag e T kind
+  | RetagCtx kind => Retag e kind
   | CaseCtx el => Case e el
   end.
 
@@ -597,7 +611,11 @@ Fixpoint accessN α β l (bor: borrow) (n: nat) kind : option bstacks :=
       match (α !! l') with
       | Some stack => match (access1 β stack bor kind) with
                       | Some stack' =>
-                          accessN (<[l' := stack']> α) β l bor n kind
+                          match kind with
+                          | AccessDealloc =>
+                              accessN (delete l' α) β l bor n kind
+                          | _ => accessN (<[l':=stack']> α) β l bor n kind
+                          end
                       | _ => None
                       end
       | _ => None
