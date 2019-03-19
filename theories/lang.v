@@ -748,6 +748,7 @@ Fixpoint tnode (T: type) : nat :=
   | Unsafe T => tnode T
   | Union Ts | Product Ts | Sum Ts => foldl (λ sz T, sz + tnode T)%nat 1%nat Ts
   end.
+
 (* visit the type left-to-right, where `last` is the offset of `l` from the last
 UnsafeCell, and `cur_dist` is the distance between `last` and the current offset
 which is the start of the sub-type `T`. `a` of type A is the accumulator for the
@@ -772,23 +773,21 @@ Program Fixpoint visit_freeze_sensitive' {A: Type}
   | Product Ts =>
       (* this implements left-to-right search on the type, which guarantees
          that the indices are increasing. *)
-      (* foldl (λ oalc (T: type),
+      foldl (λ oalc (T: type),
                 match oalc with
                 | Some (a', (last', cur_dist')) =>
                     visit_freeze_sensitive' h l T f a' last' cur_dist'
                 | _ => None
-                end) (Some (a, (last, cur_dist))) Ts *)
-      None
+                end) (Some (a, (last, cur_dist))) Ts
   | Sum Ts =>
-      None
       match h !! l with
       | Some (LitV (LitInt i)) =>
-          (* if bool_decide (O ≤ i < length Ts) then None *)
+           if bool_decide (O ≤ i) && bool_decide (i < length Ts) then None
             match Ts !! (Z.to_nat i) with
             | Some T => visit_freeze_sensitive' h l T f a last (S cur_dist)
             | _ => None
             end
-(*           else None *)
+           else None
       | _ => None
       end
   end.
