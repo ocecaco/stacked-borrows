@@ -1,3 +1,4 @@
+From Coq Require Import Program.Wf.
 From iris.program_logic Require Export language ectx_language ectxi_language.
 From stdpp Require Export strings gmap infinite.
 Set Default Proof Using "Type".
@@ -34,30 +35,53 @@ Definition is_unique_ref (kind: ref_kind) : bool :=
 
 Inductive pointer_kind := RefPtr (mut: mutability) | RawPtr | BoxPtr .
 Inductive type :=
-  | Scala (sz: nat)
+  | Scalar (sz: nat)
   | Reference (kind: pointer_kind) (T: type)
   | Unsafe (T: type)
-  | Union (T1: type) (T2: type)
-  | Product (T1: type) (T2: type)
-  | Sum (T1: type) (T2: type)
+  | Union (Ts: list type)
+  | Product (Ts: list type)
+  | Sum (Ts: list type)
   .
+
+Fixpoint list_nat_max (ns: list nat) (d: nat) :=
+  match ns with
+  | [] => d
+  | n :: ns => n `max` ((list_nat_max ns) d)
+  end.
+
+Lemma list_nat_max_spec ns :
+  ns = [] ∧ list_nat_max ns O = O ∨
+  list_nat_max ns O ∈ ns ∧ ∀ (i: nat), i ∈ ns → (i ≤ list_nat_max ns O)%nat.
+Proof.
+  induction ns as [|i ns IHi]; simpl; [rewrite elem_of_nil; naive_solver|].
+  right. destruct IHi as [[]|[In MAX]].
+  - subst. rewrite /= Nat.max_0_r elem_of_list_singleton.
+    setoid_rewrite elem_of_list_singleton. naive_solver.
+  - split.
+    + apply Max.max_case; [by left|by right].
+    + move => i' /elem_of_cons [->|In']. apply Nat.le_max_l.
+      etrans; first by apply MAX. apply Nat.le_max_r.
+Qed.
 
 Fixpoint tsize (T: type) : nat :=
   match T with
-  | Scala sz => sz
+  | Scalar sz => sz
   | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
   | Unsafe T => tsize T
-  | Union T1 T2 => Nat.max (tsize T1) (tsize T2)
-  | Product T1 T2 => (tsize T1) + (tsize T2)
-  | Sum T1 T2 => 1 + Nat.max (tsize T1) (tsize T2)
+  | Union Ts => list_nat_max (tsize <$> Ts) O
+  | Product Ts => foldr (λ T s, (tsize T) + s)%nat O Ts
+  | Sum Ts => 1 + list_nat_max (tsize <$> Ts) O
   end.
+
+Bind Scope lrust_type with type.
+Delimit Scope lrust_type with RustT.
 
 (* Type doesn't contain UnsafeCells. *)
 Fixpoint is_freeze (T: type) : bool :=
   match T with
-  | Scala _ | Reference _ _ => true
+  | Scalar _ | Reference _ _ => true
   | Unsafe _ => false
-  | Union T1 T2 | Product T1 T2 | Sum T1 T2 => is_freeze T1 && is_freeze T2
+  | Union Ts | Product Ts | Sum Ts => forallb is_freeze Ts
   end.
 
 (** Instrumented states *)
@@ -125,13 +149,10 @@ Inductive bin_op :=
 Inductive lit :=
 | LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
 
-(** Allocation destination *)
-Inductive alloc_mod := Heap | Stack.
-
 (** Binders for lambdas: list of formal arguments to functions *)
 Inductive binder := BAnon | BNamed : string → binder.
-Delimit Scope lrust_binder_scope with RustB.
 Bind Scope lrust_binder_scope with binder.
+Delimit Scope lrust_binder_scope with RustB.
 
 Notation "[ ]" := (@nil binder) : lrust_binder_scope.
 Notation "a :: b" := (@cons binder a%RustB b%RustB)
@@ -167,15 +188,16 @@ Qed.
 Inductive expr :=
 (* base values *)
 | Lit (l: lit)
-| TVal (el: list expr)
 (* base lambda calculus *)
 | Var (x : string)
-| App (e1 e2 : expr)
+| App (e : expr) (el: list expr)
 | Rec (f : binder) (xl : list binder) (e : expr)
+(* temp values *)
+| TVal (el: list expr)
 (* bin op *)
 | BinOp (op : bin_op) (e1 e2 : expr)
 (* place operation *)
-| Place (l: loc) (T: type) (tag: borrow)
+| Place (l: loc) (tag: borrow) (T: type)
                                   (* A place is a tagged pointer: every access
                                      to memory revolves around a place. *)
 | Deref (e: expr) (T: type) (mut: option mutability)
@@ -184,12 +206,12 @@ Inductive expr :=
                                      The location has type `T` and the pointer
                                      has mutable kind `mut`. *)
 | Ref (e: expr)                   (* Turn a place `e` into a pointer value. *)
-| Field (e1 e2: expr)             (* Create a place that points to a component
-                                     of the place `e1`. *)
+| Field (e: expr) (path: list nat)(* Create a place that points to a component
+                                     of the place `e`. *)
 (* mem op *)
 | Copy (e : expr)                 (* Read from the place `e` *)
 | Write (e1 e2: expr) (* Write the value `e2` to the place `e1` *)
-| Alloc (T: type) (amod: alloc_mod) (* Allocate a place of type `T` *)
+| Alloc (T: type)                 (* Allocate a place of type `T` *)
 | Free (e : expr)                 (* Free the place `e` of type `T` *)
 (* atomic mem op *)
 | CAS (e0 e1 e2 : expr)           (* CAS the value `e2` for `e1` to the place `e0` *)
@@ -209,32 +231,35 @@ Inductive expr :=
 
 Bind Scope expr_scope with expr.
 Delimit Scope expr_scope with E.
+
 Arguments App _%E _%E.
-Arguments Case _%E _%E.
+Arguments TVal _%E.
 Arguments BinOp _ _%E _%E.
-Arguments Case _%E _%E.
-Arguments Fork _%E.
+Arguments Deref _%E _%RustT _.
+Arguments Ref _%E.
+Arguments Field _%E _.
 Arguments Copy _%E.
 Arguments Write _%E _%E.
+Arguments Alloc _%RustT.
+Arguments Free _%E.
 Arguments CAS _%E _%E _%E.
 Arguments AtomWrite _%E _%E.
 Arguments AtomRead _%E.
-Arguments Free _%E.
-Arguments Deref _%E _ _.
-Arguments Ref _%E.
-Arguments Field _%E _%E.
 Arguments Retag _%E _.
+Arguments Case _%E _%E.
+Arguments Fork _%E.
+
 
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
-  | Lit _ | Place _ _ _ | Alloc _ _ | NewCall => true
+  | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | AtomWrite e1 e2 | Field e1 e2
-  | App e1 e2 | Write e1 e2 => is_closed X e1 && is_closed X e2
+  | BinOp _ e1 e2 | AtomWrite e1 e2
+  | Write e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
-  | Case e el => is_closed X e && forallb (is_closed X) el
-  | AtomRead e | Copy e | Deref e _ _ | Ref e
+  | App e el | Case e el => is_closed X e && forallb (is_closed X) el
+  | AtomRead e | Copy e | Deref e _ _ | Ref e | Field e _
   | Free e | EndCall e | Retag e _ | Fork e => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
@@ -251,7 +276,7 @@ Inductive immediate :=
 
 Inductive val :=
 | ImmV (v: immediate)
-| PlaceV (l: loc) (T: type) (tag: borrow)
+| PlaceV (l: loc) (tag: borrow) (T: type)
 .
 
 Bind Scope val_scope with val.
@@ -260,9 +285,8 @@ Definition of_val (v : val) : expr :=
   match v with
   | ImmV (LitV l) => Lit l
   | ImmV (RecV f xl e) => Rec f xl e
-  | PlaceV l T tag => Place l T tag
+  | PlaceV l tag T => Place l tag T
   end.
-
 
 Definition to_val (e : expr) : option val :=
   match e with
@@ -281,19 +305,19 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | TVal el => TVal (map (subst x es) el)
   | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e
-  | Place l T tag => Place l T tag
+  | Place l tag T => Place l tag T
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
-  | App e1 e2 => App (subst x es e1) (subst x es e2)
+  | App e1 el => App (subst x es e1) (map (subst x es) el)
   | Copy e => Copy (subst x es e)
   | Write e1 e2 => Write (subst x es e1) (subst x es e2)
-  | Alloc T amod => Alloc T amod
+  | Alloc T => Alloc T
   | Free e => Free (subst x es e)
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
   | AtomWrite e1 e2 => AtomWrite (subst x es e1) (subst x es e2)
   | AtomRead e => AtomRead (subst x es e)
   | Deref e T mut => Deref (subst x es e) T mut
   | Ref e => Ref (subst x es e)
-  | Field e1 e2 => Field (subst x es e1) (subst x es e2)
+  | Field e path => Field (subst x es e) path
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
   | Retag e kind => Retag (subst x es e) kind
@@ -328,19 +352,21 @@ Inductive ectx_item :=
 | BinOpLCtx (op : bin_op) (e2 : expr)
 | BinOpRCtx (op : bin_op) (v1 : val)
 | TValCtx (vl : list val) (el : list expr)
-| AppLCtx (e : expr)
-| AppRCtx (v : val)
+| AppLCtx (el : list expr)
+| AppRCtx (v : val) (vl : list val) (el : list expr)
 | CopyCtx
 | WriteLCtx (e : expr)
 | WriteRCtx (v : val)
 | CasLCtx (e1 e2: expr)
 | CasMCtx (v0 : val) (e2 : expr)
 | CasRCtx (v0 : val) (v1 : val)
+| AtRdCtx
+| AtWrLCtx (e : expr)
+| AtWrRCtx (v : val)
 | FreeCtx
 | DerefCtx (T: type) (mut: option mutability)
 | RefCtx
-| FieldLCtx (e : expr)
-| FieldRCtx (v : val)
+| FieldCtx (path : list nat)
 | EndCallCtx
 | RetagCtx (kind: retag_kind)
 | CaseCtx (el : list expr).
@@ -350,19 +376,21 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | BinOpLCtx op e2 => BinOp op e e2
   | BinOpRCtx op v1 => BinOp op (of_val v1) e
   | TValCtx vl el => TVal ((of_val <$> vl) ++ e :: el)
-  | AppLCtx e2 => App e e2
-  | AppRCtx v => App (of_val v) e
+  | AppLCtx el => App e el
+  | AppRCtx v vl el => App (of_val v) ((of_val <$> vl) ++ e :: el)
   | CopyCtx => Copy e
   | WriteLCtx e2 => Write e e2
   | WriteRCtx v1 => Write (of_val v1) e
   | CasLCtx e1 e2 => CAS e e1 e2
   | CasMCtx v0 e2 => CAS (of_val v0) e e2
   | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
+  | AtRdCtx => AtomRead e
+  | AtWrLCtx e2 => AtomWrite e e2
+  | AtWrRCtx v1 => AtomWrite (of_val v1) e
   | FreeCtx => Free e
   | DerefCtx T mut => Deref e T mut
   | RefCtx => Ref e
-  | FieldLCtx e2 => Field e e2
-  | FieldRCtx v1 => Field (of_val v1) e
+  | FieldCtx path => Field e path
   | EndCallCtx => EndCall e
   | RetagCtx kind => Retag e kind
   | CaseCtx el => Case e el
@@ -440,48 +468,67 @@ Inductive bin_op_eval h : bin_op → lit → lit → lit → Prop :=
 Definition stuck_term := App (Lit $ LitInt 0) [].
 
 Inductive event :=
-| AllocEvt (l : loc) (lbor: borrow) (T: type) (amod: alloc_mod)
+| AllocEvt (l : loc) (lbor: borrow) (T: type)
 | DeallocEvt (l: loc) (lbor: borrow) (T: type)
-| ReadEvt (l: loc) (lbor: borrow) (v: immediate)
-| WriteEvt (l: loc) (lbor: borrow) (v: immediate)
+| CopyEvt (l: loc) (lbor: borrow) (T: type)
+| WriteEvt (l: loc) (lbor: borrow) (T: type)
 | DerefEvt (l: loc) (lbor: borrow) (T: type) (mut: option mutability)
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
 .
 
+Fixpoint field_access (l: loc) (T: type) (path : list nat) :
+  option (loc * type) :=
+  match path with
+  | [] => Some (l, T)
+  | i :: path =>
+    match T with
+    | Scalar sz => if decide (i ≤ sz) then Some ((l +ₗ i), Scalar (sz - i)) else None
+    | Reference _ _ => match i with O => Some (l, T) | _ => None end
+    | Unsafe T => field_access l T path
+    | Union Ts =>
+        match Ts !! i with Some T => field_access l T path | _ => None end
+    | Product Ts =>
+        match Ts !! i with Some T => field_access (l +ₗ i) T path | _ => None end
+    | Sum Ts =>
+        match Ts !! i with Some T => field_access (l +ₗ 1) T path | _ => None end
+    end
+  end.
+
 Inductive base_step :
   expr → mem → option event → expr → mem → list expr → Prop :=
 | BinOpBS op l1 l2 l' h :
     bin_op_eval h op l1 l2 l' →
-    base_step (BinOp op (Lit l1) (Lit l2)) h None (Lit l') h []
+    base_step (BinOp op (TVal [Lit l1]) (TVal [Lit l2])) h
+              None (TVal [Lit l']) h []
 | BetaBS f xl e e' el h :
     Forall (λ ei, is_Some (to_val ei)) el →
     Closed (f :b: xl +b+ []) e →
     subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
     base_step (App (Rec f xl e) el) h None e' h []
-| ReadBS l v lbor h :
-    h !! l = Some v →
-    base_step (Read (Place l lbor)) h
-              (Some $ ReadEvt l lbor v)
-              (of_val (ImmV v)) h
+| CopyBS l lbor T (vl: list immediate) h (LEN: length vl = tsize T)
+    (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) :
+    base_step (Copy (Place l lbor T)) h
+              (Some $ CopyEvt l lbor T)
+              (TVal (of_val ∘ ImmV <$> vl)) h
               []
-| WriteBS l e v lbor h :
-    is_Some (h !! l) →
-    to_val e = Some (ImmV v) →
-    base_step (Write (Place l lbor) e) h
-              (Some $ WriteEvt l lbor v)
-              (Lit LitPoison) (<[l:=v]>h)
+| WriteBS l lbor T el vl h (LENe: length el = tsize T)
+    (VALUES: ∀ (i: nat), (i < length vl)%nat →
+      is_Some (h !! (l +ₗ i)) ∧ to_val <$> (el !! i) = Some ∘ ImmV <$> vl !! i) :
+    base_step (Write (Place l lbor T) (TVal el)) h
+              (Some $ WriteEvt l lbor T)
+              (Lit LitPoison) h
               []
-| AllocBS T l lbor amod h :
+| AllocBS l lbor T h :
     (∀ m, h !! (l +ₗ m) = None) →
-    base_step (Alloc T amod) h
-              (Some $ AllocEvt l lbor T amod)
-              (Place l lbor) (init_mem l (tsize T) h)
+    base_step (Alloc T) h
+              (Some $ AllocEvt l lbor T)
+              (Place l lbor T) (init_mem l (tsize T) h)
               []
 | FreeBS T l lbor h :
     (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
-    base_step (Free (Place l lbor) T) h
+    base_step (Free (Place l lbor T)) h
               (Some $ DeallocEvt l lbor T)
               (Lit LitPoison) (free_mem l (tsize T) h)
               []
@@ -492,20 +539,20 @@ Inductive base_step :
     (0 ≤ call)%nat →
     base_step (EndCall (Lit $ LitInt call)) h
               (Some $ EndCallEvt call) (Lit LitPoison) h []
-| RefBS l lbor h :
+| RefBS l lbor T h :
     is_Some (h !! l) →
-    base_step (Ref (Place l lbor)) h None (Lit (LitLoc l lbor)) h []
-| DerefBS l lbor mut T h :
+    base_step (Ref (Place l lbor T)) h None (Lit (LitLoc l lbor)) h []
+| DerefBS l lbor T mut h :
     is_Some (h !! l) →
     base_step (Deref (Lit (LitLoc l lbor)) T mut) h
               (Some $ DerefEvt l lbor T mut)
-              (Place l lbor) h
+              (Place l lbor T) h
               []
-| FieldBS l lbor z h :
-    base_step (Field (Place l lbor) (Lit $ LitInt z)) h
-              None (Place (l +ₗ z) lbor) h []
+| FieldBS l lbor T path l' T' h (FIELD: field_access l T path = Some (l', T')) :
+    base_step (Field (Place l lbor T) path) h
+              None (Place l' lbor T') h []
 | RetagBS x xbor T kind h:
-    base_step (Retag (Place x xbor) T kind) h
+    base_step (Retag (Place x xbor T) kind) h
               (Some $ RetagEvt x T kind) (Lit LitPoison) h []
 | CaseBS i el e h :
     0 ≤ i →
@@ -694,36 +741,59 @@ Definition unsafe_action
   | _ => None
   end.
 
+Fixpoint tnode (T: type) : nat :=
+  match T with
+  | Scalar sz => 1
+  | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
+  | Unsafe T => tnode T
+  | Union Ts | Product Ts | Sum Ts => foldl (λ sz T, sz + tnode T)%nat 1%nat Ts
+  end.
 (* visit the type left-to-right, where `last` is the offset of `l` from the last
 UnsafeCell, and `cur_dist` is the distance between `last` and the current offset
-which is the start of the sub-type `t`. `a` of type A is the accumulator for the
+which is the start of the sub-type `T`. `a` of type A is the accumulator for the
 visit. *)
-Fixpoint visit_freeze_sensitive' {A: Type}
-  (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A)
-  (last cur_dist: nat) :
+Program Fixpoint visit_freeze_sensitive' {A: Type}
+  (h: mem) (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A)
+  (last cur_dist: nat) {measure (tnode T)} :
   option (A * (nat * nat)) :=
   match T with
-  | Scala n => Some (a, (last, cur_dist + n)%nat)
+  | Scalar n => Some (a, (last, cur_dist + n)%nat)
   | Reference _ _ => Some (a, (last, S cur_dist))
   | Unsafe T =>
       (* apply the action `f` and return new `last` and `cur_dist` *)
       unsafe_action f a l last cur_dist (tsize T)
-  | Union _ _ =>
+  | Union _ =>
       (* If it's a union, look at the type to see if there is Unsafe *)
       if is_freeze T
       (* No UnsafeCell, continue *)
       then Some (a, (last, cur_dist + (tsize T))%nat)
       (* There can be UnsafeCell, perform `f a _ _ false` on the whole block *)
       else unsafe_action f a l last cur_dist (tsize T)
-  | Product T1 T2 =>
+  | Product Ts =>
       (* this implements left-to-right search on the type, which guarantees
          that the indices are increasing. *)
-      match visit_freeze_sensitive' l T1 f a last cur_dist with
-      | Some (a', (last', cur_dist')) =>
-          visit_freeze_sensitive' l T2 f a' last' cur_dist'
+      (* foldl (λ oalc (T: type),
+                match oalc with
+                | Some (a', (last', cur_dist')) =>
+                    visit_freeze_sensitive' h l T f a' last' cur_dist'
+                | _ => None
+                end) (Some (a, (last, cur_dist))) Ts *)
+      None
+  | Sum Ts =>
+      None
+      match h !! l with
+      | Some (LitV (LitInt i)) =>
+          (* if bool_decide (O ≤ i < length Ts) then None *)
+            match Ts !! (Z.to_nat i) with
+            | Some T => visit_freeze_sensitive' h l T f a last (S cur_dist)
+            | _ => None
+            end
+(*           else None *)
       | _ => None
       end
   end.
+Next Obligation.
+  simpl. intros [A [h [l [T [f [a [last cur_dist]]]]]]]. constructor. simpl.
 
 Definition visit_freeze_sensitive {A: Type}
   (l: loc) (t: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
@@ -1192,21 +1262,6 @@ Proof.
               | inr (inr _) => Some Default
               end) _); by intros [].
 Qed.
-Instance alloc_mod_eq_dec : EqDecision alloc_mod.
-Proof. solve_decision. Defined.
-Instance alloc_mod_countable : Countable alloc_mod.
-Proof.
-  refine (inj_countable
-          (λ m, match m with
-              | Heap => Some ()
-              | Stack => None
-              end)
-          (λ s, match s with
-              | Some _ => Some Heap
-              | None => Some Stack
-              end) _); by intros [].
-Qed.
-
 Instance type_eq_dec : EqDecision type.
 Proof. solve_decision. Defined.
 Instance type_countable : Countable type.
