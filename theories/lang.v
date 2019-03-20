@@ -38,8 +38,8 @@ Inductive type :=
   | Scalar (sz: nat)
   | Reference (kind: pointer_kind) (T: type)
   | Unsafe (T: type)
-  | Union (T1 T2: type)
-  | Product (T1 T2: type)
+  | Union (Ts: list type)
+  | Product (Ts: list type)
   | Sum (Ts: list type)
   .
 Bind Scope lrust_type with type.
@@ -71,8 +71,8 @@ Fixpoint tsize (T: type) : nat :=
   | Scalar sz => sz
   | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
   | Unsafe T => tsize T
-  | Union T1 T2 => tsize T1 `max` tsize T2
-  | Product T1 T2 => tsize T1 + tsize T2
+  | Union Ts => list_nat_max (tsize <$> Ts) O
+  | Product Ts => foldl (λ sz T, sz + tsize T)%nat O Ts
   | Sum Ts => 1 + list_nat_max (tsize <$> Ts) O
   end.
 
@@ -81,8 +81,7 @@ Fixpoint is_freeze (T: type) : bool :=
   match T with
   | Scalar _ | Reference _ _ => true
   | Unsafe _ => false
-  | Union T1 T2 | Product T1 T2 => is_freeze T1 && is_freeze T2
-  | Sum Ts => forallb is_freeze Ts
+  | Union Ts | Product Ts | Sum Ts => forallb is_freeze Ts
   end.
 
 (** Instrumented states *)
@@ -482,20 +481,23 @@ Inductive event :=
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
 .
 
-(* Compute offset to `l` and subtype of `T` from `path` *)
-Fixpoint field_access (l: loc) (T: type) (path : list nat) :
-  option (loc * type) :=
+(* Compute subtype of `T` and offset to it from `path` *)
+Fixpoint field_access (T: type) (path : list nat) :
+  option (nat * type) :=
   match path with
-  | [] => Some (l, T)
+  | [] => Some (O, T)
   | i :: path =>
     match T with
-    | Scalar sz => if decide (i ≤ sz) then Some ((l +ₗ i), Scalar (sz - i)) else None
-    | Reference _ _ => match i with O => Some (l, T) | _ => None end
-    | Unsafe T => field_access l T path
-    | Union T1 T2 => field_access l (if i then T1 else T2) path
-    | Product T1 T2 =>
-        if i then field_access l T1 path else field_access (l +ₗ tsize T1) T2 path
-    | Sum Ts => T ← Ts !! i ; field_access (l +ₗ 1) T path
+    | Scalar sz => if decide (i ≤ sz) then Some (i, Scalar (sz - i)) else None
+    | Reference _ _ => match i with O => Some (O, T) | _ => None end
+    | Unsafe T => field_access T path
+    | Union Ts => T ← Ts !! i ; field_access T path
+    | Product Ts =>
+        T ← Ts !! i ; offT ← field_access T path;
+        let sz : nat := foldl (λ sz T', sz + tsize T')%nat O (take i Ts) in
+        Some (offT.1 + sz, offT.2)%nat
+    | Sum Ts =>
+        T ← Ts !! i ; offT ← field_access T path; Some (offT.1 + 1, offT.2)%nat
     end
   end.
 
@@ -551,9 +553,9 @@ Inductive base_step :
               (Some $ DerefEvt l lbor T mut)
               (Place l lbor T) h
               []
-| FieldBS l lbor T path l' T' h (FIELD: field_access l T path = Some (l', T')) :
+| FieldBS l lbor T path off T' h (FIELD: field_access T path = Some (off, T')) :
     base_step (Field (Place l lbor T) path) h
-              None (Place l' lbor T') h []
+              None (Place (l +ₗ off) lbor T') h []
 | RetagBS x xbor T kind h:
     base_step (Retag (Place x xbor T) kind) h
               (Some $ RetagEvt x T kind) (Lit LitPoison) h []
@@ -718,61 +720,93 @@ Definition unsafe_action
   {A: Type} (f: A → loc → nat → bool → option A) (a: A) (l: loc)
   (last frozen_size unsafe_size: nat) :
   option (A * (nat * nat)) :=
-  (* anything between the last UnsafeCell and this UnsafeCell is frozen *)
+  (* Anything between the last UnsafeCell and this UnsafeCell is frozen *)
   a' ← f a (l +ₗ last) frozen_size true;
   (* This UnsafeCell is not frozen *)
-  let cur_ptr := (last + frozen_size)%nat in
-    a'' ← f a' (l +ₗ cur_ptr) unsafe_size false ;
-    Some (a'', ((cur_ptr + unsafe_size)%nat, O))
+  let cur_off := (last + frozen_size)%nat in
+    a'' ← f a' (l +ₗ cur_off) unsafe_size false ;
+    Some (a'', ((cur_off + unsafe_size)%nat, O))
   .
 
-(* visit the type left-to-right, where `last` is the offset of `l` from the last
-UnsafeCell, and `cur_dist` is the distance between `last` and the current offset
-which is the start of the sub-type `T`. `a` of type A is the accumulator for the
-visit. *)
+(* visit the type left-to-right and apply the action `f`.
+ + `last` is the offset of `l` from the last UnsafeCell,
+ + `cur_dist` is the distance between `last` and the current offset of the
+   visit, which is also the start of the sub-type `T`.
+ + a` of type A is the accumulator for the visit.
+ When an UnsafeCell is found, the action `f` is applied twice, through
+ `unsafe_action`:
+ - First `f` is applied for the frozen block, which is the range
+   [last, last + cur_dist). `f` is applied with the boolean flag `true`
+   (for frozen).
+ - Then `f` is applied for the unfrozen block, which is the range
+   [last + cur_dist, last + cur_dist + unsafe_block_size). `f` is applied with
+   the boolean flag `false`. *)
 Equations visit_freeze_sensitive' {A: Type}
   (h: mem) (l: loc) (f: A → loc → nat → bool → option A)
   (a: A) (last cur_dist: nat) (T: type) : option (A * (nat * nat)) :=
   visit_freeze_sensitive' h l f a last cur_dist (Scalar n)
-    := Some (a, (last, cur_dist + n)%nat) ;
+    := (* consider frozen, simply extend the distant to the last unsafe *)
+       Some (a, (last, cur_dist + n)%nat) ;
   visit_freeze_sensitive' h l f a last cur_dist (Reference _ _)
-    := Some (a, (last, S cur_dist)) ;
+    := (* consider frozen, extend the distant by 1 *)
+       Some (a, (last, S cur_dist)) ;
   visit_freeze_sensitive' h l f a last cur_dist (Unsafe T)
-    := (* apply the action `f` and return new `last` and `cur_dist` *)
+    := (* reach an UnsafeCell, apply the action `f` and return new `last` and
+          `cur_dist` *)
        unsafe_action f a l last cur_dist (tsize T) ;
-  visit_freeze_sensitive' h l f a last cur_dist (Union T1 T2)
-    := (* If it's a union, look at the type to see if there is Unsafe *)
-       if is_freeze (Union T1 T2)
-       (* No UnsafeCell, continue *)
-       then Some (a, (last, cur_dist + (tsize (Union T1 T2)))%nat)
-       (* There can be UnsafeCell, perform `f a _ _ false` on the whole block *)
-       else unsafe_action f a l last cur_dist (tsize (Union T1 T2)) ;
-  visit_freeze_sensitive' h l f a last cur_dist (Product T1 T2)
-    := (* this implements left-to-right search on the type, which guarantees
-         that the indices are increasing. *)
-       match visit_freeze_sensitive' h l f a last cur_dist T1 with
-       | Some (a', (last', cur_dist')) =>
-            visit_freeze_sensitive' h l f a' last' cur_dist' T2
-       | _ => None
-       end ;
+  visit_freeze_sensitive' h l f a last cur_dist (Union Ts)
+    := (* If it's a union, look at the type to see if there is UnsafeCell *)
+       if is_freeze (Union Ts)
+       (* No UnsafeCell, consider the whole block frozen and simply extend the
+          distant. *)
+       then Some (a, (last, cur_dist + (tsize (Union Ts)))%nat)
+       (* There can be UnsafeCell, consider the whole block unfrozen and perform
+          `f a _ _ false` on the whole block. `unsafe_action` will return the
+          offsets for the following visit. *)
+       else unsafe_action f a l last cur_dist (tsize (Union Ts)) ;
+  visit_freeze_sensitive' h l f a last cur_dist (Product Ts)
+    := (* This implements left-to-right search on the type, which guarantees
+          that the offsets are increasing. *)
+       visit_LR a last cur_dist Ts
+    where visit_LR (a: A) (last cur_dist: nat) (Ts: list type)
+      : option (A * (nat * nat)) :=
+      { visit_LR a last cur_dist [] := Some (a, (last, cur_dist)) ;
+        visit_LR a last cur_dist (T :: Ts) :=
+          alc ← visit_freeze_sensitive' h l f a last cur_dist T ;
+          visit_LR alc.1 alc.2.1 alc.2.2 Ts } ;
   visit_freeze_sensitive' h l f a last cur_dist (Sum Ts)
-    := match h !! l with
+    := (* This looks up the current state to see which discriminant currently is
+          active (which is an integer) and redirect the visit for the type of
+          that discriminant. Note that this consitutes a read-access, and should
+          adhere to the access checks. But we are skipping them here. FIXME *)
+       match h !! l with
        | Some (LitV (LitInt i)) =>
-           if decide (O ≤ i < length Ts) then aux Ts (Z.to_nat i) else None
+           if decide (O ≤ i < length Ts)
+           then (* the discriminant is well-defined, visit with the
+                   corresponding type *)
+                alc ← visit_lookup Ts (Z.to_nat i) ;
+                (* Anything in the padding is considered frozen and will be
+                   applied with the action by the following visit.
+                   `should_offset` presents the offset that the visit SHOULD
+                   arrive at after the visit. If there are padding bytes left,
+                   they will be added to the cur_dist. *)
+                let should_offset := (last + cur_dist + tsize (Sum Ts))%nat in
+                  Some (alc.1, (alc.2.1, (should_offset - alc.2.1)%nat))
+           else None
        | _ => None
-       end (* TODO: fix return point for sum *)
-    where aux (Ts: list type) (i: nat) : option (A * (nat * nat)) :=
-      aux [] i := None;
-      aux (T :: Ts) O :=
+       end
+    where visit_lookup (Ts: list type) (i: nat) : option (A * (nat * nat)) :=
+    { visit_lookup [] i := None ;
+      visit_lookup (T :: Ts) O :=
         visit_freeze_sensitive' h l f a last (S cur_dist) T ;
-      aux (T :: Ts) (S i) := aux Ts i
+      visit_lookup (T :: Ts) (S i) := visit_lookup Ts i }
   .
 
 Definition visit_freeze_sensitive {A: Type}
   h (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
   match visit_freeze_sensitive' h l f a O O T with
   | Some (a', (last', cur_dist')) =>
-      (* the last block is not inside UnsafeCell *)
+      (* the last block is frozen *)
       f a' (l +ₗ last') cur_dist' true
   | _ => None
   end.
@@ -858,36 +892,34 @@ Qed.
 
 Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
   β (bar: option call_id) : option bstack :=
-  match (deref1 stack bor kind') with
-  | Some ptr_idx =>
-      match bar, ptr_idx, deref1 stack bor' kind' with
-      | None, _, Some None =>
-          (* bor' must be aliasing *)
-          if is_aliasing bor' then Some stack else None
-      | None, Some ptr_idx, Some (Some new_idx) =>
-          if decide (ptr_idx ≤ new_idx)%nat
-          then (* bor' must be aliasing *)
-               if is_aliasing bor' then Some stack else None
-          else (* check for access with bor, then reborrow with bor' *)
-               stack1 ← access1 β stack bor (to_access_kind kind') ;
-               create_borrow stack1 bor' kind'
-      | None, _ ,_ =>
-          (* check for access with bor, then reborrow with bor' *)
-          stack1 ← access1 β stack bor (to_access_kind kind') ;
-          create_borrow stack1 bor' kind'
-      | Some c, _, _ =>
-          (* check for access with bor, then add barrier & reborrow with bor' *)
-          stack1 ← access1 β stack bor (to_access_kind kind') ;
-          create_borrow (add_barrier stack1 c) bor' kind'
-      end
-  | None => None
-  end.
-
+  ptr_idx ← (deref1 stack bor kind');
+  match bar, ptr_idx, deref1 stack bor' kind' with
+  | None, _, Some None =>
+      (* bor' must be aliasing *)
+      if is_aliasing bor' then Some stack else None
+  | None, Some ptr_idx, Some (Some new_idx) =>
+      if decide (ptr_idx ≤ new_idx)%nat
+      then (* bor' must be aliasing *)
+           if is_aliasing bor' then Some stack else None
+      else (* check for access with bor, then reborrow with bor' *)
+           stack1 ← access1 β stack bor (to_access_kind kind') ;
+           create_borrow stack1 bor' kind'
+  | None, _ ,_ =>
+      (* check for access with bor, then reborrow with bor' *)
+      stack1 ← access1 β stack bor (to_access_kind kind') ;
+      create_borrow stack1 bor' kind'
+  | Some c, _, _ =>
+      (* check for access with bor, then add barrier & reborrow with bor' *)
+      stack1 ← access1 β stack bor (to_access_kind kind') ;
+      create_borrow (add_barrier stack1 c) bor' kind'
+  end
+  .
 Fixpoint reborrowN α β l n bor bor' kind' bar : option bstacks :=
 match n with
 | O => Some α
-| S n => let l' := (l +ₗ n) in
-    stack ← (α !! l') ;
+| S n =>
+    let l' := (l +ₗ n) in
+    stack  ← (α !! l') ;
     stack' ← reborrow1 stack bor bor' kind' β bar ;
     reborrowN (<[l' := stack']> α) β l n bor bor' kind' bar
 end.
@@ -923,22 +955,23 @@ Definition retag_ref h α β (clock: time) l bor (T: type) (mut: option mutabili
   match tsize T with
   | O => (* Nothing to do for zero-sized types *)
       Some (bor, α, clock)
-  | _ => let bor' := match mut with
+  | _ =>
+      let bor' := match mut with
                      | None => borrow_default | Some Mutable => UniqB clock
                      | Some Immutable => AliasB (Some clock)
                      end in
-         (* reborrow bor with bor' *)
-         α' ← reborrow h α β l bor T bar bor';
-         if two_phase
-         then match mut with
-              | Some Mutable => (* two-phase only for mut borrow *)
-                   let bor'' := AliasB (Some (S clock)) in
-                   (* second reborrow, no barrier *)
-                   α'' ← reborrow h α' β l bor T None bor'' ;
-                   Some (bor'', α'', S (S clock))
-              | _ => None
-              end
-         else Some (bor', α', S clock)
+      (* reborrow bor with bor' *)
+      α' ← reborrow h α β l bor T bar bor';
+      if two_phase
+      then match mut with
+            | Some Mutable => (* two-phase only for mut borrow *)
+                let bor'' := AliasB (Some (S clock)) in
+                 (* second reborrow, no barrier *)
+                α'' ← reborrow h α' β l bor T None bor'' ;
+                Some (bor'', α'', S (S clock))
+            | _ => None
+          end
+      else Some (bor', α', S clock)
   end.
 
 Definition is_two_phase (kind: retag_kind) : bool :=
@@ -949,43 +982,36 @@ Definition adding_barrier (kind: retag_kind) : option call_id :=
 Fixpoint retag h α (clock: time) β x T (kind: retag_kind) :
   option (mem * bstacks * time) :=
   match T with
-  | Scalar _ | Union _ _ => Some (h, α, clock)
+  (* no retag for Union *)
+  | Scalar _ | Union _ => Some (h, α, clock)
   | Unsafe T => retag h α clock β x T kind
-  | Product T1 T2 =>
-      match retag h α clock β x T1 kind with
+  | Product Ts | Sum Ts =>
+      None
+      (* match retag h α clock β x T1 kind with
       | Some (h', α', clock') =>
           retag h' α' clock' β (x +ₗ (tsize T1)) T2 kind
       | _ => None
-      end
+      end *)
   | Reference pkind Tref =>
       match h !! x with
       | Some (LitV (LitLoc l bor)) =>
-            match pkind, kind with
-            (* Reference pointer *)
-            | RefPtr mut, _ =>
-                match retag_ref h α β clock l bor Tref (Some mut)
-                                (adding_barrier kind) (is_two_phase kind) with
-                | Some (bor', α', clock') =>
-                    Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
-                | _ => None
-                end
-            (* RawPtr can only be Raw-retagged, no barrier *)
-            | RawPtr, RawRt =>
-                match retag_ref h α β clock l bor Tref None None false with
-                | Some (bor', α', clock') =>
-                    Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
-                | _ => None
-                end
-            (* Box pointer *)
-            | BoxPtr, _ =>
-                match retag_ref h α β clock l bor Tref (Some Mutable)
-                                None (is_two_phase kind) with
-                | Some (bor', α', clock') =>
-                    Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
-                | _ => None
-                end
-            | _, _ => None
-            end
+          match pkind, kind with
+          (* Reference pointer *)
+          | RefPtr mut, _ =>
+              bac ← retag_ref h α β clock l bor Tref (Some mut)
+                              (adding_barrier kind) (is_two_phase kind) ;
+              Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
+          (* RawPtr can only be Raw-retagged, no barrier *)
+          | RawPtr, RawRt =>
+              bac ← retag_ref h α β clock l bor Tref None None false ;
+              Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
+          (* Box pointer *)
+          | BoxPtr, _ =>
+              bac ← retag_ref h α β clock l bor Tref (Some Mutable)
+                              None (is_two_phase kind) ;
+              Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
+          | _, _ => None
+          end
       | _ => None
       end
   end.
@@ -996,30 +1022,22 @@ Inductive instrumented_step h α β (clock: time):
   option event → mem → bstacks → barriers → time → Prop :=
 | DefaultIS :
     instrumented_step h α β clock None h α β clock
-(* This implements EvalContextExt::tag_new_allocation for heap locations. *)
-| AllocHeapIS h' l T :
-    instrumented_step h α β clock
-                      (Some $ AllocEvt l borrow_default T Heap) h'
-                      (init_stacks l (tsize T) α Raw) β clock
-(* This implements EvalContextExt::tag_new_allocation for stack variables. *)
+(* This implements EvalContextExt::tag_new_allocation. *)
 | AllocStackIS h' t x T :
     (* UniqB t is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     instrumented_step h α β clock
-                      (Some $ AllocEvt x (UniqB t) T Stack) h'
+                      (Some $ AllocEvt x (UniqB t) T) h'
                       (init_stacks x (tsize T) α (Uniq clock)) β (S clock)
-(* This implements AllocationExtra::memory_read, but only for size 1. *)
-| Read1IS l v lbor stack stack' :
-    (α !! l = Some stack) →
-    (access1 β stack lbor AccessRead = Some stack') →
+(* This implements AllocationExtra::memory_read. *)
+| CopyIS α' l lbor T :
+    (accessN α β l lbor (tsize T) AccessRead = Some α') →
+    instrumented_step h α β clock (Some $ CopyEvt l lbor T) h α' β clock
+(* This implements AllocationExtra::memory_written. *)
+| WriteIS α' h' l lbor T :
+    (accessN α β l lbor (tsize T) AccessWrite = Some α') →
     instrumented_step h α β clock
-                      (Some $ ReadEvt l lbor v) h (<[l := stack']> α) β clock
-(* This implements AllocationExtra::memory_written, but only for size 1. *)
-| WriteIS h' l v lbor stack stack' :
-    (α !! l = Some stack) →
-    (access1 β stack lbor AccessWrite = Some stack') →
-    instrumented_step h α β clock
-                      (Some $ WriteEvt l lbor v) h' (<[l := stack']> α) β clock
+                      (Some $ WriteEvt l lbor T) h' α' β clock
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' h' l lbor T :
     (accessN α β l lbor (tsize T) AccessDealloc = Some α') →
@@ -1035,7 +1053,7 @@ Inductive instrumented_step h α β (clock: time):
                       (Some $ EndCallEvt call) h α (<[call := false]>β) clock
 (* Deferencing a pointer value to a place *)
 | DerefIS l lbor T mut
-    (DEREF: ptr_deref α l lbor T mut) :
+    (DEREF: ptr_deref h α l lbor T mut) :
     instrumented_step h α β clock
                       (Some $ DerefEvt l lbor T mut) h α β clock
 | RetagIS h' α' clock' x T kind
@@ -1070,6 +1088,7 @@ Proof.
   - rewrite !andb_True. intros [He Hel] HXY. split. by eauto.
     induction el=>/=; naive_solver.
   - naive_solver set_solver.
+  - intros Hel HXY. induction el=>/=; naive_solver.
   - rewrite !andb_True. intros [He Hel] HXY. split. by eauto.
     induction el=>/=; naive_solver.
 Qed.
@@ -1083,6 +1102,8 @@ Proof.
     repeat case_bool_decide; simplify_eq/=; f_equal;
     try by intuition eauto with set_solver.
   - case He=> _. clear He. induction el=>//=. rewrite andb_True=>?.
+    f_equal; intuition eauto with set_solver.
+  - move : He. induction el=>//=. rewrite andb_True=>?.
     f_equal; intuition eauto with set_solver.
   - case He=> _. clear He. induction el=>//=. rewrite andb_True=>?.
     f_equal; intuition eauto with set_solver.
@@ -1103,7 +1124,7 @@ Lemma of_to_val e v : to_val e = Some v → of_val v = e.
 Proof. destruct e=>//=; [|case decide => ? //|]; by intros [= <-]. Qed.
 
 Instance of_val_inj : Inj (=) (=) of_val.
-Proof. by intros ?? Hv; apply (inj Some); rewrite -!to_of_val Hv. Qed.
+Proof. by intros ?? Hv; apply (inj Some); rewrite -2!to_of_val Hv /=. Qed.
 
 Lemma is_closed_to_val X e v : to_val e = Some v → is_closed X e.
 Proof. intros <-%of_to_val. apply is_closed_of_val. Qed.
@@ -1118,6 +1139,7 @@ Proof.
   - eauto using is_closed_weaken with set_solver.
   - eapply is_closed_weaken; first done.
     destruct (decide (BNamed x = f)), (decide (BNamed x ∈ xl)); set_solver.
+  - induction el; naive_solver.
   - split; first naive_solver. induction el; naive_solver.
 Qed.
 
