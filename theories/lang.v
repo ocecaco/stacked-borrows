@@ -886,17 +886,10 @@ Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
 Fixpoint reborrowN α β l n bor bor' kind' bar : option bstacks :=
 match n with
 | O => Some α
-| S n =>
-    let l' := (l +ₗ n) in
-    match (α !! l') with
-    | Some stack =>
-        match reborrow1 stack bor bor' kind' β bar with
-        | Some stack' =>
-            reborrowN (<[l' := stack']> α) β l n bor bor' kind' bar
-        | _ => None
-        end
-    | _ => None
-    end
+| S n => let l' := (l +ₗ n) in
+    stack ← (α !! l') ;
+    stack' ← reborrow1 stack bor bor' kind' β bar ;
+    reborrowN (<[l' := stack']> α) β l n bor bor' kind' bar
 end.
 
 (* This implements Stacks::reborrow *)
@@ -907,12 +900,12 @@ Definition reborrowBlock α β l n bor bor' kind' bar : option bstacks :=
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
-Definition reborrow α β l bor T (bar: option call_id) bor' :=
+Definition reborrow h α β l bor T (bar: option call_id) bor' :=
   match bor' with
   | AliasB (Some _) =>
       (* We need freeze-sensitive reborrow, depending on whether some memory is
          in UnsafeCell or not *)
-      visit_freeze_sensitive l T
+      visit_freeze_sensitive h l T
           (λ α' l' sz frozen,
               (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
               let kind' := if frozen then FrozenRef else RawRef in
@@ -925,7 +918,7 @@ Definition reborrow α β l bor T (bar: option call_id) bor' :=
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
-Definition retag_ref α β (clock: time) l bor (T: type) (mut: option mutability)
+Definition retag_ref h α β (clock: time) l bor (T: type) (mut: option mutability)
   (bar: option call_id) (two_phase: bool) : option (borrow * bstacks * time) :=
   match tsize T with
   | O => (* Nothing to do for zero-sized types *)
@@ -935,21 +928,17 @@ Definition retag_ref α β (clock: time) l bor (T: type) (mut: option mutability
                      | Some Immutable => AliasB (Some clock)
                      end in
          (* reborrow bor with bor' *)
-         match reborrow α β l bor T bar bor' with
-         | Some α' => if two_phase
-                      then match mut with
-                           | Some Mutable => (* two-phase only for mut borrow *)
-                                let bor'' := AliasB (Some (S clock)) in
-                                (* second reborrow, no barrier *)
-                                match reborrow α' β l bor T None bor'' with
-                                | Some α'' => Some (bor'', α'', S (S clock))
-                                | None => None
-                                end
-                           | _ => None
-                           end
-                      else Some (bor', α', S clock)
-         | None => None
-         end
+         α' ← reborrow h α β l bor T bar bor';
+         if two_phase
+         then match mut with
+              | Some Mutable => (* two-phase only for mut borrow *)
+                   let bor'' := AliasB (Some (S clock)) in
+                   (* second reborrow, no barrier *)
+                   α'' ← reborrow h α' β l bor T None bor'' ;
+                   Some (bor'', α'', S (S clock))
+              | _ => None
+              end
+         else Some (bor', α', S clock)
   end.
 
 Definition is_two_phase (kind: retag_kind) : bool :=
@@ -960,7 +949,7 @@ Definition adding_barrier (kind: retag_kind) : option call_id :=
 Fixpoint retag h α (clock: time) β x T (kind: retag_kind) :
   option (mem * bstacks * time) :=
   match T with
-  | Scala _ | Union _ _ => Some (h, α, clock)
+  | Scalar _ | Union _ _ => Some (h, α, clock)
   | Unsafe T => retag h α clock β x T kind
   | Product T1 T2 =>
       match retag h α clock β x T1 kind with
@@ -974,7 +963,7 @@ Fixpoint retag h α (clock: time) β x T (kind: retag_kind) :
             match pkind, kind with
             (* Reference pointer *)
             | RefPtr mut, _ =>
-                match retag_ref α β clock l bor Tref (Some mut)
+                match retag_ref h α β clock l bor Tref (Some mut)
                                 (adding_barrier kind) (is_two_phase kind) with
                 | Some (bor', α', clock') =>
                     Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
@@ -982,14 +971,14 @@ Fixpoint retag h α (clock: time) β x T (kind: retag_kind) :
                 end
             (* RawPtr can only be Raw-retagged, no barrier *)
             | RawPtr, RawRt =>
-                match retag_ref α β clock l bor Tref None None false with
+                match retag_ref h α β clock l bor Tref None None false with
                 | Some (bor', α', clock') =>
                     Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
                 | _ => None
                 end
             (* Box pointer *)
             | BoxPtr, _ =>
-                match retag_ref α β clock l bor Tref (Some Mutable)
+                match retag_ref h α β clock l bor Tref (Some Mutable)
                                 None (is_two_phase kind) with
                 | Some (bor', α', clock') =>
                     Some (<[x := LitV (LitLoc l bor')]>h, α', clock')
