@@ -1,4 +1,4 @@
-From Coq Require Import Program.Wf.
+From Equations Require Import Equations.
 From iris.program_logic Require Export language ectx_language ectxi_language.
 From stdpp Require Export strings gmap infinite.
 Set Default Proof Using "Type".
@@ -32,17 +32,20 @@ Inductive ref_kind :=
   .
 Definition is_unique_ref (kind: ref_kind) : bool :=
   match kind with UniqueRef => true | _ => false end.
+Inductive pointer_kind := RefPtr (mut: mutability) | RawPtr | BoxPtr.
 
-Inductive pointer_kind := RefPtr (mut: mutability) | RawPtr | BoxPtr .
 Inductive type :=
   | Scalar (sz: nat)
   | Reference (kind: pointer_kind) (T: type)
   | Unsafe (T: type)
-  | Union (Ts: list type)
-  | Product (Ts: list type)
+  | Union (T1 T2: type)
+  | Product (T1 T2: type)
   | Sum (Ts: list type)
   .
+Bind Scope lrust_type with type.
+Delimit Scope lrust_type with RustT.
 
+(* Physical size of types *)
 Fixpoint list_nat_max (ns: list nat) (d: nat) :=
   match ns with
   | [] => d
@@ -68,20 +71,18 @@ Fixpoint tsize (T: type) : nat :=
   | Scalar sz => sz
   | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
   | Unsafe T => tsize T
-  | Union Ts => list_nat_max (tsize <$> Ts) O
-  | Product Ts => foldr (λ T s, (tsize T) + s)%nat O Ts
+  | Union T1 T2 => tsize T1 `max` tsize T2
+  | Product T1 T2 => tsize T1 + tsize T2
   | Sum Ts => 1 + list_nat_max (tsize <$> Ts) O
   end.
-
-Bind Scope lrust_type with type.
-Delimit Scope lrust_type with RustT.
 
 (* Type doesn't contain UnsafeCells. *)
 Fixpoint is_freeze (T: type) : bool :=
   match T with
   | Scalar _ | Reference _ _ => true
   | Unsafe _ => false
-  | Union Ts | Product Ts | Sum Ts => forallb is_freeze Ts
+  | Union T1 T2 | Product T1 T2 => is_freeze T1 && is_freeze T2
+  | Sum Ts => forallb is_freeze Ts
   end.
 
 (** Instrumented states *)
@@ -93,13 +94,13 @@ Inductive borrow :=
   .
 
 Definition is_unique (bor: borrow) :=
-  match bor with | UniqB _ => true | _ => false end.
+  match bor with UniqB _ => true | _ => false end.
 Definition is_aliasing (bor: borrow) :=
-  match bor with | AliasB _ => true | _ => false end.
+  match bor with AliasB _ => true | _ => false end.
 Notation borrow_default := (AliasB None).
 
-(* Retag types *)
-Inductive retag_kind := | FnEntry (c: call_id) | TwoPhase | RawRt | Default.
+(* Retag kinds *)
+Inductive retag_kind := FnEntry (c: call_id) | TwoPhase | RawRt | Default.
 
 (* Barrier tracker: track if a call_id is active, i.e. the call is still running *)
 Definition barriers := gmap call_id bool.
@@ -146,8 +147,7 @@ Inductive bin_op :=
   .
 
 (** Base values *)
-Inductive lit :=
-| LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
+Inductive lit := LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
 
 (** Binders for lambdas: list of formal arguments to functions *)
 Inductive binder := BAnon | BNamed : string → binder.
@@ -207,12 +207,13 @@ Inductive expr :=
                                      has mutable kind `mut`. *)
 | Ref (e: expr)                   (* Turn a place `e` into a pointer value. *)
 | Field (e: expr) (path: list nat)(* Create a place that points to a component
-                                     of the place `e`. *)
+                                     of the place `e`. `path` defines the path
+                                     through the type. *)
 (* mem op *)
 | Copy (e : expr)                 (* Read from the place `e` *)
-| Write (e1 e2: expr) (* Write the value `e2` to the place `e1` *)
+| Write (e1 e2: expr)             (* Write the value `e2` to the place `e1` *)
 | Alloc (T: type)                 (* Allocate a place of type `T` *)
-| Free (e : expr)                 (* Free the place `e` of type `T` *)
+| Free (e : expr)                 (* Free the place `e` *)
 (* atomic mem op *)
 | CAS (e0 e1 e2 : expr)           (* CAS the value `e2` for `e1` to the place `e0` *)
 | AtomWrite (e1 e2: expr)
@@ -249,7 +250,7 @@ Arguments Retag _%E _.
 Arguments Case _%E _%E.
 Arguments Fork _%E.
 
-
+(** Closedness *)
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
   | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
@@ -270,16 +271,18 @@ Proof. rewrite /Closed. apply _. Qed.
 Instance closed_decision env e : Decision (Closed env e).
 Proof. rewrite /Closed. apply _. Qed.
 
+(** Heap values *)
 Inductive immediate :=
 | LitV (l : lit)
 | RecV (f : binder) (xl : list binder) (e : expr) `{Closed (f :b: xl +b+ []) e}.
 
+(** Irreducible (language values) *)
 Inductive val :=
 | ImmV (v: immediate)
 | PlaceV (l: loc) (tag: borrow) (T: type)
 .
-
 Bind Scope val_scope with val.
+Delimit Scope val_scope with V.
 
 Definition of_val (v : val) : expr :=
   match v with
@@ -325,6 +328,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Fork e => Fork (subst x es e)
   end.
 
+(* formal argument list substitution *)
 Definition subst' (mx : binder) (es : expr) : expr → expr :=
   match mx with BNamed x => subst x es | BAnon => id end.
 
@@ -478,6 +482,7 @@ Inductive event :=
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
 .
 
+(* Compute offset to `l` and subtype of `T` from `path` *)
 Fixpoint field_access (l: loc) (T: type) (path : list nat) :
   option (loc * type) :=
   match path with
@@ -487,12 +492,10 @@ Fixpoint field_access (l: loc) (T: type) (path : list nat) :
     | Scalar sz => if decide (i ≤ sz) then Some ((l +ₗ i), Scalar (sz - i)) else None
     | Reference _ _ => match i with O => Some (l, T) | _ => None end
     | Unsafe T => field_access l T path
-    | Union Ts =>
-        match Ts !! i with Some T => field_access l T path | _ => None end
-    | Product Ts =>
-        match Ts !! i with Some T => field_access (l +ₗ i) T path | _ => None end
-    | Sum Ts =>
-        match Ts !! i with Some T => field_access (l +ₗ 1) T path | _ => None end
+    | Union T1 T2 => field_access l (if i then T1 else T2) path
+    | Product T1 T2 =>
+        if i then field_access l T1 path else field_access (l +ₗ tsize T1) T2 path
+    | Sum Ts => T ← Ts !! i ; field_access (l +ₗ 1) T path
     end
   end.
 
@@ -642,10 +645,8 @@ Definition access1 β (stack: bstack) bor (kind: access_kind) : option bstack :=
   (* accept all reads if frozen *)
   | Some _, AccessRead => Some stack
   (* otherwise, unfreeze *)
-  | _,_ => match access1' stack.(borrows) bor kind β with
-           | Some stack' => Some (mkBorStack stack' None)
-           | _ => None
-           end
+  | _,_ =>
+    stack' ← access1' stack.(borrows) bor kind β ; Some (mkBorStack stack' None)
   end.
 
 (* Perform the access check on a block of continuous memory.
@@ -655,18 +656,11 @@ Fixpoint accessN α β l (bor: borrow) (n: nat) kind : option bstacks :=
   | O => Some α
   | S n =>
       let l' := (l +ₗ n) in
-      match (α !! l') with
-      | Some stack => match (access1 β stack bor kind) with
-                      | Some stack' =>
-                          match kind with
-                          | AccessDealloc =>
-                              accessN (delete l' α) β l bor n kind
-                          | _ => accessN (<[l':=stack']> α) β l bor n kind
-                          end
-                      | _ => None
-                      end
-      | _ => None
-      end
+      stack ← α !! l'; stack' ← (access1 β stack bor kind) ;
+        match kind with
+        | AccessDealloc => accessN (delete l' α) β l bor n kind
+        | _ => accessN (<[l':=stack']> α) β l bor n kind
+        end
   end.
 
 (** Deref check *)
@@ -715,88 +709,68 @@ Definition deref1
 (* Perform the deref check on a block of continuous memory.
  * This implements Stacks::deref. *)
 Fixpoint derefN α l (bor: borrow) (n: nat) (kind: ref_kind) : option unit :=
-match n with
-| O => Some ()
-| S n =>
-    let l' := (l +ₗ n) in
-    match (α !! l') with
-    | Some stack => if (deref1 stack bor kind) then derefN α l bor n kind else None
-    | _ => None
-    end
-end.
+  match n with
+  | O => Some ()
+  | S n => stack ← α !! (l +ₗ n) ; deref1 stack bor kind ;; derefN α l bor n kind
+  end.
 
 Definition unsafe_action
   {A: Type} (f: A → loc → nat → bool → option A) (a: A) (l: loc)
   (last frozen_size unsafe_size: nat) :
   option (A * (nat * nat)) :=
   (* anything between the last UnsafeCell and this UnsafeCell is frozen *)
-  match f a (l +ₗ last) frozen_size true with
-  | Some a' =>
-      (* This UnsafeCell is not frozen *)
-      let cur_ptr := (last + frozen_size)%nat in
-      match f a' (l +ₗ cur_ptr) unsafe_size false with
-      | Some a'' => Some (a'', ((cur_ptr + unsafe_size)%nat, O))
-      | _ => None
-      end
-  | _ => None
-  end.
-
-Fixpoint tnode (T: type) : nat :=
-  match T with
-  | Scalar sz => 1
-  | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
-  | Unsafe T => tnode T
-  | Union Ts | Product Ts | Sum Ts => foldl (λ sz T, sz + tnode T)%nat 1%nat Ts
-  end.
+  a' ← f a (l +ₗ last) frozen_size true;
+  (* This UnsafeCell is not frozen *)
+  let cur_ptr := (last + frozen_size)%nat in
+    a'' ← f a' (l +ₗ cur_ptr) unsafe_size false ;
+    Some (a'', ((cur_ptr + unsafe_size)%nat, O))
+  .
 
 (* visit the type left-to-right, where `last` is the offset of `l` from the last
 UnsafeCell, and `cur_dist` is the distance between `last` and the current offset
 which is the start of the sub-type `T`. `a` of type A is the accumulator for the
 visit. *)
-Program Fixpoint visit_freeze_sensitive' {A: Type}
-  (h: mem) (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A)
-  (last cur_dist: nat) {measure (tnode T)} :
-  option (A * (nat * nat)) :=
-  match T with
-  | Scalar n => Some (a, (last, cur_dist + n)%nat)
-  | Reference _ _ => Some (a, (last, S cur_dist))
-  | Unsafe T =>
-      (* apply the action `f` and return new `last` and `cur_dist` *)
-      unsafe_action f a l last cur_dist (tsize T)
-  | Union _ =>
-      (* If it's a union, look at the type to see if there is Unsafe *)
-      if is_freeze T
-      (* No UnsafeCell, continue *)
-      then Some (a, (last, cur_dist + (tsize T))%nat)
-      (* There can be UnsafeCell, perform `f a _ _ false` on the whole block *)
-      else unsafe_action f a l last cur_dist (tsize T)
-  | Product Ts =>
-      (* this implements left-to-right search on the type, which guarantees
+Equations visit_freeze_sensitive' {A: Type}
+  (h: mem) (l: loc) (f: A → loc → nat → bool → option A)
+  (a: A) (last cur_dist: nat) (T: type) : option (A * (nat * nat)) :=
+  visit_freeze_sensitive' h l f a last cur_dist (Scalar n)
+    := Some (a, (last, cur_dist + n)%nat) ;
+  visit_freeze_sensitive' h l f a last cur_dist (Reference _ _)
+    := Some (a, (last, S cur_dist)) ;
+  visit_freeze_sensitive' h l f a last cur_dist (Unsafe T)
+    := (* apply the action `f` and return new `last` and `cur_dist` *)
+       unsafe_action f a l last cur_dist (tsize T) ;
+  visit_freeze_sensitive' h l f a last cur_dist (Union T1 T2)
+    := (* If it's a union, look at the type to see if there is Unsafe *)
+       if is_freeze (Union T1 T2)
+       (* No UnsafeCell, continue *)
+       then Some (a, (last, cur_dist + (tsize (Union T1 T2)))%nat)
+       (* There can be UnsafeCell, perform `f a _ _ false` on the whole block *)
+       else unsafe_action f a l last cur_dist (tsize (Union T1 T2)) ;
+  visit_freeze_sensitive' h l f a last cur_dist (Product T1 T2)
+    := (* this implements left-to-right search on the type, which guarantees
          that the indices are increasing. *)
-      foldl (λ oalc (T: type),
-                match oalc with
-                | Some (a', (last', cur_dist')) =>
-                    visit_freeze_sensitive' h l T f a' last' cur_dist'
-                | _ => None
-                end) (Some (a, (last, cur_dist))) Ts
-  | Sum Ts =>
-      match h !! l with
-      | Some (LitV (LitInt i)) =>
-           if bool_decide (O ≤ i) && bool_decide (i < length Ts) then None
-            match Ts !! (Z.to_nat i) with
-            | Some T => visit_freeze_sensitive' h l T f a last (S cur_dist)
-            | _ => None
-            end
-           else None
-      | _ => None
-      end
-  end.
-Next Obligation.
-  simpl. intros [A [h [l [T [f [a [last cur_dist]]]]]]]. constructor. simpl.
+       match visit_freeze_sensitive' h l f a last cur_dist T1 with
+       | Some (a', (last', cur_dist')) =>
+            visit_freeze_sensitive' h l f a' last' cur_dist' T2
+       | _ => None
+       end ;
+  visit_freeze_sensitive' h l f a last cur_dist (Sum Ts)
+    := match h !! l with
+       | Some (LitV (LitInt i)) =>
+           if decide (O ≤ i < length Ts) then aux Ts (Z.to_nat i) else None
+       | _ => None
+       end (* TODO: fix return point for sum *)
+    where aux (Ts: list type) (i: nat) : option (A * (nat * nat)) :=
+      aux [] i := None;
+      aux (T :: Ts) O :=
+        visit_freeze_sensitive' h l f a last (S cur_dist) T ;
+      aux (T :: Ts) (S i) := aux Ts i
+  .
 
 Definition visit_freeze_sensitive {A: Type}
-  (l: loc) (t: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
-  match visit_freeze_sensitive' l t f a O O with
+  h (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
+  match visit_freeze_sensitive' h l f a O O T with
   | Some (a', (last', cur_dist')) =>
       (* the last block is not inside UnsafeCell *)
       f a' (l +ₗ last') cur_dist' true
@@ -807,7 +781,7 @@ Definition visit_freeze_sensitive {A: Type}
  * can be inside UnsafeCells, which are described by the type `t` of the block.
  * This implements EvalContextExt::ptr_dereference. *)
 (* TODO?: bound check of l for size (tsize t)? alloc.check_bounds(this, ptr, size)?; *)
-Definition ptr_deref α (l: loc) (bor: borrow) T (mut: option mutability) : Prop :=
+Definition ptr_deref h α (l: loc) (bor: borrow) T (mut: option mutability) : Prop :=
   match bor, mut with
   | _, None =>
       (* This is a raw pointer, no checks. *)
@@ -818,7 +792,7 @@ Definition ptr_deref α (l: loc) (bor: borrow) T (mut: option mutability) : Prop
       (* We need freeze-sensitive check, depending on whether some memory is in
          UnsafeCell or not *)
       is_Some (
-        visit_freeze_sensitive l T
+        visit_freeze_sensitive h l T
           (λ _ l' sz frozen,
               (* If is in Unsafe, treat as a RawRef, otherwise FrozenRef *)
               let kind := if frozen then FrozenRef else RawRef in
@@ -837,7 +811,8 @@ Definition add_barrier (stack: bstack) (c: call_id) : bstack :=
   match stack.(borrows) with
   | FnBarrier c' :: stack' =>
       (* Avoid stacking multiple identical barriers on top of each other. *)
-      if decide (c' = c) then stack else mkBorStack (FnBarrier c :: stack') stack.(frozen_since)
+      if decide (c' = c) then stack
+      else mkBorStack (FnBarrier c :: stack') stack.(frozen_since)
   | _ => mkBorStack (FnBarrier c :: stack.(borrows)) stack.(frozen_since)
   end.
 
@@ -894,22 +869,16 @@ Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
           then (* bor' must be aliasing *)
                if is_aliasing bor' then Some stack else None
           else (* check for access with bor, then reborrow with bor' *)
-               match access1 β stack bor (to_access_kind kind') with
-               | Some stack1 => create_borrow stack1 bor' kind'
-               | None => None
-               end
+               stack1 ← access1 β stack bor (to_access_kind kind') ;
+               create_borrow stack1 bor' kind'
       | None, _ ,_ =>
           (* check for access with bor, then reborrow with bor' *)
-          match access1 β stack bor (to_access_kind kind') with
-          | Some stack1 => create_borrow stack1 bor' kind'
-          | None => None
-          end
+          stack1 ← access1 β stack bor (to_access_kind kind') ;
+          create_borrow stack1 bor' kind'
       | Some c, _, _ =>
           (* check for access with bor, then add barrier & reborrow with bor' *)
-          match access1 β stack bor (to_access_kind kind') with
-          | Some stack1 => create_borrow (add_barrier stack1 c) bor' kind'
-          | None => None
-          end
+          stack1 ← access1 β stack bor (to_access_kind kind') ;
+          create_borrow (add_barrier stack1 c) bor' kind'
       end
   | None => None
   end.
