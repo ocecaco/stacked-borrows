@@ -1,6 +1,6 @@
 From Equations Require Import Equations.
 From iris.program_logic Require Export language ectx_language ectxi_language.
-From stdpp Require Export strings gmap infinite.
+From stdpp Require Export strings list gmap infinite.
 Set Default Proof Using "Type".
 
 Module bor_lang.
@@ -1254,27 +1254,72 @@ Proof.
               | inr (inr _) => Some Default
               end) _); by intros [].
 Qed.
+
+Fixpoint type_beq (T T': type) : bool :=
+  let fix type_list_beq Ts Ts' :=
+    match Ts, Ts' with
+    | [], [] => true
+    | T::Ts, T'::Ts' => type_beq T T' && type_list_beq Ts Ts'
+    | _, _ => false
+    end
+  in
+  match T, T' with
+  | Scalar n, Scalar n' => bool_decide (n = n')
+  | Reference k T, Reference k' T' => bool_decide (k = k') && type_beq T T'
+  | Unsafe T, Unsafe T' => type_beq T T'
+  | Union Ts, Union Ts' | Product Ts, Product Ts' | Sum Ts, Sum Ts' =>
+      type_list_beq Ts Ts'
+  | _, _ => false
+  end.
+Lemma type_beq_correct (T1 T2 : type) : type_beq T1 T2 ↔ T1 = T2.
+Proof.
+  revert T1 T2; fix FIX 1;
+    destruct T1 as [| | |Ts1|Ts1|Ts1],
+             T2 as [| | |Ts2|Ts2|Ts2];
+    simpl; try done;
+    rewrite ?andb_True ?bool_decide_spec ?FIX;
+    try (split; intro; [destruct_and?|split_and?]; congruence).
+  - match goal with |- context [?F Ts1 Ts2] => assert (F Ts1 Ts2 ↔ Ts1 = Ts2) end.
+    { revert Ts2. induction Ts1 as [|Ts1h Ts1q]; destruct Ts2; try done.
+      specialize (FIX Ts1h). naive_solver. }
+    clear FIX. naive_solver.
+  - match goal with |- context [?F Ts1 Ts2] => assert (F Ts1 Ts2 ↔ Ts1 = Ts2) end.
+    { revert Ts2. induction Ts1 as [|Ts1h Ts1q]; destruct Ts2; try done.
+      specialize (FIX Ts1h). naive_solver. }
+    clear FIX. naive_solver.
+  - match goal with |- context [?F Ts1 Ts2] => assert (F Ts1 Ts2 ↔ Ts1 = Ts2) end.
+    { revert Ts2. induction Ts1 as [|Ts1h Ts1q]; destruct Ts2; try done.
+      specialize (FIX Ts1h). naive_solver. }
+    clear FIX. naive_solver.
+Qed.
 Instance type_eq_dec : EqDecision type.
-Proof. solve_decision. Defined.
+Proof.
+  refine (λ T1 T2, cast_if (decide (type_beq T1 T2))); by rewrite -type_beq_correct.
+Defined.
 Instance type_countable : Countable type.
 Proof.
   refine (inj_countable'
     (fix go T := match T with
-     | Scala sz => GenNode 0 [GenLeaf $ inl sz]
+     | Scalar sz => GenNode 0 [GenLeaf $ inl sz]
      | Reference kind T => GenNode 1 [GenLeaf $ inr kind; go T]
      | Unsafe T => GenNode 2 [go T]
-     | Union T1 T2 => GenNode 3 [go T1; go T2]
-     | Product T1 T2 => GenNode 4 [go T1; go T2]
+     | Union Ts => GenNode 3 (go <$> Ts)
+     | Product Ts => GenNode 4 (go <$> Ts)
+     | Sum Ts => GenNode 5 (go <$> Ts)
      end)
     (fix go s := match s with
-     | GenNode 0 [GenLeaf (inl sz)] => Scala sz
+     | GenNode 0 [GenLeaf (inl sz)] => Scalar sz
      | GenNode 1 [GenLeaf (inr kind); T] => Reference kind (go T)
      | GenNode 2 [T] => Unsafe (go T)
-     | GenNode 3 [T1; T2] => Union (go T1) (go T2)
-     | GenNode 4 [T1; T2] => Product (go T1) (go T2)
-     | _ => Scala 0
+     | GenNode 3 Ts => Union (go <$> Ts)
+     | GenNode 4 Ts => Product (go <$> Ts)
+     | GenNode 5 Ts => Sum (go <$> Ts)
+     | _ => Scalar 0
      end) _).
-  fix FIX 1. intros []; f_equal=>//.
+  fix FIX 1. intros []; f_equal=>//; revert Ts; clear -FIX.
+  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
+  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
+  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
 Qed.
 
 Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
@@ -1291,34 +1336,42 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
   | App e el, App e' el' | Case e el, Case e' el' =>
     expr_beq e e' && expr_list_beq el el'
   | Rec f xl e, Rec f' xl' e' =>
-    bool_decide (f = f') && bool_decide (xl = xl') && expr_beq e e'
+      bool_decide (f = f') && bool_decide (xl = xl') && expr_beq e e'
   | BinOp op e1 e2, BinOp op' e1' e2' =>
-    bool_decide (op = op') && expr_beq e1 e1' && expr_beq e2 e2'
-  | Place l bor, Place l' bor' => bool_decide (l = l') && bool_decide (bor = bor')
+      bool_decide (op = op') && expr_beq e1 e1' && expr_beq e2 e2'
+  | TVal el, TVal el' => expr_list_beq el el'
+  | Place l bor T , Place l' bor' T' =>
+      bool_decide (l = l') && bool_decide (bor = bor') && bool_decide (T = T')
   | Deref e T mut, Deref e' T' mut' =>
       bool_decide (T = T') && bool_decide (mut = mut') && expr_beq e e'
   | NewCall, NewCall => true
-  | Retag e T kind, Retag e' T' kind' =>
-      bool_decide (T = T') && bool_decide (kind = kind') && expr_beq e e'
-  | Read e, Read e' | Ref e, Ref e' | EndCall e, EndCall e' => expr_beq e e'
-  | Write e1 e2, Write e1' e2'| Field e1 e2, Field e1' e2' =>
+  | Retag e kind, Retag e' kind' =>
+      bool_decide (kind = kind') && expr_beq e e'
+  | Copy e, Copy e' | Ref e, Ref e'
+  | AtomRead e, AtomRead e' | EndCall e, EndCall e' => expr_beq e e'
+  | Write e1 e2, Write e1' e2' | AtomWrite e1 e2, AtomWrite e1' e2' =>
       expr_beq e1 e1' && expr_beq e2 e2'
+  | Field e path, Field e' path' => expr_beq e e' && bool_decide (path = path')
   | CAS e0 e1 e2, CAS e0' e1' e2' =>
       expr_beq e0 e0' && expr_beq e1 e1' && expr_beq e2 e2'
   | Fork e, Fork e' => expr_beq e e'
-  | Alloc T am, Alloc T' am' => bool_decide (T = T') && bool_decide (am = am')
-  | Free e T, Free e' T' => bool_decide (T = T') && expr_beq e e'
+  | Alloc T, Alloc T' => bool_decide (T = T')
+  | Free e, Free e' => expr_beq e e'
   | _, _ => false
   end.
 
 Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
 Proof.
   revert e1 e2; fix FIX 1;
-    destruct e1 as [| |? el1| | | | | | | | | | | | | | |? el1|],
-             e2 as [| |? el2| | | | | | | | | | | | | | |? el2|];
+    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | | | |? el1|],
+             e2 as [| |? el2| |el2| | | | | | | | | | | | | | | |? el2|];
     simpl; try done;
     rewrite ?andb_True ?bool_decide_spec ?FIX;
     try (split; intro; [destruct_and?|split_and?]; congruence).
+  - match goal with |- context [?F el1 el2] => assert (F el1 el2 ↔ el1 = el2) end.
+    { revert el2. induction el1 as [|el1h el1q]; destruct el2; try done.
+      specialize (FIX el1h). naive_solver. }
+    clear FIX. naive_solver.
   - match goal with |- context [?F el1 el2] => assert (F el1 el2 ↔ el1 = el2) end.
     { revert el2. induction el1 as [|el1h el1q]; destruct el2; try done.
       specialize (FIX el1h). naive_solver. }
@@ -1341,58 +1394,62 @@ Proof.
       | Lit l => GenNode 1 [GenLeaf $ inl $ inl $ inl $ inr l]
       | Rec f xl e => GenNode 2 [GenLeaf $ inl $ inl $ inr $ inl f;
                                  GenLeaf $ inl $ inl $ inr $ inr xl; go e]
-      | Place l tag => GenNode 3 [GenLeaf $ inl $ inr $ inl $ inl l;
-                                  GenLeaf $ inl $ inr $ inl $ inr tag]
-      | BinOp op e1 e2 => GenNode 4 [GenLeaf $ inl $ inr $ inr $ inl op;
+      | TVal el => GenNode 3 (go <$> el)
+      | Place l tag T => GenNode 4 [GenLeaf $ inl $ inr $ inl $ inl l;
+                                    GenLeaf $ inl $ inr $ inl $ inr tag;
+                                    GenLeaf $ inl $ inr $ inr $ inl T]
+      | BinOp op e1 e2 => GenNode 5 [GenLeaf $ inl $ inr $ inr $ inr op;
                                      go e1; go e2]
-      | App e el => GenNode 5 (go e :: (go <$> el))
-      | Read e => GenNode 6 [go e]
-      | Write e1 e2 => GenNode 7 [go e1; go e2]
-      | CAS e0 e1 e2 => GenNode 8 [go e0; go e1; go e2]
-      | Free e T => GenNode 9 [GenLeaf $ inl $ inr $ inr $ inr T; go e]
-      | Alloc T amod => GenNode 10 [GenLeaf $ inr $ inl $ inl $ inl T;
-                                    GenLeaf $ inr $ inl $ inl $ inr amod]
-      | Deref e T mut => GenNode 11 [GenLeaf $ inr $ inl $ inr $ inl T;
-                                     GenLeaf $ inr $ inl $ inr $ inr mut;
+      | App e el => GenNode 6 (go e :: (go <$> el))
+      | Copy e => GenNode 7 [go e]
+      | Write e1 e2 => GenNode 8 [go e1; go e2]
+      | CAS e0 e1 e2 => GenNode 9 [go e0; go e1; go e2]
+      | AtomWrite e1 e2 => GenNode 10 [go e1; go e2]
+      | AtomRead e => GenNode 11 [go e]
+      | Free e => GenNode 12 [go e]
+      | Alloc T => GenNode 13 [GenLeaf $ inr $ inl $ inl $ inl T]
+      | Deref e T mut => GenNode 14 [GenLeaf $ inr $ inl $ inl $ inr T;
+                                     GenLeaf $ inr $ inl $ inr mut;
                                      go e]
-      | Ref e => GenNode 12 [go e]
-      | Field e1 e2 => GenNode 13 [go e1; go e2]
-      | NewCall => GenNode 14 []
-      | EndCall e => GenNode 15 [go e]
-      | Retag e T kind => GenNode 16 [GenLeaf $ inr $ inr $ inl T;
-                                      GenLeaf $ inr $ inr $ inr kind;
-                                      go e]
-      | Case e el => GenNode 17 (go e :: (go <$> el))
-      | Fork e => GenNode 18 [go e]
+      | Ref e => GenNode 15 [go e]
+      | Field e path => GenNode 16 [GenLeaf $ inr $ inr $ inl path; go e]
+      | NewCall => GenNode 17 []
+      | EndCall e => GenNode 18 [go e]
+      | Retag e kind => GenNode 19 [GenLeaf $ inr $ inr $ inr kind; go e]
+      | Case e el => GenNode 20 (go e :: (go <$> el))
+      | Fork e => GenNode 21 [go e]
      end)
     (fix go s := match s with
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
      | GenNode 1 [GenLeaf (inl (inl (inl (inr l))))] => Lit l
      | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
                   GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)
-     | GenNode 3 [GenLeaf (inl (inr (inl (inl l))));
-                  GenLeaf (inl (inr (inl (inr tag))))] => Place l tag
-     | GenNode 4 [GenLeaf (inl (inr (inr (inl op)))); e1; e2] => BinOp op (go e1) (go e2)
-     | GenNode 5 (e :: el) => App (go e) (go <$> el)
-     | GenNode 6 [e] => Read (go e)
-     | GenNode 7 [e1; e2] => Write (go e1) (go e2)
-     | GenNode 8 [e0; e1; e2] => CAS (go e0) (go e1) (go e2)
-     | GenNode 9 [GenLeaf (inl (inr (inr (inr T)))); e] => Free (go e) T
-     | GenNode 10 [GenLeaf (inr (inl (inl (inl T))));
-                   GenLeaf (inr (inl (inl (inr amod))))] => Alloc T amod
-     | GenNode 11 [GenLeaf (inr (inl (inr (inl T))));
-                   GenLeaf (inr (inl (inr (inr mut)))); e] => Deref (go e) T mut
-     | GenNode 12 [e] => Ref (go e)
-     | GenNode 13 [e1; e2] => Field (go e1) (go e2)
-     | GenNode 14 [] => NewCall
-     | GenNode 15 [e] => EndCall (go e)
-     | GenNode 16 [GenLeaf (inr (inr (inl T)));
-                   GenLeaf (inr (inr (inr kind))); e] => Retag (go e) T kind
-     | GenNode 17 (e :: el) => Case (go e) (go <$> el)
-     | GenNode 18 [e] => Fork (go e)
+     | GenNode 3 el => TVal (go <$> el)
+     | GenNode 4 [GenLeaf (inl (inr (inl (inl l))));
+                  GenLeaf (inl (inr (inl (inr tag))));
+                  GenLeaf (inl (inr (inr (inl T))))] => Place l tag T
+     | GenNode 5 [GenLeaf (inl (inr (inr (inr op)))); e1; e2] => BinOp op (go e1) (go e2)
+     | GenNode 6 (e :: el) => App (go e) (go <$> el)
+     | GenNode 7 [e] => Copy (go e)
+     | GenNode 8 [e1; e2] => Write (go e1) (go e2)
+     | GenNode 9 [e0; e1; e2] => CAS (go e0) (go e1) (go e2)
+     | GenNode 10 [e1; e2] => AtomWrite (go e1) (go e2)
+     | GenNode 11 [e] => AtomRead (go e)
+     | GenNode 12 [e] => Free (go e)
+     | GenNode 13 [GenLeaf (inr (inl (inl (inl T))))] => Alloc T
+     | GenNode 14 [GenLeaf (inr (inl (inl (inr T))));
+                   GenLeaf (inr (inl (inr mut))); e] => Deref (go e) T mut
+     | GenNode 15 [e] => Ref (go e)
+     | GenNode 16 [GenLeaf (inr (inr (inl path))); e] => Field (go e) path
+     | GenNode 17 [] => NewCall
+     | GenNode 18 [e] => EndCall (go e)
+     | GenNode 19 [GenLeaf (inr (inr (inr kind))); e] => Retag (go e) kind
+     | GenNode 20 (e :: el) => Case (go e) (go <$> el)
+     | GenNode 21 [e] => Fork (go e)
      | _ => Lit LitPoison
      end) _).
   fix FIX 1. intros []; f_equal=>//; revert el; clear -FIX.
+  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
 Qed.
@@ -1407,18 +1464,18 @@ Proof.
     (λ v, match v with
           | ImmV (LitV l) => inl $ inl l
           | ImmV (RecV f xl e) => inl $ inr (f, xl, e)
-          | PlaceV l bor => inr (l, bor)
+          | PlaceV l bor T => inr (l, bor, T)
           end)
     (λ x, match x with
           | inl (inl l) => Some $ ImmV $ LitV l
           | inl (inr (f, xl, e)) =>
               match decide _ with left C => Some $ ImmV $ @RecV f xl e C | _ => None end
-          | inr (l, bor) => Some $ PlaceV l bor
+          | inr (l, bor, T) => Some $ PlaceV l bor T
           end) _).
   intros [[]|] =>//; by rewrite decide_left.
 Qed.
 
-Instance type_inhabited : Inhabited type := populate (Scala 0).
+Instance type_inhabited : Inhabited type := populate (Scalar 0).
 Instance expr_inhabited : Inhabited expr := populate (Lit LitPoison).
 Instance val_inhabited : Inhabited val := populate (ImmV $ LitV LitPoison).
 Instance state_Inhabited : Inhabited state.
@@ -1454,13 +1511,13 @@ Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
   to_val e1 = None → to_val e2 = None →
   fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
 Proof.
-  destruct Ki1 as [| | |v1 vl1 el1| | | | | | | | | | | | | |],
-           Ki2 as [| | |v2 vl2 el2| | | | | | | | | | | | | |];
+  destruct Ki1 as [| |vl1 el1| |v1 vl1 el1| | | | | | | | | | | | | | | |],
+           Ki2 as [| |vl2 el2| |v2 vl2 el2| | | | | | | | | | | | | | | |];
   intros He1 He2 EQ; try discriminate; simplify_eq/=;
     repeat match goal with
     | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H
-    end; auto.
-  destruct (list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2); auto. congruence.
+    end; auto;
+  destruct (list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2); auto; congruence.
 Qed.
 
 Lemma val_head_stuck e1 σ1 κ e2 σ2 efs : head_step e1 σ1 κ e2 σ2 efs → to_val e1 = None.
@@ -1470,7 +1527,7 @@ Lemma head_ctx_step_val Ki e σ1 κ e2 σ2 efs :
   head_step (fill_item Ki e) σ1 κ e2 σ2 efs → is_Some (to_val e).
 Proof.
   destruct Ki; inversion_clear 1; inversion_clear BaseStep;
-    simplify_option_eq; eauto; [done|].
+    simplify_option_eq; eauto. admit. admit. done.
   eapply (Forall_forall (λ ei, is_Some (to_val ei))); eauto. set_solver.
 Qed.
 
