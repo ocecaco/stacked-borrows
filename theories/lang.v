@@ -979,42 +979,55 @@ Definition is_two_phase (kind: retag_kind) : bool :=
 Definition adding_barrier (kind: retag_kind) : option call_id :=
   match kind with FnEntry c => Some c | _ => None end.
 (* This implements EvalContextExt::retag *)
-Fixpoint retag h α (clock: time) β x T (kind: retag_kind) :
+Equations retag h α (clock: time) β (x: loc) (kind: retag_kind) T :
   option (mem * bstacks * time) :=
-  match T with
-  (* no retag for Union *)
-  | Scalar _ | Union _ => Some (h, α, clock)
-  | Unsafe T => retag h α clock β x T kind
-  | Product Ts | Sum Ts =>
-      None
-      (* match retag h α clock β x T1 kind with
-      | Some (h', α', clock') =>
-          retag h' α' clock' β (x +ₗ (tsize T1)) T2 kind
-      | _ => None
-      end *)
-  | Reference pkind Tref =>
-      match h !! x with
-      | Some (LitV (LitLoc l bor)) =>
-          match pkind, kind with
-          (* Reference pointer *)
-          | RefPtr mut, _ =>
-              bac ← retag_ref h α β clock l bor Tref (Some mut)
-                              (adding_barrier kind) (is_two_phase kind) ;
-              Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
-          (* RawPtr can only be Raw-retagged, no barrier *)
-          | RawPtr, RawRt =>
-              bac ← retag_ref h α β clock l bor Tref None None false ;
-              Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
-          (* Box pointer *)
-          | BoxPtr, _ =>
-              bac ← retag_ref h α β clock l bor Tref (Some Mutable)
-                              None (is_two_phase kind) ;
-              Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
-          | _, _ => None
-          end
-      | _ => None
-      end
-  end.
+  retag h α clock β x kind (Scalar _)         := Some (h, α, clock) ;
+  retag h α clock β x kind (Union _)          := Some (h, α, clock) ;
+  retag h α clock β x kind (Unsafe T)         := retag h α clock β x kind T ;
+  retag h α clock β x kind (Reference pk Tr) with h !! x :=
+  { | Some (LitV (LitLoc l bor)) :=
+        match pk, kind with
+        (* Reference pointer *)
+        | RefPtr mut, _ =>
+            bac ← retag_ref h α β clock l bor Tr (Some mut)
+                            (adding_barrier kind) (is_two_phase kind) ;
+            Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
+        (* Box pointer *)
+        | BoxPtr, _ =>
+            bac ← retag_ref h α β clock l bor Tr (Some Mutable)
+                            None (is_two_phase kind) ;
+            Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
+        (* If is Raw retagging, also retag raw ptr, no barrier *)
+        | RawPtr, RawRt =>
+            bac ← retag_ref h α β clock l bor Tr None None false ;
+            Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
+        (* Ignore Raw pointer otherwise *)
+        | RawPtr, _ => Some (h, α, clock)
+        end ;
+    | _ := None } ;
+  retag h α clock β x kind (Product Ts)       := visit_LR h α clock x Ts
+    (* left-to-right visit to retag *)
+    where visit_LR h α (clock: time) (x: loc) (Ts: list type)
+      : option (mem * bstacks * time) :=
+      { visit_LR h α clock x []         := Some (h, α, clock) ;
+        visit_LR h α clock x (T :: Ts)  :=
+          hac ← retag h α clock β x kind T ;
+          visit_LR hac.1.1 hac.1.2 hac.2 (x +ₗ (tsize T)) Ts } ;
+  retag h α clock β x kind (Sum Ts) :=
+    match h !! x with
+    | Some (LitV (LitInt i)) =>
+          if decide (O ≤ i < length Ts)
+          then (* the discriminant is well-defined, visit with the
+                  corresponding type *)
+            visit_lookup Ts (Z.to_nat i)
+          else None
+    | _ => None
+    end
+    where visit_lookup (Ts: list type) (i: nat) : option (mem * bstacks * time) :=
+    { visit_lookup [] i := None ;
+      visit_lookup (T :: Ts) O := retag h α clock β (x +ₗ 1) kind T ;
+      visit_lookup (T :: Ts) (S i) := visit_lookup Ts i }
+  .
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
@@ -1057,7 +1070,7 @@ Inductive instrumented_step h α β (clock: time):
     instrumented_step h α β clock
                       (Some $ DerefEvt l lbor T mut) h α β clock
 | RetagIS h' α' clock' x T kind
-    (RETAG: retag h α clock β x T kind = Some (h', α', clock')) :
+    (RETAG: retag h α clock β x kind T = Some (h', α', clock')) :
     instrumented_step h α β clock
                       (Some $ RetagEvt x T kind) h' α' β clock'.
 
