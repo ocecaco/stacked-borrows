@@ -774,32 +774,31 @@ Equations visit_freeze_sensitive' {A: Type}
         visit_LR a last cur_dist (T :: Ts) :=
           alc ← visit_freeze_sensitive' h l f a last cur_dist T ;
           visit_LR alc.1 alc.2.1 alc.2.2 Ts } ;
-  visit_freeze_sensitive' h l f a last cur_dist (Sum Ts)
-    := (* This looks up the current state to see which discriminant currently is
-          active (which is an integer) and redirect the visit for the type of
-          that discriminant. Note that this consitutes a read-access, and should
-          adhere to the access checks. But we are skipping them here. FIXME *)
-       match h !! l with
-       | Some (LitV (LitInt i)) =>
-           if decide (O ≤ i < length Ts)
-           then (* the discriminant is well-defined, visit with the
-                   corresponding type *)
-                alc ← visit_lookup Ts (Z.to_nat i) ;
-                (* Anything in the padding is considered frozen and will be
-                   applied with the action by the following visit.
-                   `should_offset` presents the offset that the visit SHOULD
-                   arrive at after the visit. If there are padding bytes left,
-                   they will be added to the cur_dist. *)
-                let should_offset := (last + cur_dist + tsize (Sum Ts))%nat in
-                  Some (alc.1, (alc.2.1, (should_offset - alc.2.1)%nat))
-           else None
-       | _ => None
-       end
-    where visit_lookup (Ts: list type) (i: nat) : option (A * (nat * nat)) :=
-    { visit_lookup [] i := None ;
-      visit_lookup (T :: Ts) O :=
-        visit_freeze_sensitive' h l f a last (S cur_dist) T ;
-      visit_lookup (T :: Ts) (S i) := visit_lookup Ts i }
+  visit_freeze_sensitive' h l f a last cur_dist (Sum Ts) with h !! l
+    := {
+    (* This looks up the current state to see which discriminant currently is
+       active (which is an integer) and redirect the visit for the type of that
+       discriminant. Note that this consitutes a read-access, and should adhere
+       to the access checks. But we are skipping them here. FIXME *)
+    | Some (LitV (LitInt i)) :=
+        if decide (O ≤ i < length Ts)
+        then (* the discriminant is well-defined, visit with the
+                corresponding type *)
+          alc ← visit_lookup Ts (Z.to_nat i) ;
+          (* Anything in the padding is considered frozen and will be
+             applied with the action by the following visit.
+             `should_offset` presents the offset that the visit SHOULD
+             arrive at after the visit. If there are padding bytes left,
+             they will be added to the cur_dist. *)
+          let should_offset := (last + cur_dist + tsize (Sum Ts))%nat in
+            Some (alc.1, (alc.2.1, (should_offset - alc.2.1)%nat))
+        else None
+        where visit_lookup (Ts: list type) (i: nat) : option (A * (nat * nat)) :=
+        { visit_lookup [] i             := None ;
+          visit_lookup (T :: Ts) O      :=
+            visit_freeze_sensitive' h l f a last (S cur_dist) T ;
+          visit_lookup (T :: Ts) (S i)  := visit_lookup Ts i } ;
+    | _ := None }
   .
 
 Definition visit_freeze_sensitive {A: Type}
@@ -912,17 +911,16 @@ Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
       (* check for access with bor, then add barrier & reborrow with bor' *)
       stack1 ← access1 β stack bor (to_access_kind kind') ;
       create_borrow (add_barrier stack1 c) bor' kind'
-  end
-  .
+  end.
 Fixpoint reborrowN α β l n bor bor' kind' bar : option bstacks :=
-match n with
-| O => Some α
-| S n =>
-    let l' := (l +ₗ n) in
-    stack  ← (α !! l') ;
-    stack' ← reborrow1 stack bor bor' kind' β bar ;
-    reborrowN (<[l' := stack']> α) β l n bor bor' kind' bar
-end.
+  match n with
+  | O => Some α
+  | S n =>
+      let l' := (l +ₗ n) in
+      stack  ← (α !! l') ;
+      stack' ← reborrow1 stack bor bor' kind' β bar ;
+      reborrowN (<[l' := stack']> α) β l n bor bor' kind' bar
+  end.
 
 (* This implements Stacks::reborrow *)
 Definition reborrowBlock α β l n bor bor' kind' bar : option bstacks :=
@@ -1013,20 +1011,18 @@ Equations retag h α (clock: time) β (x: loc) (kind: retag_kind) T :
         visit_LR h α clock x (T :: Ts)  :=
           hac ← retag h α clock β x kind T ;
           visit_LR hac.1.1 hac.1.2 hac.2 (x +ₗ (tsize T)) Ts } ;
-  retag h α clock β x kind (Sum Ts) :=
-    match h !! x with
-    | Some (LitV (LitInt i)) =>
-          if decide (O ≤ i < length Ts)
-          then (* the discriminant is well-defined, visit with the
-                  corresponding type *)
-            visit_lookup Ts (Z.to_nat i)
-          else None
-    | _ => None
-    end
-    where visit_lookup (Ts: list type) (i: nat) : option (mem * bstacks * time) :=
-    { visit_lookup [] i := None ;
-      visit_lookup (T :: Ts) O := retag h α clock β (x +ₗ 1) kind T ;
-      visit_lookup (T :: Ts) (S i) := visit_lookup Ts i }
+  retag h α clock β x kind (Sum Ts) with h !! x :=
+  { | Some (LitV (LitInt i)) :=
+        if decide (O ≤ i < length Ts)
+        then (* the discriminant is well-defined, visit with the
+                corresponding type *)
+          visit_lookup Ts (Z.to_nat i)
+        else None
+        where visit_lookup (Ts: list type) (i: nat) : option (mem * bstacks * time) :=
+        { visit_lookup [] i             := None ;
+          visit_lookup (T :: Ts) O      := retag h α clock β (x +ₗ 1) kind T ;
+          visit_lookup (T :: Ts) (S i)  := visit_lookup Ts i } ;
+    | _ := None }
   .
 
 (** Instrumented step for the stacked borrows *)
