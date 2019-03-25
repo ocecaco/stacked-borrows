@@ -125,6 +125,44 @@ Proof.
   - induction el=>/=; naive_solver.
 Qed.
 
+Definition to_immediate (e: expr): option immediate :=
+  match e with
+  | Rec f xl e =>
+    if decide (is_closed (f :b: xl +b+ []) e) is left H
+    then Some (@RecV f xl (to_expr e) (is_closed_correct _ _ H)) else None
+  | Lit l => Some (LitV l)
+  | _ => None
+  end.
+Definition to_immediates (vl : list immediate) (el: list expr)
+  : option (list immediate) :=
+  foldl (λ acc e, vl ← acc; v ← to_immediate e; Some (vl ++ [v])) (Some vl) el.
+Lemma to_immediate_Some e v :
+  to_immediate e = Some v → of_val (ImmV v) = W.to_expr e.
+Proof.
+  revert v. induction e; intros; simplify_option_eq; auto using of_to_val.
+Qed.
+Lemma to_immediates_cons vl e el:
+  to_immediates vl (e :: el) = v ← to_immediate e; to_immediates (vl ++ [v]) el.
+Proof.
+  rewrite /to_immediates /=. destruct (to_immediate e); simpl; [done|].
+  by induction el.
+Qed.
+Lemma to_immediates_Some vl' el vl :
+  to_immediates vl' el = Some vl →
+  of_val (TValV vl) = bor_lang.TVal ((of_immediate <$> vl') ++ map to_expr el).
+Proof.
+  revert vl' vl. induction el as [|e el IH]; intros vl' vl.
+  - rewrite /to_immediates /= => [[<-]]. by rewrite app_nil_r.
+  - rewrite to_immediates_cons.
+    destruct (to_immediate e) as [v|] eqn:Eq; [|done].
+    move => /= /IH /= ->. f_equal.
+    rewrite fmap_app -(to_immediate_Some _ _ Eq) /= -app_assoc //.
+Qed.
+Lemma to_immediates_Some'  el vl :
+  to_immediates [] el = Some vl →
+  of_val (TValV vl) = bor_lang.TVal (map to_expr el).
+Proof. by move => /to_immediates_Some -> /=. Qed.
+
 (* We define [to_val (ClosedExpr _)] to be [None] since [ClosedExpr]
 constructors are only generated for closed expressions of which we know nothing
 about apart from being closed. Notice that the reverse implication of
@@ -132,17 +170,17 @@ about apart from being closed. Notice that the reverse implication of
 Definition to_val (e : expr) : option val :=
   match e with
   | Val v _ _ => Some v
-  | Rec f xl e =>
-    if decide (is_closed (f :b: xl +b+ []) e) is left H
-    then Some (ImmV$ @RecV f xl (to_expr e) (is_closed_correct _ _ H)) else None
-  | Lit l => Some (ImmV $ LitV l)
+  | Rec _ _ _ | Lit _ => ImmV <$> (to_immediate e)
   | Place l tag T => Some (PlaceV l tag T)
+  | TVal el => vl ← to_immediates [] el; Some (TValV vl)
   | _ => None
   end.
+
 Lemma to_val_Some e v :
   to_val e = Some v → of_val v = W.to_expr e.
 Proof.
   revert v. induction e; intros; simplify_option_eq; auto using of_to_val.
+  by apply to_immediates_Some'.
 Qed.
 Lemma to_val_is_Some e :
   is_Some (to_val e) → ∃ v, of_val v = to_expr e.
@@ -159,20 +197,23 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Var y => if bool_decide (y = x) then es else Var y
   | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e
-  | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
   | App e el => App (subst x es e) (map (subst x es) el)
-  | Place t tag => Place t tag
+  | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
+  | TVal el => TVal (map (subst x es) el)
+  | Place t tag T => Place t tag T
   | Deref e T mut => Deref (subst x es e) T mut
   | Ref e => Ref (subst x es e)
-  | Field e1 e2 => Field (subst x es e1) (subst x es e2)
-  | Read e => Read (subst x es e)
+  | Field e path => Field (subst x es e) path
+  | Copy e => Copy (subst x es e)
   | Write e1 e2 => Write (subst x es e1) (subst x es e2)
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
-  | Alloc T amod => Alloc T amod
-  | Free e T => Free (subst x es e) T
+  | AtomRead e => AtomRead (subst x es e)
+  | AtomWrite e1 e2 => AtomWrite (subst x es e1) (subst x es e2)
+  | Alloc T => Alloc T
+  | Free e => Free (subst x es e)
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
-  | Retag e T kind => Retag (subst x es e) T kind
+  | Retag e kind => Retag (subst x es e) kind
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
   end.
@@ -183,16 +224,17 @@ Proof.
     f_equal; eauto using is_closed_nil_subst, is_closed_to_val, eq_sym.
   - induction el=>//=. f_equal; auto.
   - induction el=>//=. f_equal; auto.
+  - induction el=>//=. f_equal; auto.
 Qed.
 
 Definition is_atomic (e: expr) : bool :=
   match e with
-  | Read e | Free e _ => bool_decide (is_Some (to_val e))
-  | Write e1 e2 =>
+  | AtomRead e | Free e => bool_decide (is_Some (to_val e))
+  | AtomWrite e1 e2 =>
     bool_decide (is_Some (to_val e1) ∧ is_Some (to_val e2))
   | CAS e0 e1 e2 =>
     bool_decide (is_Some (to_val e0) ∧ is_Some (to_val e1) ∧ is_Some (to_val e2))
-  | Alloc _ _ => true
+  | Alloc _ => true
   | _ => false
   end.
 Lemma is_atomic_correct e : is_atomic e → Atomic WeaklyAtomic (to_expr e).
@@ -202,7 +244,6 @@ Proof.
     destruct e; simpl; try done; repeat (case_match; try done);
     inversion 1; inversion BaseStep;
     try (apply val_irreducible; rewrite ?language.to_of_val; naive_solver eauto).
-
   - apply ectxi_language_sub_redexes_are_values=> /= Ki e' Hfill.
     revert He. destruct e; simpl; try done; repeat (case_match; try done);
     rewrite ?bool_decide_spec;
@@ -285,7 +326,7 @@ Ltac reshape_val e tac :=
   | of_val ?v => v
   | Lit ?l => constr:(ImmV $ LitV l)
   | Rec ?f ?xl ?e => constr:(ImmV $ RecV f xl e)
-  | Place ?l ?tag => constr:(PlaceV l tag)
+  | Place ?l ?tag ?T => constr:(PlaceV l tag T)
   end in let v := go e in tac v.
 
 Ltac reshape_expr e tac :=
@@ -302,7 +343,7 @@ Ltac reshape_expr e tac :=
   | BinOp ?op ?e1 ?e2 => go (BinOpLCtx op e2 :: K) e1
   | App ?e ?el => reshape_val e ltac:(fun f => go_fun K f (@nil val) el)
   | App ?e ?el => go (AppLCtx el :: K) e
-  | Read ?e => go (ReadCtx :: K) e
+  | Copy ?e => go (CopyCtx :: K) e
   | Write ?e1 ?e2 =>
     reshape_val e1 ltac:(fun v1 => go (WriteRCtx v1 :: K) e2)
   | Write ?e1 ?e2 => go (WriteLCtx e2 :: K) e1
@@ -310,13 +351,12 @@ Ltac reshape_expr e tac :=
      [ reshape_val e1 ltac:(fun v1 => go (CasRCtx v0 v1 :: K) e2)
      | go (CasMCtx v0 e2 :: K) e1 ])
   | CAS ?e0 ?e1 ?e2 => go (CasLCtx e1 e2 :: K) e0
-  | Free ?e ?T => go (FreeCtx T :: K) e
+  | Free ?e => go (FreeCtx :: K) e
   | Deref ?e ?T ?mut => go (DerefCtx T mut :: K) e
   | Ref ?e => go (RefCtx :: K) e
-  | Field ?e1 ?e2 =>
-    reshape_val e1 ltac:(fun v1 => go (FieldRCtx v1 :: K) e2)
+  | Field ?e ?path => go (FieldCtx path :: K) e
   | EndCall ?e => go (EndCallCtx :: K) e
-  | Retag ?e ?T ?kind => go (RetagCtx T kind :: K) e
+  | Retag ?e ?kind => go (RetagCtx kind :: K) e
   | Case ?e ?el => go (CaseCtx el :: K) e
   end
   in go (@nil ectx_item) e.
