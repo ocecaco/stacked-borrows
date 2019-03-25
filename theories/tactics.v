@@ -12,21 +12,24 @@ Inductive expr :=
 | ClosedExpr (e : bor_lang.expr) `{!Closed [] e}
 | Lit (l : lit)
 | Var (x : string)
+| App (e : expr) (el : list expr)
 | Rec (f : binder) (xl : list binder) (e : expr)
 | BinOp (op : bin_op) (e1 e2 : expr)
-| App (e : expr) (el : list expr)
-| Place (l : loc) (tag : borrow)
+| TVal (el: list expr)
+| Place (l : loc) (tag : borrow) (T: type)
 | Deref (e : expr) (T : type) (mut : option mutability)
 | Ref (e : expr)
-| Field (e1 e2 : expr)
-| Read (e : expr)
+| Field (e : expr) (path: list nat)
+| Copy (e : expr)
 | Write (e1 e2 : expr)
 | CAS (e0 e1 e2 : expr)
-| Alloc (T : type) (amod : alloc_mod)
-| Free (e : expr) (T: type)
+| AtomWrite (e1 e2: expr)
+| AtomRead (e: expr)
+| Alloc (T : type)
+| Free (e : expr)
 | NewCall
 | EndCall (e : expr)
-| Retag (e : expr) (T : type) (kind : retag_kind)
+| Retag (e : expr) (kind : retag_kind)
 | Case (e : expr) (el : list expr)
 | Fork (e : expr).
 
@@ -37,20 +40,23 @@ Fixpoint to_expr (e : expr) : bor_lang.expr :=
   | Lit l => bor_lang.Lit l
   | Var x => bor_lang.Var x
   | Rec f xl e => bor_lang.Rec f xl (to_expr e)
-  | BinOp op e1 e2 => bor_lang.BinOp op (to_expr e1) (to_expr e2)
   | App e el => bor_lang.App (to_expr e) (map to_expr el)
-  | Place l tag => bor_lang.Place l tag
+  | BinOp op e1 e2 => bor_lang.BinOp op (to_expr e1) (to_expr e2)
+  | TVal el => bor_lang.TVal (map to_expr el)
+  | Place l tag T => bor_lang.Place l tag T
   | Deref e T mut => bor_lang.Deref (to_expr e) T mut
   | Ref e => bor_lang.Ref (to_expr e)
-  | Field e1 e2 => bor_lang.Field (to_expr e1) (to_expr e2)
-  | Read e => bor_lang.Read (to_expr e)
+  | Field e path => bor_lang.Field (to_expr e) path
+  | Copy e => bor_lang.Copy (to_expr e)
   | Write e1 e2 => bor_lang.Write (to_expr e1) (to_expr e2)
   | CAS e0 e1 e2 => bor_lang.CAS (to_expr e0) (to_expr e1) (to_expr e2)
-  | Alloc T amod => bor_lang.Alloc T amod
-  | Free e T => bor_lang.Free (to_expr e) T
+  | AtomRead e => bor_lang.AtomRead (to_expr e)
+  | AtomWrite e1 e2 => bor_lang.AtomWrite (to_expr e1) (to_expr e2)
+  | Alloc T => bor_lang.Alloc T
+  | Free e => bor_lang.Free (to_expr e)
   | NewCall => bor_lang.NewCall
   | EndCall e => bor_lang.EndCall (to_expr e)
-  | Retag e T kind => bor_lang.Retag (to_expr e) T kind
+  | Retag e kind => bor_lang.Retag (to_expr e) kind
   | Case e el => bor_lang.Case (to_expr e) (map to_expr el)
   | Fork e => bor_lang.Fork (to_expr e)
   end.
@@ -60,26 +66,29 @@ Ltac of_expr e :=
   | bor_lang.Lit ?l => constr:(Lit l)
   | bor_lang.Var ?x => constr:(Var x)
   | bor_lang.Rec ?f ?xl ?e => let e := of_expr e in constr:(Rec f xl e)
-  | bor_lang.BinOp ?op ?e1 ?e2 =>
-    let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(BinOp op e1 e2)
   | bor_lang.App ?e ?el =>
     let e := of_expr e in let el := of_expr el in constr:(App e el)
-  | bor_lang.Place ?l ?tag => constr:(Place l tag)
+  | bor_lang.BinOp ?op ?e1 ?e2 =>
+    let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(BinOp op e1 e2)
+  | bor_lang.TVal ?el => let el := of_expr el in constr:(TVal el)
+  | bor_lang.Place ?l ?tag ?T => constr:(Place l tag T)
   | bor_lang.Deref ?e ?T ?mut => let e := of_expr e in constr:(Deref e T mut)
   | bor_lang.Ref ?e => let e := of_expr e in constr:(Ref e)
-  | bor_lang.Field ?e1 ?e2 =>
-    let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Field e1 e2)
-  | bor_lang.Read ?e => let e := of_expr e in constr:(Read e)
+  | bor_lang.Field ?e ?path => let e := of_expr e in constr:(Field e path)
+  | bor_lang.Copy ?e => let e := of_expr e in constr:(Copy e)
   | bor_lang.Write ?e1 ?e2 =>
     let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Write e1 e2)
   | bor_lang.CAS ?e0 ?e1 ?e2 =>
      let e0 := of_expr e0 in let e1 := of_expr e1 in let e2 := of_expr e2 in
      constr:(CAS e0 e1 e2)
-  | bor_lang.Alloc ?T ?amod => constr:(Alloc T amod)
-  | bor_lang.Free ?e ?T => let e := of_expr e in constr:(Free e T)
+  | bor_lang.AtomRead ?e => let e := of_expr e in constr:(AtomRead e)
+  | bor_lang.AtomWrite ?e1 ?e2 =>
+    let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(AtomWrite e1 e2)
+  | bor_lang.Alloc ?T => constr:(Alloc T)
+  | bor_lang.Free ?e => let e := of_expr e in constr:(Free e)
   | bor_lang.NewCall => constr:(NewCall)
   | bor_lang.EndCall ?e => let e := of_expr e in constr:(EndCall e)
-  | bor_lang.Retag ?e ?T ?kind => let e := of_expr e in constr:(Retag e T kind)
+  | bor_lang.Retag ?e ?kind => let e := of_expr e in constr:(Retag e kind)
   | bor_lang.Case ?e ?el =>
      let e := of_expr e in let el := of_expr el in constr:(Case e el)
   | bor_lang.Fork ?e => let e := of_expr e in constr:(Fork e)
@@ -97,20 +106,21 @@ Ltac of_expr e :=
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
   | Val _ _ _ | ClosedExpr _ => true
-  | Lit _ | Place _ _ | Alloc _ _ | NewCall => true
+  | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | Write e1 e2 | Field e1 e2 =>
-    is_closed X e1 && is_closed X e2
+  | BinOp _ e1 e2 | Write e1 e2 | AtomWrite e1 e2 => is_closed X e1 && is_closed X e2
+  | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
-  | Read e | Free e _ | Fork e | Deref e _ _ | Ref e | EndCall e | Retag e _ _ =>
-    is_closed X e
+  | Copy e | AtomRead e| Free e | Fork e | Field e _
+  | Deref e _ _ | Ref e | EndCall e | Retag e _ => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 Lemma is_closed_correct X e : is_closed X e → bor_lang.is_closed X (to_expr e).
 Proof.
   revert e X. fix FIX 1; destruct e=>/=;
     try naive_solver eauto using is_closed_to_val, is_closed_weaken_nil.
+  - induction el=>/=; naive_solver.
   - induction el=>/=; naive_solver.
   - induction el=>/=; naive_solver.
 Qed.
@@ -126,7 +136,7 @@ Definition to_val (e : expr) : option val :=
     if decide (is_closed (f :b: xl +b+ []) e) is left H
     then Some (ImmV$ @RecV f xl (to_expr e) (is_closed_correct _ _ H)) else None
   | Lit l => Some (ImmV $ LitV l)
-  | Place l tag => Some (PlaceV l tag)
+  | Place l tag T => Some (PlaceV l tag T)
   | _ => None
   end.
 Lemma to_val_Some e v :

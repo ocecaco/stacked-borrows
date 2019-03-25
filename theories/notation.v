@@ -28,7 +28,7 @@ Notation "'if:' e1 'then' e2 'else' e3" := (If e1%E e2%E e3%E)
   (only parsing, at level 102, e1, e2, e3 at level 150) : expr_scope.
 Notation "☠" := LitPoison : val_scope.
 
-Notation "! e" := (Read e%E) (at level 9, format "! e") : expr_scope.
+(* Notation "! e" := (Read e%E) (at level 9, format "! e") : expr_scope. *)
 
 (* The unicode ← is already part of the notation "_ ← _; _" for bind. *)
 Notation "e1 <- e2" := (Write e1%E e2%E)

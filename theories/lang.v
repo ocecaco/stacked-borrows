@@ -277,25 +277,40 @@ Inductive immediate :=
 
 (** Irreducible (language values) *)
 Inductive val :=
-| ImmV (v: immediate)
+| ImmV (v : immediate)
+| TValV (vl : list immediate)
 | PlaceV (l: loc) (tag: borrow) (T: type)
 .
 Bind Scope val_scope with val.
 Delimit Scope val_scope with V.
 
-Definition of_val (v : val) : expr :=
+Definition of_immediate (v: immediate) : expr :=
   match v with
-  | ImmV (LitV l) => Lit l
-  | ImmV (RecV f xl e) => Rec f xl e
-  | PlaceV l tag T => Place l tag T
+  | LitV l => Lit l
+  | RecV f xl e => Rec f xl e
   end.
-
-Definition to_val (e : expr) : option val :=
+Definition to_immediate (e: expr): option immediate :=
   match e with
   | Rec f xl e =>
-    if decide (Closed (f :b: xl +b+ []) e) then Some (ImmV (RecV f xl e)) else None
-  | Lit l => Some (ImmV (LitV l))
+    if decide (Closed (f :b: xl +b+ []) e) then Some (RecV f xl e) else None
+  | Lit l => Some (LitV l)
+  | _ => None
+  end.
+Definition to_immediates (vl : list immediate) (el: list expr)
+  : option (list immediate) :=
+  foldl (λ acc e, vl ← acc; v ← to_immediate e; Some (vl ++ [v])) (Some vl) el.
+
+Definition of_val (v : val) : expr :=
+  match v with
+  | ImmV v => of_immediate v
+  | TValV vl => TVal (of_immediate <$> vl)
+  | PlaceV l tag T => Place l tag T
+  end.
+Definition to_val (e : expr) : option val :=
+  match e with
+  | Rec _ _ _ | Lit _ => ImmV <$> (to_immediate e)
   | Place l T tag => Some (PlaceV l T tag)
+  | TVal el => vl ← to_immediates [] el; Some (TValV vl)
   | _ => None
   end.
 
@@ -501,6 +516,12 @@ Fixpoint field_access (T: type) (path : list nat) :
     end
   end.
 
+Fixpoint write_mem l (vl: list immediate) h: mem :=
+  match vl with
+  | [] => h
+  | v :: vl => write_mem (l +ₗ 1) vl (<[l := v]> h)
+  end.
+
 Inductive base_step :
   expr → mem → option event → expr → mem → list expr → Prop :=
 | BinOpBS op l1 l2 l' h :
@@ -516,14 +537,14 @@ Inductive base_step :
     (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) :
     base_step (Copy (Place l lbor T)) h
               (Some $ CopyEvt l lbor T)
-              (TVal (of_val ∘ ImmV <$> vl)) h
+              (of_val (TValV vl)) h
               []
 | WriteBS l lbor T el vl h (LENe: length el = tsize T)
-    (VALUES: ∀ (i: nat), (i < length vl)%nat →
-      is_Some (h !! (l +ₗ i)) ∧ to_val <$> (el !! i) = Some ∘ ImmV <$> vl !! i) :
+    (DEFINED: ∀ (i: nat), (i < length vl)%nat → is_Some (h !! (l +ₗ i)))
+    (VALUES: to_val (TVal el) = Some (TValV vl)) :
     base_step (Write (Place l lbor T) (TVal el)) h
               (Some $ WriteEvt l lbor T)
-              (Lit LitPoison) h
+              (Lit LitPoison) (write_mem l vl h)
               []
 | AllocBS l lbor T h :
     (∀ m, h !! (l +ₗ m) = None) →
@@ -1122,15 +1143,66 @@ Lemma is_closed_nil_subst e x es : is_closed [] e → subst x es e = e.
 Proof. intros. apply is_closed_subst with []; set_solver. Qed.
 
 Lemma is_closed_of_val X v : is_closed X (of_val v).
-Proof. apply is_closed_weaken_nil. destruct v as [[]|]; simpl; auto. Qed.
+Proof.
+  apply is_closed_weaken_nil. destruct v as [[]|vl|]; auto.
+  induction vl as [|v vl]; first auto. destruct v; simpl; auto.
+Qed.
+
+Lemma to_immediates_cons vl e el:
+  to_immediates vl (e :: el) = v ← to_immediate e; to_immediates (vl ++ [v]) el.
+Proof.
+  rewrite /to_immediates /=. destruct (to_immediate e); simpl; [done|].
+  by induction el.
+Qed.
+Lemma to_immediates_app vl el1 el2 :
+  to_immediates vl (el1 ++ el2) = vl' ← to_immediates vl el1; to_immediates vl' el2.
+Proof.
+  revert vl. induction el1 as [|e el1 IH]; intros vl; [done|].
+  rewrite /= 2!to_immediates_cons option_bind_assoc.
+  apply option_bind_ext; [|done]. intros; by apply IH.
+Qed.
+
+Lemma to_of_immediate v: to_immediate (of_immediate v) = Some v.
+Proof.
+  destruct v; [done|]. simplify_option_eq; [|done].
+  repeat f_equal. apply (proof_irrel _).
+Qed.
+Lemma of_to_immediate e v : to_immediate e = Some v → of_immediate v = e.
+Proof. destruct e=>//=; [|case decide => ? //]; by intros [= <-]. Qed.
+Lemma to_of_immediates vl1 vl2 :
+  to_immediates vl1 (of_immediate <$> vl2) = Some (vl1 ++ vl2).
+Proof.
+  revert vl1. induction vl2 as [|v vl2 IH]; intros vl1; [by rewrite app_nil_r|].
+  rewrite fmap_cons to_immediates_cons to_of_immediate /= IH. f_equal.
+  by rewrite (cons_middle v vl1 vl2) app_assoc.
+Qed.
+Lemma of_to_immediates vl1 el2 vl:
+  to_immediates vl1 el2 = Some vl →
+  of_val (TValV vl) = (TVal ((of_immediate <$> vl1) ++ el2)).
+Proof.
+  revert vl1 vl. induction el2 as [|e el2 IH]; intros vl1 vl.
+  - by rewrite /to_immediates /= app_nil_r => [[->]].
+  - rewrite to_immediates_cons.
+    destruct (to_immediate e) as [v|] eqn:Eqv; [|done].
+    move => /(IH _ _) ->. f_equal.
+    by rewrite fmap_app -(of_to_immediate _ _ Eqv) /= -app_assoc cons_middle.
+Qed.
+Instance of_immediate_inj : Inj (=) (=) of_immediate.
+Proof. by intros ?? Hv; apply (inj Some); rewrite -2!to_of_immediate Hv /=. Qed.
 
 Lemma to_of_val v : to_val (of_val v) = Some v.
 Proof.
-  by destruct v as [[]|]; simplify_option_eq; [| |done|]; repeat f_equal;
-    try apply (proof_irrel _).
+  destruct v as [[]|vl|]; [done|..|done].
+  - simplify_option_eq; [|done]. repeat f_equal. apply (proof_irrel _).
+  - by rewrite /= to_of_immediates /=.
 Qed.
 Lemma of_to_val e v : to_val e = Some v → of_val v = e.
-Proof. destruct e=>//=; [|case decide => ? //|]; by intros [= <-]. Qed.
+Proof.
+  destruct e=>//=; [|case decide => ? //
+                    |destruct (to_immediates [] el) as [vl|] eqn:Eq; [|done]
+                    |]; intros [= <-]; auto.
+  by rewrite (of_to_immediates _ _ _ Eq).
+Qed.
 
 Instance of_val_inj : Inj (=) (=) of_val.
 Proof. by intros ?? Hv; apply (inj Some); rewrite -2!to_of_val Hv /=. Qed.
@@ -1450,6 +1522,26 @@ Proof.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
 Qed.
 
+Instance immediate_dec_eq: EqDecision immediate.
+Proof.
+  refine (λ v1 v2, cast_if (decide (of_immediate v1 = of_immediate v2)));
+    abstract naive_solver.
+Defined.
+Instance immediate_countable : Countable immediate.
+Proof.
+  refine (inj_countable
+    (λ v, match v with
+          | LitV l => inl  l
+          | RecV f xl e => inr (f, xl, e)
+          end)
+    (λ x, match x with
+          | inl l => Some $ LitV l
+          | inr (f, xl, e) =>
+              match decide _ with left C => Some $ @RecV f xl e C | _ => None end
+          end) _).
+  intros [] =>//. by rewrite decide_left.
+Qed.
+
 Instance val_dec_eq : EqDecision val.
 Proof.
   refine (λ v1 v2, cast_if (decide (of_val v1 = of_val v2))); abstract naive_solver.
@@ -1458,17 +1550,16 @@ Instance val_countable : Countable val.
 Proof.
   refine (inj_countable
     (λ v, match v with
-          | ImmV (LitV l) => inl $ inl l
-          | ImmV (RecV f xl e) => inl $ inr (f, xl, e)
+          | ImmV v => inl $ inl v
+          | TValV vl => inl $ inr vl
           | PlaceV l bor T => inr (l, bor, T)
           end)
     (λ x, match x with
-          | inl (inl l) => Some $ ImmV $ LitV l
-          | inl (inr (f, xl, e)) =>
-              match decide _ with left C => Some $ ImmV $ @RecV f xl e C | _ => None end
+          | inl (inl v) => Some $ ImmV $ v
+          | inl (inr vl) => Some $ TValV vl
           | inr (l, bor, T) => Some $ PlaceV l bor T
           end) _).
-  intros [[]|] =>//; by rewrite decide_left.
+  by intros [].
 Qed.
 
 Instance type_inhabited : Inhabited type := populate (Scalar 0).
@@ -1487,9 +1578,22 @@ Canonical Structure stateC := leibnizC state.
 Instance fill_item_inj Ki : Inj (=) (=) (fill_item Ki).
 Proof. destruct Ki; intros ???; simplify_eq/=; auto with f_equal. Qed.
 
+Lemma to_immediates_elem_Some vl vl' el e:
+  to_immediates vl el = Some vl' → e ∈ el → is_Some (to_val e).
+Proof.
+  revert vl. induction el as [|e' ? IH]; intros vl; [by intros _ ?%elem_of_nil|].
+  rewrite to_immediates_cons.
+  destruct (to_immediate e') as [v'|] eqn:Eq'; [|done].
+  move => /= /IH In /elem_of_cons [->|/In //]. rewrite -(of_to_immediate _ _ Eq').
+  destruct v'; simpl; [|rewrite decide_left]; naive_solver.
+Qed.
+
 Lemma fill_item_val Ki e :
   is_Some (to_val (fill_item Ki e)) → is_Some (to_val e).
-Proof. intros [v ?]. destruct Ki; simplify_option_eq; eauto. Qed.
+Proof.
+  intros [v ?]. destruct Ki; simplify_option_eq; eauto.
+  eapply to_immediates_elem_Some; eauto. set_solver.
+Qed.
 
 Lemma list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2 :
   to_val e1 = None → to_val e2 = None →
@@ -1516,14 +1620,15 @@ Proof.
   destruct (list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2); auto; congruence.
 Qed.
 
-Lemma val_head_stuck e1 σ1 κ e2 σ2 efs : head_step e1 σ1 κ e2 σ2 efs → to_val e1 = None.
+Lemma val_head_stuck e1 σ1 κ e2 σ2 efs :
+  head_step e1 σ1 κ e2 σ2 efs → to_val e1 = None.
 Proof. destruct 1; inversion BaseStep; naive_solver. Qed.
 
 Lemma head_ctx_step_val Ki e σ1 κ e2 σ2 efs :
   head_step (fill_item Ki e) σ1 κ e2 σ2 efs → is_Some (to_val e).
 Proof.
   destruct Ki; inversion_clear 1; inversion_clear BaseStep;
-    simplify_option_eq; eauto. admit. admit. done.
+    simplify_option_eq; eauto; [done|..].
   eapply (Forall_forall (λ ei, is_Some (to_val ei))); eauto. set_solver.
 Qed.
 
