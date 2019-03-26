@@ -8,17 +8,47 @@ Coercion Var : string >-> expr.
 Coercion BNamed : string >-> binder.
 Notation "<>" := BAnon : lrust_binder_scope.
 
+(** Lambda's arguments *)
 Notation "[ ]" := (@nil expr) : expr_scope.
 Notation "[ x ]" := (@cons expr x%E (@nil expr)) : expr_scope.
 Notation "[ x1 ; x2 ; .. ; xn ]" :=
   (@cons expr x1%E (@cons expr x2%E
         (..(@cons expr xn%E (@nil expr))..))) : expr_scope.
 
+(** Rvalues *)
+Notation "#[ ]" := (TVal (@nil expr)) : expr_scope.
+Notation "#[ x ]" := (TVal (@cons expr x%E (@nil expr))) : expr_scope.
+Notation "#[ x1 ; x2 ; .. ; xn ]" :=
+  (TVal (@cons expr x1%E (@cons expr x2%E
+        (..(@cons expr xn%E (@nil expr))..)))) : expr_scope.
+
 (* No scope for the values, does not conflict and scope is often not inferred
 properly. *)
 Notation "# l" := (ImmV (LitV l%Z%V%L)) (at level 8, format "# l").
 Notation "# l" := (Lit l%Z%V%L) (at level 8, format "# l") : expr_scope.
 
+(** Some common types *)
+Notation int := (Scalar 1).
+Notation int_arr n := (Scalar n).
+Notation "'&mut' T" := (Reference (RefPtr Mutable) T%RustT)
+  (at level 8, format "&mut  T") : lrust_type.
+Notation "'&' T" := (Reference (RefPtr Immutable) T%RustT)
+  (at level 8, format "&  T")  : lrust_type.
+Notation "'*raw' T" := (Reference RawPtr T%RustT)
+  (at level 8, format "*raw  T") : lrust_type.
+Notation "'Box<' T '>'" := (Reference RawPtr T%RustT)
+  (at level 8, format "Box< T >") : lrust_type.
+
+(** Pointer operations *)
+Notation "& e" := (Ref e%E) (at level 8, format "& e") : expr_scope.
+Notation "*mut{ T } e" := (Deref e%E T%RustT (Some Mutable))
+  (at level 9, format "*mut{ T }  e") : expr_scope.
+Notation "*{ T } e" := (Deref e%E T%RustT (Some Immutable))
+  (at level 9, format "*{ T }  e") : expr_scope.
+Notation "*raw{ T } e" := (Deref e%E T%RustT None)
+  (at level 9, format "*raw{ T }  e") : expr_scope.
+
+Notation "'Copy1' e" := (Proj (Copy e%E) #0) (at level 10) : expr_scope.
 
 (** Syntax inspired by Coq/Ocaml. Constructions with higher precedence come
     first. *)

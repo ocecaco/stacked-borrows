@@ -193,6 +193,8 @@ Inductive expr :=
 | Rec (f : binder) (xl : list binder) (e : expr)
 (* temp values *)
 | TVal (el: list expr)
+| Proj (e1 e2 : expr)
+| Conc (e1 e2: expr)
 (* bin op *)
 | BinOp (op : bin_op) (e1 e2 : expr)
 (* place operation *)
@@ -233,8 +235,10 @@ Bind Scope expr_scope with expr.
 Delimit Scope expr_scope with E.
 
 Arguments App _%E _%E.
-Arguments TVal _%E.
 Arguments BinOp _ _%E _%E.
+Arguments TVal _%E.
+Arguments Proj _%E _%E.
+Arguments Conc _%E _%E.
 Arguments Deref _%E _%RustT _.
 Arguments Ref _%E.
 Arguments Field _%E _.
@@ -255,12 +259,12 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | AtomWrite e1 e2
-  | Write e1 e2 => is_closed X e1 && is_closed X e2
+  | BinOp _ e1 e2 | AtomWrite e1 e2 | Write e1 e2
+    | Conc e1 e2 | Proj e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
   | AtomRead e | Copy e | Deref e _ _ | Ref e | Field e _
-  | Free e | EndCall e | Retag e _ | Fork e => is_closed X e
+    | Free e | EndCall e | Retag e _ | Fork e => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 
@@ -319,12 +323,14 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   match e with
   | Var y => if bool_decide (y = x) then es else Var y
   | Lit l => Lit l
-  | TVal el => TVal (map (subst x es) el)
   | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e
   | Place l tag T => Place l tag T
-  | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
   | App e1 el => App (subst x es e1) (map (subst x es) el)
+  | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
+  | TVal el => TVal (map (subst x es) el)
+  | Proj e1 e2 => Proj (subst x es e1) (subst x es e2)
+  | Conc e1 e2 => Conc (subst x es e1) (subst x es e2)
   | Copy e => Copy (subst x es e)
   | Write e1 e2 => Write (subst x es e1) (subst x es e2)
   | Alloc T => Alloc T
@@ -367,21 +373,25 @@ Qed.
 
 (** Evaluation contexts *)
 Inductive ectx_item :=
+| AppLCtx (el : list expr)
+| AppRCtx (v : val) (vl : list val) (el : list expr)
 | BinOpLCtx (op : bin_op) (e2 : expr)
 | BinOpRCtx (op : bin_op) (v1 : val)
 | TValCtx (vl : list val) (el : list expr)
-| AppLCtx (el : list expr)
-| AppRCtx (v : val) (vl : list val) (el : list expr)
+| ProjLCtx (e : expr)
+| ProjRCtx (v : val)
+| ConcLCtx (e : expr)
+| ConcRCtx (v : val)
 | CopyCtx
 | WriteLCtx (e : expr)
 | WriteRCtx (v : val)
+| FreeCtx
 | CasLCtx (e1 e2: expr)
 | CasMCtx (v0 : val) (e2 : expr)
 | CasRCtx (v0 : val) (v1 : val)
 | AtRdCtx
 | AtWrLCtx (e : expr)
 | AtWrRCtx (v : val)
-| FreeCtx
 | DerefCtx (T: type) (mut: option mutability)
 | RefCtx
 | FieldCtx (path : list nat)
@@ -391,21 +401,25 @@ Inductive ectx_item :=
 
 Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   match Ki with
+  | AppLCtx el => App e el
+  | AppRCtx v vl el => App (of_val v) ((of_val <$> vl) ++ e :: el)
   | BinOpLCtx op e2 => BinOp op e e2
   | BinOpRCtx op v1 => BinOp op (of_val v1) e
   | TValCtx vl el => TVal ((of_val <$> vl) ++ e :: el)
-  | AppLCtx el => App e el
-  | AppRCtx v vl el => App (of_val v) ((of_val <$> vl) ++ e :: el)
+  | ProjLCtx e2 => Proj e e2
+  | ProjRCtx v1 => Proj (of_val v1) e
+  | ConcLCtx e2 => Conc e e2
+  | ConcRCtx v1 => Conc (of_val v1) e
   | CopyCtx => Copy e
   | WriteLCtx e2 => Write e e2
   | WriteRCtx v1 => Write (of_val v1) e
+  | FreeCtx => Free e
   | CasLCtx e1 e2 => CAS e e1 e2
   | CasMCtx v0 e2 => CAS (of_val v0) e e2
   | CasRCtx v0 v1 => CAS (of_val v0) (of_val v1) e
   | AtRdCtx => AtomRead e
   | AtWrLCtx e2 => AtomWrite e e2
   | AtWrRCtx v1 => AtomWrite (of_val v1) e
-  | FreeCtx => Free e
   | DerefCtx T mut => Deref e T mut
   | RefCtx => Ref e
   | FieldCtx path => Field e path
@@ -533,6 +547,16 @@ Inductive base_step :
     Closed (f :b: xl +b+ []) e →
     subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
     base_step (App (Rec f xl e) el) h None e' h []
+(* TODO: add more operations for tempvalue lists *)
+| ProjBS h el i vl v
+    (DEFINED: 0 ≤ i ∧ vl !! (Z.to_nat i) = Some v)
+    (VALUES: to_val (TVal el) = Some (TValV vl)) :
+    base_step (Proj (TVal el) (Lit $ LitInt i)) h None (of_val (ImmV v)) h []
+| ConcBS h el1 el2 vl1 vl2
+    (VALUES1: to_val (TVal el1) = Some (TValV vl1))
+    (VALUES2: to_val (TVal el2) = Some (TValV vl2)):
+    base_step (Conc (TVal el1) (TVal el2)) h
+              None (of_val (TValV (vl1 ++ vl2))) h []
 | CopyBS l lbor T (vl: list immediate) h (LEN: length vl = tsize T)
     (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) :
     base_step (Copy (Place l lbor T)) h
@@ -1417,7 +1441,8 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
       bool_decide (kind = kind') && expr_beq e e'
   | Copy e, Copy e' | Ref e, Ref e'
   | AtomRead e, AtomRead e' | EndCall e, EndCall e' => expr_beq e e'
-  | Write e1 e2, Write e1' e2' | AtomWrite e1 e2, AtomWrite e1' e2' =>
+  | Proj e1 e2, Proj e1' e2' | Conc e1 e2, Conc e1' e2'
+    | Write e1 e2, Write e1' e2' | AtomWrite e1 e2, AtomWrite e1' e2' =>
       expr_beq e1 e1' && expr_beq e2 e2'
   | Field e path, Field e' path' => expr_beq e e' && bool_decide (path = path')
   | CAS e0 e1 e2, CAS e0' e1' e2' =>
@@ -1431,8 +1456,8 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
 Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
 Proof.
   revert e1 e2; fix FIX 1;
-    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | | | |? el1|],
-             e2 as [| |? el2| |el2| | | | | | | | | | | | | | | |? el2|];
+    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | | | | | |? el1|],
+             e2 as [| |? el2| |el2| | | | | | | | | | | | | | | | | |? el2|];
     simpl; try done;
     rewrite ?andb_True ?bool_decide_spec ?FIX;
     try (split; intro; [destruct_and?|split_and?]; congruence).
@@ -1462,58 +1487,62 @@ Proof.
       | Lit l => GenNode 1 [GenLeaf $ inl $ inl $ inl $ inr l]
       | Rec f xl e => GenNode 2 [GenLeaf $ inl $ inl $ inr $ inl f;
                                  GenLeaf $ inl $ inl $ inr $ inr xl; go e]
-      | TVal el => GenNode 3 (go <$> el)
-      | Place l tag T => GenNode 4 [GenLeaf $ inl $ inr $ inl $ inl l;
+      | App e el => GenNode 3 (go e :: (go <$> el))
+      | BinOp op e1 e2 => GenNode 4 [GenLeaf $ inl $ inr $ inr $ inr op;
+                                     go e1; go e2]
+      | TVal el => GenNode 5 (go <$> el)
+      | Proj e1 e2 => GenNode 6 [go e1; go e2]
+      | Conc e1 e2 => GenNode 7 [go e1; go e2]
+      | Place l tag T => GenNode 8 [GenLeaf $ inl $ inr $ inl $ inl l;
                                     GenLeaf $ inl $ inr $ inl $ inr tag;
                                     GenLeaf $ inl $ inr $ inr $ inl T]
-      | BinOp op e1 e2 => GenNode 5 [GenLeaf $ inl $ inr $ inr $ inr op;
-                                     go e1; go e2]
-      | App e el => GenNode 6 (go e :: (go <$> el))
-      | Copy e => GenNode 7 [go e]
-      | Write e1 e2 => GenNode 8 [go e1; go e2]
-      | CAS e0 e1 e2 => GenNode 9 [go e0; go e1; go e2]
-      | AtomWrite e1 e2 => GenNode 10 [go e1; go e2]
-      | AtomRead e => GenNode 11 [go e]
-      | Free e => GenNode 12 [go e]
-      | Alloc T => GenNode 13 [GenLeaf $ inr $ inl $ inl $ inl T]
-      | Deref e T mut => GenNode 14 [GenLeaf $ inr $ inl $ inl $ inr T;
+      | Copy e => GenNode 9 [go e]
+      | Write e1 e2 => GenNode 10 [go e1; go e2]
+      | Free e => GenNode 11 [go e]
+      | Alloc T => GenNode 12 [GenLeaf $ inr $ inl $ inl $ inl T]
+      | CAS e0 e1 e2 => GenNode 13 [go e0; go e1; go e2]
+      | AtomWrite e1 e2 => GenNode 14 [go e1; go e2]
+      | AtomRead e => GenNode 15 [go e]
+      | Deref e T mut => GenNode 16 [GenLeaf $ inr $ inl $ inl $ inr T;
                                      GenLeaf $ inr $ inl $ inr mut;
                                      go e]
-      | Ref e => GenNode 15 [go e]
-      | Field e path => GenNode 16 [GenLeaf $ inr $ inr $ inl path; go e]
-      | NewCall => GenNode 17 []
-      | EndCall e => GenNode 18 [go e]
-      | Retag e kind => GenNode 19 [GenLeaf $ inr $ inr $ inr kind; go e]
-      | Case e el => GenNode 20 (go e :: (go <$> el))
-      | Fork e => GenNode 21 [go e]
+      | Ref e => GenNode 17 [go e]
+      | Field e path => GenNode 18 [GenLeaf $ inr $ inr $ inl path; go e]
+      | NewCall => GenNode 19 []
+      | EndCall e => GenNode 20 [go e]
+      | Retag e kind => GenNode 21 [GenLeaf $ inr $ inr $ inr kind; go e]
+      | Case e el => GenNode 22 (go e :: (go <$> el))
+      | Fork e => GenNode 23 [go e]
      end)
     (fix go s := match s with
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
      | GenNode 1 [GenLeaf (inl (inl (inl (inr l))))] => Lit l
      | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
                   GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)
-     | GenNode 3 el => TVal (go <$> el)
-     | GenNode 4 [GenLeaf (inl (inr (inl (inl l))));
+     | GenNode 3 (e :: el) => App (go e) (go <$> el)
+     | GenNode 4 [GenLeaf (inl (inr (inr (inr op)))); e1; e2] => BinOp op (go e1) (go e2)
+     | GenNode 5 el => TVal (go <$> el)
+     | GenNode 6 [e1; e2] => Proj (go e1) (go e2)
+     | GenNode 7 [e1; e2] => Conc (go e1) (go e2)
+     | GenNode 8 [GenLeaf (inl (inr (inl (inl l))));
                   GenLeaf (inl (inr (inl (inr tag))));
                   GenLeaf (inl (inr (inr (inl T))))] => Place l tag T
-     | GenNode 5 [GenLeaf (inl (inr (inr (inr op)))); e1; e2] => BinOp op (go e1) (go e2)
-     | GenNode 6 (e :: el) => App (go e) (go <$> el)
-     | GenNode 7 [e] => Copy (go e)
-     | GenNode 8 [e1; e2] => Write (go e1) (go e2)
-     | GenNode 9 [e0; e1; e2] => CAS (go e0) (go e1) (go e2)
-     | GenNode 10 [e1; e2] => AtomWrite (go e1) (go e2)
-     | GenNode 11 [e] => AtomRead (go e)
-     | GenNode 12 [e] => Free (go e)
-     | GenNode 13 [GenLeaf (inr (inl (inl (inl T))))] => Alloc T
-     | GenNode 14 [GenLeaf (inr (inl (inl (inr T))));
+     | GenNode 9 [e] => Copy (go e)
+     | GenNode 10 [e1; e2] => Write (go e1) (go e2)
+     | GenNode 11 [e] => Free (go e)
+     | GenNode 12 [GenLeaf (inr (inl (inl (inl T))))] => Alloc T
+     | GenNode 13 [e0; e1; e2] => CAS (go e0) (go e1) (go e2)
+     | GenNode 14 [e1; e2] => AtomWrite (go e1) (go e2)
+     | GenNode 15 [e] => AtomRead (go e)
+     | GenNode 16 [GenLeaf (inr (inl (inl (inr T))));
                    GenLeaf (inr (inl (inr mut))); e] => Deref (go e) T mut
-     | GenNode 15 [e] => Ref (go e)
-     | GenNode 16 [GenLeaf (inr (inr (inl path))); e] => Field (go e) path
-     | GenNode 17 [] => NewCall
-     | GenNode 18 [e] => EndCall (go e)
-     | GenNode 19 [GenLeaf (inr (inr (inr kind))); e] => Retag (go e) kind
-     | GenNode 20 (e :: el) => Case (go e) (go <$> el)
-     | GenNode 21 [e] => Fork (go e)
+     | GenNode 17 [e] => Ref (go e)
+     | GenNode 18 [GenLeaf (inr (inr (inl path))); e] => Field (go e) path
+     | GenNode 19 [] => NewCall
+     | GenNode 20 [e] => EndCall (go e)
+     | GenNode 21 [GenLeaf (inr (inr (inr kind))); e] => Retag (go e) kind
+     | GenNode 22 (e :: el) => Case (go e) (go <$> el)
+     | GenNode 23 [e] => Fork (go e)
      | _ => Lit LitPoison
      end) _).
   fix FIX 1. intros []; f_equal=>//; revert el; clear -FIX.
@@ -1611,8 +1640,8 @@ Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
   to_val e1 = None → to_val e2 = None →
   fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
 Proof.
-  destruct Ki1 as [| |vl1 el1| |v1 vl1 el1| | | | | | | | | | | | | | | |],
-           Ki2 as [| |vl2 el2| |v2 vl2 el2| | | | | | | | | | | | | | | |];
+  destruct Ki1 as [|v1 vl1 el1| | |vl1 el1| | | | | | | | | | | | | | | | | | | |],
+           Ki2 as [|v2 vl2 el2| | |vl2 el2| | | | | | | | | | | | | | | | | | | |];
   intros He1 He2 EQ; try discriminate; simplify_eq/=;
     repeat match goal with
     | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H

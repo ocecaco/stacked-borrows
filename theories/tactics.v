@@ -16,17 +16,19 @@ Inductive expr :=
 | Rec (f : binder) (xl : list binder) (e : expr)
 | BinOp (op : bin_op) (e1 e2 : expr)
 | TVal (el: list expr)
+| Proj (e1 e2: expr)
+| Conc (e1 e2: expr)
 | Place (l : loc) (tag : borrow) (T: type)
 | Deref (e : expr) (T : type) (mut : option mutability)
 | Ref (e : expr)
 | Field (e : expr) (path: list nat)
 | Copy (e : expr)
 | Write (e1 e2 : expr)
+| Alloc (T : type)
+| Free (e : expr)
 | CAS (e0 e1 e2 : expr)
 | AtomWrite (e1 e2: expr)
 | AtomRead (e: expr)
-| Alloc (T : type)
-| Free (e : expr)
 | NewCall
 | EndCall (e : expr)
 | Retag (e : expr) (kind : retag_kind)
@@ -43,17 +45,19 @@ Fixpoint to_expr (e : expr) : bor_lang.expr :=
   | App e el => bor_lang.App (to_expr e) (map to_expr el)
   | BinOp op e1 e2 => bor_lang.BinOp op (to_expr e1) (to_expr e2)
   | TVal el => bor_lang.TVal (map to_expr el)
+  | Proj e1 e2 => bor_lang.Proj (to_expr e1) (to_expr e2)
+  | Conc e1 e2 => bor_lang.Conc (to_expr e1) (to_expr e2)
   | Place l tag T => bor_lang.Place l tag T
   | Deref e T mut => bor_lang.Deref (to_expr e) T mut
   | Ref e => bor_lang.Ref (to_expr e)
   | Field e path => bor_lang.Field (to_expr e) path
   | Copy e => bor_lang.Copy (to_expr e)
   | Write e1 e2 => bor_lang.Write (to_expr e1) (to_expr e2)
+  | Alloc T => bor_lang.Alloc T
+  | Free e => bor_lang.Free (to_expr e)
   | CAS e0 e1 e2 => bor_lang.CAS (to_expr e0) (to_expr e1) (to_expr e2)
   | AtomRead e => bor_lang.AtomRead (to_expr e)
   | AtomWrite e1 e2 => bor_lang.AtomWrite (to_expr e1) (to_expr e2)
-  | Alloc T => bor_lang.Alloc T
-  | Free e => bor_lang.Free (to_expr e)
   | NewCall => bor_lang.NewCall
   | EndCall e => bor_lang.EndCall (to_expr e)
   | Retag e kind => bor_lang.Retag (to_expr e) kind
@@ -67,25 +71,29 @@ Ltac of_expr e :=
   | bor_lang.Var ?x => constr:(Var x)
   | bor_lang.Rec ?f ?xl ?e => let e := of_expr e in constr:(Rec f xl e)
   | bor_lang.App ?e ?el =>
-    let e := of_expr e in let el := of_expr el in constr:(App e el)
+      let e := of_expr e in let el := of_expr el in constr:(App e el)
   | bor_lang.BinOp ?op ?e1 ?e2 =>
-    let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(BinOp op e1 e2)
+      let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(BinOp op e1 e2)
   | bor_lang.TVal ?el => let el := of_expr el in constr:(TVal el)
   | bor_lang.Place ?l ?tag ?T => constr:(Place l tag T)
+  | bor_lang.Proj ?e1 ?e2 =>
+      let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Proj e1 e2)
+  | bor_lang.Conc ?e1 ?e2 =>
+      let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Conc e1 e2)
   | bor_lang.Deref ?e ?T ?mut => let e := of_expr e in constr:(Deref e T mut)
   | bor_lang.Ref ?e => let e := of_expr e in constr:(Ref e)
   | bor_lang.Field ?e ?path => let e := of_expr e in constr:(Field e path)
   | bor_lang.Copy ?e => let e := of_expr e in constr:(Copy e)
   | bor_lang.Write ?e1 ?e2 =>
     let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Write e1 e2)
+  | bor_lang.Alloc ?T => constr:(Alloc T)
+  | bor_lang.Free ?e => let e := of_expr e in constr:(Free e)
   | bor_lang.CAS ?e0 ?e1 ?e2 =>
      let e0 := of_expr e0 in let e1 := of_expr e1 in let e2 := of_expr e2 in
      constr:(CAS e0 e1 e2)
   | bor_lang.AtomRead ?e => let e := of_expr e in constr:(AtomRead e)
   | bor_lang.AtomWrite ?e1 ?e2 =>
-    let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(AtomWrite e1 e2)
-  | bor_lang.Alloc ?T => constr:(Alloc T)
-  | bor_lang.Free ?e => let e := of_expr e in constr:(Free e)
+      let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(AtomWrite e1 e2)
   | bor_lang.NewCall => constr:(NewCall)
   | bor_lang.EndCall ?e => let e := of_expr e in constr:(EndCall e)
   | bor_lang.Retag ?e ?kind => let e := of_expr e in constr:(Retag e kind)
@@ -94,7 +102,7 @@ Ltac of_expr e :=
   | bor_lang.Fork ?e => let e := of_expr e in constr:(Fork e)
   | @nil bor_lang.expr => constr:(@nil expr)
   | @cons bor_lang.expr ?e ?el =>
-    let e := of_expr e in let el := of_expr el in constr:(e::el)
+      let e := of_expr e in let el := of_expr el in constr:(e::el)
   | to_expr ?e => e
   | of_val ?v => constr:(Val v (of_val v) (to_of_val v))
   | _ => match goal with
@@ -109,11 +117,12 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | Write e1 e2 | AtomWrite e1 e2 => is_closed X e1 && is_closed X e2
+  | BinOp _ e1 e2 | Write e1 e2 | AtomWrite e1 e2
+      | Proj e1 e2 | Conc e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
   | Copy e | AtomRead e| Free e | Fork e | Field e _
-  | Deref e _ _ | Ref e | EndCall e | Retag e _ => is_closed X e
+    | Deref e _ _ | Ref e | EndCall e | Retag e _ => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 Lemma is_closed_correct X e : is_closed X e → bor_lang.is_closed X (to_expr e).
@@ -200,17 +209,19 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | App e el => App (subst x es e) (map (subst x es) el)
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
   | TVal el => TVal (map (subst x es) el)
+  | Proj e1 e2 => Proj (subst x es e1) (subst x es e2)
+  | Conc e1 e2 => Conc (subst x es e1) (subst x es e2)
   | Place t tag T => Place t tag T
   | Deref e T mut => Deref (subst x es e) T mut
   | Ref e => Ref (subst x es e)
   | Field e path => Field (subst x es e) path
   | Copy e => Copy (subst x es e)
   | Write e1 e2 => Write (subst x es e1) (subst x es e2)
+  | Alloc T => Alloc T
+  | Free e => Free (subst x es e)
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
   | AtomRead e => AtomRead (subst x es e)
   | AtomWrite e1 e2 => AtomWrite (subst x es e1) (subst x es e2)
-  | Alloc T => Alloc T
-  | Free e => Free (subst x es e)
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
   | Retag e kind => Retag (subst x es e) kind
@@ -317,7 +328,7 @@ Ltac inv_head_step :=
      inversion H; subst; clear H
   end. *)
 
-(** The tactic [reshape_expr e tac] decomposes the expression [e] into an
+(* (** The tactic [reshape_expr e tac] decomposes the expression [e] into an
 evaluation context [K] and a subexpression [e']. It calls the tactic [tac K e']
 for each possible decomposition until [tac] succeeds. *)
 Ltac reshape_val e tac :=
@@ -359,4 +370,4 @@ Ltac reshape_expr e tac :=
   | Retag ?e ?kind => go (RetagCtx kind :: K) e
   | Case ?e ?el => go (CaseCtx el :: K) e
   end
-  in go (@nil ectx_item) e.
+  in go (@nil ectx_item) e. *)
