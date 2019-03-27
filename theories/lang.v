@@ -1077,26 +1077,26 @@ Inductive instrumented_step h α β (clock: time):
 | DefaultIS :
     instrumented_step h α β clock None h α β clock
 (* This implements EvalContextExt::tag_new_allocation. *)
-| AllocStackIS h' t x T :
+| AllocStackIS t x T :
     (* UniqB t is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     instrumented_step h α β clock
-                      (Some $ AllocEvt x (UniqB t) T) h'
+                      (Some $ AllocEvt x (UniqB t) T) h
                       (init_stacks x (tsize T) α (Uniq clock)) β (S clock)
 (* This implements AllocationExtra::memory_read. *)
 | CopyIS α' l lbor T :
     (accessN α β l lbor (tsize T) AccessRead = Some α') →
     instrumented_step h α β clock (Some $ CopyEvt l lbor T) h α' β clock
 (* This implements AllocationExtra::memory_written. *)
-| WriteIS α' h' l lbor T :
+| WriteIS α' l lbor T :
     (accessN α β l lbor (tsize T) AccessWrite = Some α') →
     instrumented_step h α β clock
-                      (Some $ WriteEvt l lbor T) h' α' β clock
+                      (Some $ WriteEvt l lbor T) h α' β clock
 (* This implements AllocationExtra::memory_deallocated. *)
-| DeallocIS α' h' l lbor T :
+| DeallocIS α' l lbor T :
     (accessN α β l lbor (tsize T) AccessDealloc = Some α') →
     instrumented_step h α β clock
-                      (Some $ DeallocEvt l lbor T) h' α' β clock
+                      (Some $ DeallocEvt l lbor T) h α' β clock
 | NewCallIS:
     let call : call_id := fresh (dom (gset call_id) β) in
     instrumented_step h α β clock
@@ -1127,13 +1127,10 @@ Implicit Type (σ: state).
 
 Inductive head_step :
   expr → state → list Empty_set → expr → state → list expr → Prop :=
-  | BaseHS σ e e' efs h'
-      (BaseStep : base_step e σ.(cheap) None e' h' efs)
-  : head_step e σ [] e' (mkState h' σ.(cstk) σ.(cbar) σ.(cclk)) efs
-  | InstrHS σ e e' evt h0 h' α' β' clock'
-      (BaseStep : base_step e σ.(cheap) (Some evt) e' h0 [])
-      (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) (Some evt) h' α' β' clock')
-  : head_step e σ [] e' (mkState h' α' β' clock') [] .
+  | HeadStep σ e e' efs oevent h0 h' α' β' clock'
+      (BaseStep : base_step e σ.(cheap) oevent e' h0 efs)
+      (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) oevent h' α' β' clock')
+  : head_step e σ [] e' (mkState h' α' β' clock') efs .
 
 (** Closed expressions *)
 Lemma is_closed_weaken X Y e : is_closed X e → X ⊆ Y → is_closed Y e.
