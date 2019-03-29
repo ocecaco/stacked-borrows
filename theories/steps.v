@@ -1,6 +1,6 @@
 From stbor Require Import lang notation.
 
-Class Wellformed A := Wf : A →  Prop.
+Class Wellformed A := Wf : A → Prop.
 Existing Class Wf.
 
 Record state_wf' σ := {

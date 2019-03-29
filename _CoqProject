@@ -5,3 +5,4 @@ theories/notation.v
 theories/tactics.v
 theories/steps.v
 theories/examples.v
+theories/simulation.v
