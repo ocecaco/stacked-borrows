@@ -368,14 +368,20 @@ Lemma write_mem_lookup l vl h :
   (∀ (l': loc), (∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i) →
     write_mem l vl h !! l' = h !! l').
 Proof.
-  revert l h. induction vl as [|v vl IH]; move => l h; simpl; split;
-    [intros ?; by lia|done|..].
-  - intros i Lt. admit.
-  - intros l' Lt. destruct (IH (l +ₗ 1) (<[l:=v]> h)) as [IH1 IH2].
-    rewrite IH2.
-    + admit.
-    + admit.
-Abort.
+  revert l h. induction vl as [|v vl IH]; move => l h; simpl;
+    [split; [intros ?; by lia|done]|].
+  destruct (IH (l +ₗ 1) (<[l:=v]> h)) as [IH1 IH2]. split.
+  - intros i Lt. destruct i as [|i].
+    + rewrite shift_loc_0_nat /=. rewrite IH2; [by rewrite lookup_insert|].
+      move => ? _.
+      rewrite shift_loc_assoc -{1}(shift_loc_0 l) => /shift_loc_inj ?. by lia.
+    + rewrite /= -IH1; [|lia].  by rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
+  - intros l' Lt. rewrite IH2.
+    + rewrite lookup_insert_ne; [done|].
+      move => ?. subst l'. apply (Lt O); [lia|by rewrite shift_loc_0_nat].
+    + move => i Lti. rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
+      apply Lt. by lia.
+Qed.
 
 Lemma write_step_wf σ σ' e e' obs efs h0 l bor T vl :
   base_step e σ.(cheap) (Some $ WriteEvt l bor T vl) obs e' h0 efs →
@@ -391,7 +397,19 @@ Proof.
   constructor; simpl.
   - rewrite -(accessN_dom α β' l bor (tsize T) AccessWrite); [|done..].
     rewrite write_mem_dom; [by apply WF|done].
-  - admit. (* only true if whatever in el is bound in the memory *)
+  - move => l0 l' bor'. destruct (write_mem_lookup l vl h) as [IN OUT].
+    case (decide (l0.1 = l.1)) => Eq1.
+    + have Eql0: l0 = (l +ₗ (l0.2 - l.2)).
+      { rewrite /shift_loc -Eq1. destruct l0; simpl. f_equal. by lia. }
+      case (decide (0 ≤ l0.2 - l.2 < length vl)) => [[Le Lt]|NLe].
+      * rewrite Eql0 -(Z2Nat.id _ Le) IN.
+        intros ?%elem_of_list_lookup_2. by eapply WFvl.
+        rewrite -(Nat2Z.id (length vl)) -Z2Nat.inj_lt; [done|lia..].
+      * rewrite OUT; [by apply (state_wf_mem_bor _ WF)|].
+        move => i Lt Eq. rewrite Eql0 in Eq. apply shift_loc_inj in Eq.
+        apply NLe. rewrite Eq. lia.
+    + rewrite OUT; [by apply (state_wf_mem_bor _ WF)|].
+      move => ? _ Eq. apply Eq1. rewrite Eq. by apply shift_loc_block.
   - intros l' stk'.
     move => /(accessN_stack α β' l bor (tsize T) AccessWrite α' _ _ l' stk') Eq.
     destruct Eq as [stk [Eq [_ Sub2]]]; [done..|].
@@ -404,7 +422,7 @@ Proof.
     destruct Eq as [stk [Eq [Sub1 _]]]; [done..|].
     intros si Ini. apply (state_wf_stack_item _ WF _ _ Eq).
     move : Ini. by apply elem_of_list_suffix_proper.
-Abort.
+Qed.
 
 (** Deref *)
 Lemma deref_step_wf σ σ' e e' obs efs h0 l bor T mut :
