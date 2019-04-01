@@ -229,6 +229,8 @@ Inductive expr :=
 | Case (e : expr) (el: list expr)
 (* concurrency *)
 | Fork (e : expr)
+(* observable behavior *)
+| SysCall (id: nat)
 .
 
 Bind Scope expr_scope with expr.
@@ -256,7 +258,7 @@ Arguments Fork _%E.
 (** Closedness *)
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
-  | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
+  | Lit _ | Place _ _ _ | Alloc _ | NewCall | SysCall _ => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
   | BinOp _ e1 e2 | AtomWrite e1 e2 | Write e1 e2
@@ -346,6 +348,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Retag e kind => Retag (subst x es e) kind
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
+  | SysCall id => SysCall id
   end.
 
 (* formal argument list substitution *)
@@ -502,12 +505,13 @@ Definition stuck_term := App (Lit $ LitInt 0) [].
 Inductive event :=
 | AllocEvt (l : loc) (lbor: borrow) (T: type)
 | DeallocEvt (l: loc) (lbor: borrow) (T: type)
-| CopyEvt (l: loc) (lbor: borrow) (T: type)
-| WriteEvt (l: loc) (lbor: borrow) (T: type)
+| CopyEvt (l: loc) (lbor: borrow) (T: type) (vl: list immediate)
+| WriteEvt (l: loc) (lbor: borrow) (T: type) (vl: list immediate)
 | DerefEvt (l: loc) (lbor: borrow) (T: type) (mut: option mutability)
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
+| SysCallEvt (id: nat)
 .
 
 (* Compute subtype of `T` and offset to it from `path` *)
@@ -536,80 +540,85 @@ Fixpoint write_mem l (vl: list immediate) h: mem :=
   | v :: vl => write_mem (l +ₗ 1) vl (<[l := v]> h)
   end.
 
+Notation observation := nat (only parsing).
+
 Inductive base_step :
-  expr → mem → option event → expr → mem → list expr → Prop :=
+  expr → mem → option event → list observation → expr → mem → list expr → Prop :=
 | BinOpBS op l1 l2 l' h :
     bin_op_eval h op l1 l2 l' →
     base_step (BinOp op (TVal [Lit l1]) (TVal [Lit l2])) h
-              None (TVal [Lit l']) h []
+              None [] (TVal [Lit l']) h []
 | BetaBS f xl e e' el h :
     Forall (λ ei, is_Some (to_val ei)) el →
     Closed (f :b: xl +b+ []) e →
     subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
-    base_step (App (Rec f xl e) el) h None e' h []
+    base_step (App (Rec f xl e) el) h None [] e' h []
 (* TODO: add more operations for tempvalue lists *)
 | ProjBS h el i vl v
     (DEFINED: 0 ≤ i ∧ vl !! (Z.to_nat i) = Some v)
     (VALUES: to_val (TVal el) = Some (TValV vl)) :
-    base_step (Proj (TVal el) (Lit $ LitInt i)) h None (of_val (ImmV v)) h []
+    base_step (Proj (TVal el) (Lit $ LitInt i)) h None [] (of_val (ImmV v)) h []
 | ConcBS h el1 el2 vl1 vl2
     (VALUES1: to_val (TVal el1) = Some (TValV vl1))
     (VALUES2: to_val (TVal el2) = Some (TValV vl2)):
     base_step (Conc (TVal el1) (TVal el2)) h
-              None (of_val (TValV (vl1 ++ vl2))) h []
+              None [] (of_val (TValV (vl1 ++ vl2))) h []
 | CopyBS l lbor T (vl: list immediate) h (LEN: length vl = tsize T)
     (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) :
     base_step (Copy (Place l lbor T)) h
-              (Some $ CopyEvt l lbor T)
+              (Some $ CopyEvt l lbor T vl) []
               (of_val (TValV vl)) h
               []
 | WriteBS l lbor T el vl h (LENe: length el = tsize T)
     (DEFINED: ∀ (i: nat), (i < length vl)%nat → is_Some (h !! (l +ₗ i)))
     (VALUES: to_val (TVal el) = Some (TValV vl)) :
     base_step (Write (Place l lbor T) (TVal el)) h
-              (Some $ WriteEvt l lbor T)
+              (Some $ WriteEvt l lbor T vl) []
               (Lit LitPoison) (write_mem l vl h)
               []
 | AllocBS l lbor T h :
     (∀ m, h !! (l +ₗ m) = None) →
     base_step (Alloc T) h
-              (Some $ AllocEvt l lbor T)
+              (Some $ AllocEvt l lbor T) []
               (Place l lbor T) (init_mem l (tsize T) h)
               []
 | FreeBS T l lbor h :
     (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
     base_step (Free (Place l lbor T)) h
-              (Some $ DeallocEvt l lbor T)
+              (Some $ DeallocEvt l lbor T) []
               (Lit LitPoison) (free_mem l (tsize T) h)
               []
 | NewCallBS call h:
     base_step NewCall h
-              (Some $ NewCallEvt call) (Lit $ LitInt call) h []
+              (Some $ NewCallEvt call) [] (Lit $ LitInt call) h []
 | EndCallBS call h:
     (0 ≤ call)%nat →
     base_step (EndCall (Lit $ LitInt call)) h
-              (Some $ EndCallEvt call) (Lit LitPoison) h []
+              (Some $ EndCallEvt call) [] (Lit LitPoison) h []
 | RefBS l lbor T h :
     is_Some (h !! l) →
-    base_step (Ref (Place l lbor T)) h None (Lit (LitLoc l lbor)) h []
+    base_step (Ref (Place l lbor T)) h None [] (Lit (LitLoc l lbor)) h []
 | DerefBS l lbor T mut h :
     is_Some (h !! l) →
     base_step (Deref (Lit (LitLoc l lbor)) T mut) h
-              (Some $ DerefEvt l lbor T mut)
+              (Some $ DerefEvt l lbor T mut) []
               (Place l lbor T) h
               []
 | FieldBS l lbor T path off T' h (FIELD: field_access T path = Some (off, T')) :
     base_step (Field (Place l lbor T) path) h
-              None (Place (l +ₗ off) lbor T') h []
+              None [] (Place (l +ₗ off) lbor T') h []
 | RetagBS x xbor T kind h:
     base_step (Retag (Place x xbor T) kind) h
-              (Some $ RetagEvt x T kind) (Lit LitPoison) h []
+              (Some $ RetagEvt x T kind) [] (Lit LitPoison) h []
 | CaseBS i el e h :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
-    base_step (Case (Lit $ LitInt i) el) h None e h []
+    base_step (Case (Lit $ LitInt i) el) h None [] e h []
 | ForkBS e h:
-    base_step (Fork e) h None (Lit LitPoison) h [e].
+    base_step (Fork e) h None [] (Lit LitPoison) h [e]
+(* observable behavior *)
+| SysCallBS id h:
+    base_step (SysCall id) h None [id] (Lit LitPoison) h [].
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
@@ -1084,14 +1093,14 @@ Inductive instrumented_step h α β (clock: time):
                       (Some $ AllocEvt x (UniqB t) T) h
                       (init_stacks x (tsize T) α (Uniq clock)) β (S clock)
 (* This implements AllocationExtra::memory_read. *)
-| CopyIS α' l lbor T :
+| CopyIS α' l lbor T vl :
     (accessN α β l lbor (tsize T) AccessRead = Some α') →
-    instrumented_step h α β clock (Some $ CopyEvt l lbor T) h α' β clock
+    instrumented_step h α β clock (Some $ CopyEvt l lbor T vl) h α' β clock
 (* This implements AllocationExtra::memory_written. *)
-| WriteIS α' l lbor T :
+| WriteIS α' l lbor T vl :
     (accessN α β l lbor (tsize T) AccessWrite = Some α') →
     instrumented_step h α β clock
-                      (Some $ WriteEvt l lbor T) h α' β clock
+                      (Some $ WriteEvt l lbor T vl) h α' β clock
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor T :
     (accessN α β l lbor (tsize T) AccessDealloc = Some α') →
@@ -1126,11 +1135,11 @@ Record state := mkState {
 Implicit Type (σ: state).
 
 Inductive head_step :
-  expr → state → list Empty_set → expr → state → list expr → Prop :=
-  | HeadStep σ e e' efs oevent h0 h' α' β' clock'
-      (BaseStep : base_step e σ.(cheap) oevent e' h0 efs)
+  expr → state → list observation → expr → state → list expr → Prop :=
+  | HeadStep σ e e' efs oevent obs h0 h' α' β' clock'
+      (BaseStep : base_step e σ.(cheap) oevent obs e' h0 efs)
       (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) oevent h' α' β' clock')
-  : head_step e σ [] e' (mkState h' α' β' clock') efs .
+  : head_step e σ obs e' (mkState h' α' β' clock') efs .
 
 (** Closed expressions *)
 Lemma is_closed_weaken X Y e : is_closed X e → X ⊆ Y → is_closed Y e.
@@ -1447,14 +1456,15 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
   | Fork e, Fork e' => expr_beq e e'
   | Alloc T, Alloc T' => bool_decide (T = T')
   | Free e, Free e' => expr_beq e e'
+  | SysCall id, SysCall id' => bool_decide (id = id')
   | _, _ => false
   end.
 
 Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
 Proof.
   revert e1 e2; fix FIX 1;
-    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | | | | | |? el1|],
-             e2 as [| |? el2| |el2| | | | | | | | | | | | | | | | | |? el2|];
+    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | | | | | |? el1| |],
+             e2 as [| |? el2| |el2| | | | | | | | | | | | | | | | | |? el2| |];
     simpl; try done;
     rewrite ?andb_True ?bool_decide_spec ?FIX;
     try (split; intro; [destruct_and?|split_and?]; congruence).
@@ -1504,12 +1514,13 @@ Proof.
                                      GenLeaf $ inr $ inl $ inr mut;
                                      go e]
       | Ref e => GenNode 17 [go e]
-      | Field e path => GenNode 18 [GenLeaf $ inr $ inr $ inl path; go e]
+      | Field e path => GenNode 18 [GenLeaf $ inr $ inr $ inl $ inl path; go e]
       | NewCall => GenNode 19 []
       | EndCall e => GenNode 20 [go e]
-      | Retag e kind => GenNode 21 [GenLeaf $ inr $ inr $ inr kind; go e]
+      | Retag e kind => GenNode 21 [GenLeaf $ inr $ inr $ inl $ inr kind; go e]
       | Case e el => GenNode 22 (go e :: (go <$> el))
       | Fork e => GenNode 23 [go e]
+      | SysCall id => GenNode 24 [GenLeaf $ inr $ inr $ inr id]
      end)
     (fix go s := match s with
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
@@ -1534,12 +1545,13 @@ Proof.
      | GenNode 16 [GenLeaf (inr (inl (inl (inr T))));
                    GenLeaf (inr (inl (inr mut))); e] => Deref (go e) T mut
      | GenNode 17 [e] => Ref (go e)
-     | GenNode 18 [GenLeaf (inr (inr (inl path))); e] => Field (go e) path
+     | GenNode 18 [GenLeaf (inr (inr (inl (inl path)))); e] => Field (go e) path
      | GenNode 19 [] => NewCall
      | GenNode 20 [e] => EndCall (go e)
-     | GenNode 21 [GenLeaf (inr (inr (inr kind))); e] => Retag (go e) kind
+     | GenNode 21 [GenLeaf (inr (inr (inl (inr kind)))); e] => Retag (go e) kind
      | GenNode 22 (e :: el) => Case (go e) (go <$> el)
      | GenNode 23 [e] => Fork (go e)
+     | GenNode 24 [GenLeaf (inr (inr (inr id)))] => SysCall id
      | _ => Lit LitPoison
      end) _).
   fix FIX 1. intros []; f_equal=>//; revert el; clear -FIX.
