@@ -11,10 +11,12 @@ Definition wf_stack_item (stack: bstack) (clock: time) (β: barriers)
                                           | _ => True
                                           end.
 
+Definition wf_mem_bor (h: mem) (clock: time) :=
+  ∀ l l' bor, h !! l = Some (LitV (LitLoc l' bor)) → bor <b clock.
+
 Record state_wf' σ := {
   state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
-  state_wf_mem_bor:
-    ∀ l l' bor, σ.(cheap) !! l = Some (LitV (LitLoc l' bor)) → bor <b σ.(cclk);
+  state_wf_mem_bor: wf_mem_bor σ.(cheap) σ.(cclk);
   state_wf_stack_frozen:
     ∀ l stack, σ.(cstk) !! l = Some stack →
       match stack.(frozen_since) with Some t => (t < σ.(cclk))%nat | _ => True end;
@@ -625,6 +627,53 @@ Proof.
   - naive_solver.
 Qed.
 
+Lemma retag_wf_mem_bor h α clk β l kind T h' α' clk':
+  retag h α clk β l kind T = Some (h', α', clk') →
+  wf_mem_bor h clk → wf_mem_bor h' clk'.
+Proof.
+  eapply (retag_elim
+            (* general goal P *)
+            (λ h α clk β l kind T r, ∀ h' α' clk', r = Some (h', α', clk') →
+                wf_mem_bor h clk → wf_mem_bor h' clk')
+            (* invariant for Product's where P1 *)
+            (λ _ _ _ _ _ _ _ h α clk _ _ ohac, ∀ h' α' clk',
+                ohac = Some (h', α', clk') →
+                wf_mem_bor h clk → wf_mem_bor h' clk')
+            (* invariant for Sum's where P3 *)
+            (λ h _ _ α clk _ _ _ _ _ ohac, ∀ h' α' clk',
+                ohac = Some (h', α', clk') →
+                wf_mem_bor h clk → wf_mem_bor h' clk')).
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Reference cases *)
+    clear. intros h ?? bor α clk β rt_kind p_kind T Eq h' α' clk'.
+    destruct p_kind as [mut| |];
+      [|destruct rt_kind; try by (intros; simplify_eq)|];
+      (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
+      intros ?; simplify_eq.
+    admit. admit. admit.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Product inner recursive case *)
+    intros ????????????? IH1 IH2 ???.
+    case retag as [hac|]; [|done]. move => /= /IH1 WF ?. apply WF.
+    destruct hac as [[]]. by eapply IH2.
+  - naive_solver.
+  - naive_solver.
+  - (* Sum case *)
+    intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+Admitted.
+
 Lemma retag_step_wf σ σ' e e' obs efs h0 l T kind :
   base_step e σ.(cheap) (Some $ RetagEvt l T kind) obs e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
@@ -638,7 +687,7 @@ Proof.
   inversion IS. clear IS. simplify_eq.
   constructor; simpl.
   - move : RETAG => /retag_dom [<- <-]. by apply WF.
-  - admit. (* new bor comes from increasing clk *)
+  - eapply retag_wf_mem_bor; eauto. by apply WF.
   - admit. (* new frozen comes from increasing clk *)
   - admit. (* new bor comes from increasing clk, barrier must be in memory *)
 Abort.
