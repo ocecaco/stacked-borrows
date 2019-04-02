@@ -511,7 +511,6 @@ Inductive event :=
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
-| SysCallEvt (id: nat)
 .
 
 (* Compute subtype of `T` and offset to it from `path` *)
@@ -795,7 +794,7 @@ Definition unsafe_action
  - Then `f` is applied for the unfrozen block, which is the range
    [last + cur_dist, last + cur_dist + unsafe_block_size). `f` is applied with
    the boolean flag `false`. *)
-Equations visit_freeze_sensitive' {A: Type}
+Equations visit_freeze_sensitive' `{A: Type}
   (h: mem) (l: loc) (f: A → loc → nat → bool → option A)
   (a: A) (last cur_dist: nat) (T: type) : option (A * (nat * nat)) :=
   visit_freeze_sensitive' h l f a last cur_dist (Scalar n)
@@ -1079,6 +1078,16 @@ Equations retag h α (clock: time) β (x: loc) (kind: retag_kind) T :
     | _ := None }
   .
 
+Definition bor_value_included (bor: borrow) (clock: time) : Prop :=
+  match bor with
+  | UniqB t | AliasB (Some t) => (t < clock)%nat
+  | _ => True
+  end.
+Infix "<b" := bor_value_included (at level 60, no associativity).
+Definition bor_values_included (vl: list immediate) clock :=
+  ∀ l bor, (LitV (LitLoc l bor)) ∈ vl → bor <b clock.
+Infix "<<b" := bor_values_included (at level 60, no associativity).
+
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
 Inductive instrumented_step h α β (clock: time):
@@ -1093,17 +1102,19 @@ Inductive instrumented_step h α β (clock: time):
                       (Some $ AllocEvt x (UniqB t) T) h
                       (init_stacks x (tsize T) α (Uniq clock)) β (S clock)
 (* This implements AllocationExtra::memory_read. *)
-| CopyIS α' l lbor T vl :
-    (accessN α β l lbor (tsize T) AccessRead = Some α') →
+| CopyIS α' l lbor T vl
+    (ACC: accessN α β l lbor (tsize T) AccessRead = Some α')
+    (BOR: vl <<b clock) :
     instrumented_step h α β clock (Some $ CopyEvt l lbor T vl) h α' β clock
 (* This implements AllocationExtra::memory_written. *)
-| WriteIS α' l lbor T vl :
-    (accessN α β l lbor (tsize T) AccessWrite = Some α') →
+| WriteIS α' l lbor T vl
+    (ACC: accessN α β l lbor (tsize T) AccessWrite = Some α')
+    (BOR: vl <<b clock) :
     instrumented_step h α β clock
                       (Some $ WriteEvt l lbor T vl) h α' β clock
 (* This implements AllocationExtra::memory_deallocated. *)
-| DeallocIS α' l lbor T :
-    (accessN α β l lbor (tsize T) AccessDealloc = Some α') →
+| DeallocIS α' l lbor T
+    (ACC: accessN α β l lbor (tsize T) AccessDealloc = Some α') :
     instrumented_step h α β clock
                       (Some $ DeallocEvt l lbor T) h α' β clock
 | NewCallIS:

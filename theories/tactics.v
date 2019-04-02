@@ -33,7 +33,8 @@ Inductive expr :=
 | EndCall (e : expr)
 | Retag (e : expr) (kind : retag_kind)
 | Case (e : expr) (el : list expr)
-| Fork (e : expr).
+| Fork (e : expr)
+| SysCall (id: nat).
 
 Fixpoint to_expr (e : expr) : bor_lang.expr :=
   match e with
@@ -63,6 +64,7 @@ Fixpoint to_expr (e : expr) : bor_lang.expr :=
   | Retag e kind => bor_lang.Retag (to_expr e) kind
   | Case e el => bor_lang.Case (to_expr e) (map to_expr el)
   | Fork e => bor_lang.Fork (to_expr e)
+  | SysCall id => bor_lang.SysCall id
   end.
 
 Ltac of_expr e :=
@@ -100,6 +102,7 @@ Ltac of_expr e :=
   | bor_lang.Case ?e ?el =>
      let e := of_expr e in let el := of_expr el in constr:(Case e el)
   | bor_lang.Fork ?e => let e := of_expr e in constr:(Fork e)
+  | bor_lang.SysCall ?id => constr:(SysCall e)
   | @nil bor_lang.expr => constr:(@nil expr)
   | @cons bor_lang.expr ?e ?el =>
       let e := of_expr e in let el := of_expr el in constr:(e::el)
@@ -113,7 +116,7 @@ Ltac of_expr e :=
 
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
-  | Val _ _ _ | ClosedExpr _ => true
+  | Val _ _ _ | ClosedExpr _ | SysCall _ => true
   | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
@@ -227,6 +230,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Retag e kind => Retag (subst x es e) kind
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
+  | SysCall id => SysCall id
   end.
 Lemma to_expr_subst x er e :
   to_expr (subst x er e) = bor_lang.subst x (to_expr er) (to_expr e).

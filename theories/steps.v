@@ -1,4 +1,5 @@
-From stbor Require Import lang notation.
+From Equations Require Import Equations.
+From stbor Require Export lang notation.
 
 Class Wellformed A := Wf : A → Prop.
 Existing Class Wf.
@@ -10,18 +11,10 @@ Definition wf_stack_item (stack: bstack) (clock: time) (β: barriers)
                                           | _ => True
                                           end.
 
-Definition wf_bor_value (bor: borrow) (clock: time) : Prop :=
-  match bor with
-  | UniqB t | AliasB (Some t) => (t < clock)%nat
-  | _ => True
-  end.
-Definition wf_bor_values (vl: list immediate) σ :=
-  ∀ l bor, (LitV (LitLoc l bor)) ∈ vl → wf_bor_value bor σ.(cclk).
-
 Record state_wf' σ := {
   state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
   state_wf_mem_bor:
-    ∀ l l' bor, σ.(cheap) !! l = Some (LitV (LitLoc l' bor)) → wf_bor_value bor σ.(cclk);
+    ∀ l l' bor, σ.(cheap) !! l = Some (LitV (LitLoc l' bor)) → bor <b σ.(cclk);
   state_wf_stack_frozen:
     ∀ l stack, σ.(cstk) !! l = Some stack →
       match stack.(frozen_since) with Some t => (t < σ.(cclk))%nat | _ => True end;
@@ -323,31 +316,31 @@ Lemma copy_step_wf σ σ' e e' obs efs h0 l bor T vl :
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
                     (Some $ CopyEvt l bor T vl)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
-  Wf σ → Wf σ' ∧ wf_bor_values vl σ'.
+  Wf σ → Wf σ' ∧ vl <<b σ'.(cclk).
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
-  inversion IS. clear IS. simplify_eq. split.
-  - constructor; simpl.
-    + rewrite -(accessN_dom α _ l bor (tsize T) AccessRead); [by apply WF|done..].
-    + apply WF.
-    + intros l' stk'.
-      move=> /(accessN_stack α β' l bor (tsize T) AccessRead α' _ _ l' stk') Eq.
-      destruct Eq as [stk [Eq [_ Sub2]]]; [done..|].
-      destruct stk'.(frozen_since) as [t'|]; [|done].
-      have Eq2 := (state_wf_stack_frozen _ WF _ _ Eq).
-      destruct stk.(frozen_since) as [t|]; [|done].
-      eapply le_lt_trans; [by apply Sub2|done].
-    + intros l' stk'.
-      move=> /(accessN_stack α β' l bor (tsize T) AccessRead α' _ _ l' stk') Eq.
-      destruct Eq as [stk [Eq [Sub1 _]]]; [done..|].
-      intros si Ini. apply (state_wf_stack_item _ WF _ _ Eq).
-      move : Ini. by apply elem_of_list_suffix_proper.
-  - intros l' bor' [i Eqi]%elem_of_list_lookup.
-    have Eqbor: h' !! (l +ₗ i) = Some (LitV (LitLoc l' bor')).
-    { rewrite -Eqi. by eapply VALUES, lookup_lt_Some. }
-    by apply (state_wf_mem_bor _ WF _ _ _ Eqbor).
+  inversion IS. clear IS. simplify_eq. split; [|done].
+  constructor; simpl.
+  - rewrite -(accessN_dom α _ l bor (tsize T) AccessRead); [by apply WF|done..].
+  - apply WF.
+  - intros l' stk'.
+    move=> /(accessN_stack α β' l bor (tsize T) AccessRead α' _ _ l' stk') Eq.
+    destruct Eq as [stk [Eq [_ Sub2]]]; [done..|].
+    destruct stk'.(frozen_since) as [t'|]; [|done].
+    have Eq2 := (state_wf_stack_frozen _ WF _ _ Eq).
+    destruct stk.(frozen_since) as [t|]; [|done].
+    eapply le_lt_trans; [by apply Sub2|done].
+  - intros l' stk'.
+    move=> /(accessN_stack α β' l bor (tsize T) AccessRead α' _ _ l' stk') Eq.
+    destruct Eq as [stk [Eq [Sub1 _]]]; [done..|].
+    intros si Ini. apply (state_wf_stack_item _ WF _ _ Eq).
+    move : Ini. by apply elem_of_list_suffix_proper.
+  (* intros l' bor' [i Eqi]%elem_of_list_lookup.
+  have Eqbor: h' !! (l +ₗ i) = Some (LitV (LitLoc l' bor')).
+  { rewrite -Eqi. by eapply VALUES, lookup_lt_Some. }
+  by apply (state_wf_mem_bor _ WF _ _ _ Eqbor). *)
 Qed.
 
 (** Write *)
@@ -388,10 +381,10 @@ Lemma write_step_wf σ σ' e e' obs efs h0 l bor T vl :
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
                     (Some $ WriteEvt l bor T vl)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
-  Wf σ → wf_bor_values vl σ → Wf σ'.
+  Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
-  intros BS IS WF WFvl.
+  intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
   constructor; simpl.
@@ -403,7 +396,7 @@ Proof.
       { rewrite /shift_loc -Eq1. destruct l0; simpl. f_equal. by lia. }
       case (decide (0 ≤ l0.2 - l.2 < length vl)) => [[Le Lt]|NLe].
       * rewrite Eql0 -(Z2Nat.id _ Le) IN.
-        intros ?%elem_of_list_lookup_2. by eapply WFvl.
+        intros ?%elem_of_list_lookup_2. by eapply BOR.
         rewrite -(Nat2Z.id (length vl)) -Z2Nat.inj_lt; [done|lia..].
       * rewrite OUT; [by apply (state_wf_mem_bor _ WF)|].
         move => i Lt Eq. rewrite Eql0 in Eq. apply shift_loc_inj in Eq.
@@ -474,6 +467,128 @@ Proof.
 Qed.
 
 (** Retag *)
+Lemma reborrowN_dom α β l n bor bor' kind' bar α' :
+  reborrowN α β l n bor bor' kind' bar = Some α' →
+  dom (gset loc) α ≡ dom (gset loc) α'.
+Proof.
+  revert α. induction n as [|n IH]; simpl; intros α; [by intros; simplify_eq|].
+  case lookup as [stk|] eqn:Eq; [simpl|done].
+  case reborrow1 as [stk'|] eqn:Eq'; [simpl|done].
+  move => /IH <-. symmetry. apply dom_map_insert_is_Some. by eexists.
+Qed.
+
+Lemma reborrowBlock_dom α β l n bor bor' kind' bar α':
+  reborrowBlock α β l n bor bor' kind' bar = Some α' →
+  dom (gset loc) α ≡ dom (gset loc) α'.
+Proof. rewrite /reborrowBlock. case_match; [done|by apply reborrowN_dom]. Qed.
+
+Lemma visit_freeze_sensitive_stack_dom' h l (f: bstacks → _ → _ → _ → _)
+  α α' last cur T lc' :
+  (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+  visit_freeze_sensitive' h l f α last cur T = Some (α', lc') →
+  dom (gset loc) α ≡ dom (gset loc) α'.
+Proof.
+  intros Hf.
+  (* eapply (visit_freeze_sensitive'_elim
+            (* general goal P *)
+            (λ _ h l f α last cur T oalc, ∀ α' lc',
+                oalc = Some (α', lc') → dom _ α ≡ dom _ α')
+            (λ _ _ _ _ _ _ _ _ α last cur Ts oalc, ∀ α' lc',
+                oalc = Some (α', lc') → dom _ α ≡ dom _ α')). *)
+Admitted.
+
+Lemma visit_freeze_sensitive_stack_dom h l T (f: bstacks → _ → _ → _ → _) α α' :
+  (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+  visit_freeze_sensitive h l T f α = Some α' →
+  dom (gset loc) α ≡ dom (gset loc) α'.
+Proof.
+  intros Hf. rewrite /visit_freeze_sensitive.
+  case visit_freeze_sensitive' as [[α1 [last cur]]|] eqn:Eq; [|done].
+  move => /Hf <-. move : Eq. by apply visit_freeze_sensitive_stack_dom'.
+Qed.
+
+Lemma reborrow_dom h α β l bor T bar bor' α' :
+  reborrow h α β l bor T bar bor' = Some α' →
+  dom (gset loc) α ≡ dom (gset loc) α'.
+Proof.
+  rewrite /reborrow. destruct bor' as [t|[t|]].
+  - by move => /reborrowBlock_dom ->.
+  - apply visit_freeze_sensitive_stack_dom.
+    intros ?????. by apply reborrowBlock_dom.
+  - by move => /reborrowBlock_dom ->.
+Qed.
+
+Lemma retag_ref_dom h α β clk l bor T mut bar kind bor' α' clk' :
+  retag_ref h α β clk l bor T mut bar kind = Some (bor', α', clk') →
+  dom (gset loc) α ≡ dom (gset loc) α'.
+Proof.
+  rewrite /retag_ref. case tsize eqn:Eq; [by intros; simplify_eq|].
+  case reborrow as [α1|] eqn:Eq1; [simpl|done].
+  destruct kind.
+  - destruct mut as [[]|]; [|done..].
+    case visit_freeze_sensitive as [α2|] eqn:Eq2; [|done]. move => /= ?.
+    simplify_eq. move : Eq1 => /reborrow_dom ->.
+    move : Eq2. apply visit_freeze_sensitive_stack_dom.
+    intros ?????. by apply reborrowBlock_dom.
+  - intros. simplify_eq. by move : Eq1 => /reborrow_dom ->.
+Qed.
+
+Lemma retag_dom h α clk β x kind T h' α' clk' :
+  retag h α clk β x kind T = Some (h', α', clk') →
+  dom (gset loc) h ≡ dom (gset loc) h' ∧ dom (gset loc) α ≡ dom (gset loc) α'.
+Proof.
+  eapply (retag_elim
+            (* general goal P *)
+            (λ h α clk β l kind T r, ∀ h' α' clk', r = Some (h', α', clk') →
+                dom (gset loc) h ≡ dom (gset loc) h' ∧
+                dom (gset loc) α ≡ dom (gset loc) α')
+            (* invariant for Product's where P1 *)
+            (λ _ _ _ _ _ _ _ h α _ _ _ ohac, ∀ h' α' clk',
+                ohac = Some (h', α', clk') →
+                dom (gset loc) h ≡ dom (gset loc) h' ∧
+                dom (gset loc) α ≡ dom (gset loc) α')
+            (* invariant for Sum's where P3 *)
+            (λ h _ _ α _ _ _ _ _ _ ohac, ∀ h' α' clk',
+                ohac = Some (h', α', clk') →
+                dom (gset loc) h ≡ dom (gset loc) h' ∧
+                dom (gset loc) α ≡ dom (gset loc) α')).
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Product case *)
+    intros ??????? IH. apply IH.
+  - naive_solver.
+  - (* Reference cases *)
+    clear. move => h x l tag α clk β rt_kind [mut| |] T Eq h' α' clk' /=;
+      [|destruct rt_kind; try by (intros; simplify_eq)|];
+      (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
+      intros; simplify_eq;
+      (split; [symmetry; apply dom_map_insert_is_Some; by eexists
+              |by eapply retag_ref_dom]).
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Product inner base case *)
+    naive_solver.
+  - (* Product inner recursive case *)
+    intros ????????????? IH1 IH2 ???.
+    case retag eqn:Eq1; [|done]. move => /= Eq.
+    destruct (IH1 _ _ _ _ Eq) as [Dh Da]. rewrite -Dh -Da.
+    destruct p as [[??]?]. by eapply IH2.
+  - naive_solver.
+  - naive_solver.
+  - (* Sum case *)
+    intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
+  - naive_solver.
+  - naive_solver.
+  - (* Sum inner base case *)
+    naive_solver.
+  - (* Sum inner recursive case 1 *)
+    intros ?????????? IH. by apply IH.
+  - (* Sum inner recursive case 2 *)
+    intros ??????????? IH. by apply IH.
+Qed.
+
 Lemma retag_step_wf σ σ' e e' obs efs h0 l T kind :
   base_step e σ.(cheap) (Some $ RetagEvt l T kind) obs e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
@@ -486,7 +601,7 @@ Proof.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
   constructor; simpl.
-  - admit. (* no change in dom of h' stk' *)
+  - move : RETAG => /retag_dom [<- <-]. by apply WF.
   - admit. (* new bor comes from increasing clk *)
   - admit. (* new frozen comes from increasing clk *)
   - admit. (* new bor comes from increasing clk, barrier must be in memory *)
@@ -513,7 +628,7 @@ Proof.
   - eapply alloc_step_wf; eauto.
   - eapply dealloc_step_wf; eauto.
   - eapply copy_step_wf; eauto.
-  - admit.
+  - eapply write_step_wf; eauto.
   - eapply deref_step_wf; eauto.
   - eapply newcall_step_wf; eauto.
   - eapply endcall_step_wf; eauto.
