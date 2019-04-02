@@ -467,6 +467,8 @@ Proof.
 Qed.
 
 (** Retag *)
+
+(** Retag dom *)
 Lemma reborrowN_dom α β l n bor bor' kind' bar α' :
   reborrowN α β l n bor bor' kind' bar = Some α' →
   dom (gset loc) α ≡ dom (gset loc) α'.
@@ -482,20 +484,59 @@ Lemma reborrowBlock_dom α β l n bor bor' kind' bar α':
   dom (gset loc) α ≡ dom (gset loc) α'.
 Proof. rewrite /reborrowBlock. case_match; [done|by apply reborrowN_dom]. Qed.
 
+Lemma unsafe_action_dom (f: bstacks → _ → _ → _ → _) α l last fs us α' lc' :
+  (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+  unsafe_action f α l last fs us = Some (α', lc') →
+  dom (gset loc) α ≡ dom (gset loc) α'.
+Proof.
+  intros Hf. rewrite /unsafe_action.
+  case f as [α1|] eqn:Eq1; [simpl|done]. case (f α1) eqn:Eq2; [simpl|done].
+  intros. simplify_eq. by rewrite (Hf _ _ _ _ _ Eq1) (Hf _ _ _ _ _ Eq2).
+Qed.
+
 Lemma visit_freeze_sensitive_stack_dom' h l (f: bstacks → _ → _ → _ → _)
   α α' last cur T lc' :
   (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
   visit_freeze_sensitive' h l f α last cur T = Some (α', lc') →
   dom (gset loc) α ≡ dom (gset loc) α'.
 Proof.
-  intros Hf.
-  (* eapply (visit_freeze_sensitive'_elim
+  eapply (visit_freeze_sensitive'_elim
             (* general goal P *)
-            (λ _ h l f α last cur T oalc, ∀ α' lc',
-                oalc = Some (α', lc') → dom _ α ≡ dom _ α')
-            (λ _ _ _ _ _ _ _ _ α last cur Ts oalc, ∀ α' lc',
-                oalc = Some (α', lc') → dom _ α ≡ dom _ α')). *)
-Admitted.
+            (λ _ _ f α _ _ _ oalc, ∀ α' lc',
+              (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+                oalc = Some (α', lc') → dom (gset loc) α ≡ dom (gset loc) α')
+            (λ _ _ f _ _ _ _ α _ _ _ oalc, ∀ α' lc',
+              (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+                oalc = Some (α', lc') → dom (gset loc) α ≡ dom (gset loc) α')
+            (λ _ _ _ f α _ _ _ _ _ oalc, ∀ α' lc',
+              (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+                oalc = Some (α', lc') → dom (gset loc) α ≡ dom (gset loc) α')).
+  - naive_solver.
+  - naive_solver.
+  - (* Unsafe case *)
+    intros ?????????. by apply unsafe_action_dom.
+  - (* Union case *)
+    intros ??????????. case is_freeze; [by intros; simplify_eq|].
+    by apply unsafe_action_dom.
+  - naive_solver.
+  - naive_solver.
+  - (* Product case *)
+    intros ???????????? IH1 IH2 ???.
+    case visit_freeze_sensitive' as [alc|]; [simpl|done].
+    move => /IH1 <-; [|done]. destruct alc. by eapply IH2.
+  - naive_solver.
+  - naive_solver.
+  - (* Sum case *)
+    intros ???????? IH Eq ???. case decide => Le; [|done].
+    case visit_freeze_sensitive'_clause_6_clause_1_visit_lookup
+      as [[]|] eqn:Eq1; [simpl|done].
+    intros. simplify_eq. by eapply IH.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+Qed.
 
 Lemma visit_freeze_sensitive_stack_dom h l T (f: bstacks → _ → _ → _ → _) α α' :
   (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
@@ -555,8 +596,7 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
-  - (* Product case *)
-    intros ??????? IH. apply IH.
+  - naive_solver.
   - naive_solver.
   - (* Reference cases *)
     clear. move => h x l tag α clk β rt_kind [mut| |] T Eq h' α' clk' /=;
@@ -568,8 +608,7 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
-  - (* Product inner base case *)
-    naive_solver.
+  - naive_solver.
   - (* Product inner recursive case *)
     intros ????????????? IH1 IH2 ???.
     case retag eqn:Eq1; [|done]. move => /= Eq.
@@ -581,12 +620,9 @@ Proof.
     intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
   - naive_solver.
   - naive_solver.
-  - (* Sum inner base case *)
-    naive_solver.
-  - (* Sum inner recursive case 1 *)
-    intros ?????????? IH. by apply IH.
-  - (* Sum inner recursive case 2 *)
-    intros ??????????? IH. by apply IH.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
 Qed.
 
 Lemma retag_step_wf σ σ' e e' obs efs h0 l T kind :

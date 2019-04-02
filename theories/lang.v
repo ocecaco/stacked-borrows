@@ -794,7 +794,9 @@ Definition unsafe_action
  - Then `f` is applied for the unfrozen block, which is the range
    [last + cur_dist, last + cur_dist + unsafe_block_size). `f` is applied with
    the boolean flag `false`. *)
-Equations visit_freeze_sensitive' `{A: Type}
+Section blah.
+Context {A: Type}.
+Equations visit_freeze_sensitive'
   (h: mem) (l: loc) (f: A → loc → nat → bool → option A)
   (a: A) (last cur_dist: nat) (T: type) : option (A * (nat * nat)) :=
   visit_freeze_sensitive' h l f a last cur_dist (Scalar n)
@@ -853,6 +855,7 @@ Equations visit_freeze_sensitive' `{A: Type}
           visit_lookup (T :: Ts) (S i)  := visit_lookup Ts i } ;
     | _ := None }
   .
+End blah.
 
 Definition visit_freeze_sensitive {A: Type}
   h (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
