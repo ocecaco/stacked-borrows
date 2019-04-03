@@ -4,24 +4,24 @@ From stbor Require Export lang notation.
 Class Wellformed A := Wf : A → Prop.
 Existing Class Wf.
 
-Definition wf_stack_item (stack: bstack) (clock: time) (β: barriers)
-  : Prop := ∀ si, si ∈ stack.(borrows) →  match si with
-                                          | Uniq t => (t < clock)%nat
-                                          | FnBarrier c => is_Some (β !! c)
-                                          | _ => True
-                                          end.
-
 Definition wf_mem_bor (h: mem) (clock: time) :=
   ∀ l l' bor, h !! l = Some (LitV (LitLoc l' bor)) → bor <b clock.
+Definition wf_stack_frozen (α: bstacks) (clock: time) :=
+  ∀ l stack, α !! l = Some stack →
+    match stack.(frozen_since) with Some t => (t < clock)%nat | _ => True end.
+Definition wf_stack_item (α: bstacks) (β: barriers) (clock: time) :=
+  ∀ l stack, α !! l = Some stack →
+  ∀ si, si ∈ stack.(borrows) →  match si with
+                                | Uniq t => (t < clock)%nat
+                                | FnBarrier c => is_Some (β !! c)
+                                | _ => True
+                                end.
 
 Record state_wf' σ := {
   state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
   state_wf_mem_bor: wf_mem_bor σ.(cheap) σ.(cclk);
-  state_wf_stack_frozen:
-    ∀ l stack, σ.(cstk) !! l = Some stack →
-      match stack.(frozen_since) with Some t => (t < σ.(cclk))%nat | _ => True end;
-  state_wf_stack_item:
-    ∀ l stack, σ.(cstk) !! l = Some stack → wf_stack_item stack σ.(cclk) σ.(cbar)
+  state_wf_stack_frozen: wf_stack_frozen σ.(cstk) σ.(cclk);
+  state_wf_stack_item: wf_stack_item σ.(cstk) σ.(cbar)  σ.(cclk);
 }.
 
 Instance state_wf : Wellformed state :=  state_wf'.
@@ -470,7 +470,7 @@ Qed.
 
 (** Retag *)
 
-(** Retag dom *)
+(* Retag dom *)
 Lemma reborrowN_dom α β l n bor bor' kind' bar α' :
   reborrowN α β l n bor bor' kind' bar = Some α' →
   dom (gset loc) α ≡ dom (gset loc) α'.
@@ -627,6 +627,52 @@ Proof.
   - naive_solver.
 Qed.
 
+(* Retag bor *)
+Lemma bor_value_included_trans bor :
+  Proper ((≤)%nat ==> impl) (bor_value_included bor).
+Proof.
+  intros clk clk' Le. rewrite /bor_value_included.
+  by destruct bor as [|[]]; simpl; intros ?; [lia..|done].
+Qed.
+
+Lemma retag_ref_clk_mono h α β clk l bor T mut kind is_2p bor' α' clk' :
+  retag_ref h α β clk l bor T mut kind is_2p = Some (bor', α', clk') →
+  (clk ≤ clk')%nat.
+Proof.
+  rewrite /retag_ref.
+  case tsize => ?; [by intros; simplify_eq|].
+  case reborrow eqn:Eqb; [simpl|done].
+  case is_2p; [|intros; simplify_eq; by lia].
+  destruct mut as [[]|]; [|done..].
+  case visit_freeze_sensitive => ?; [|done]. simpl. intros. simplify_eq. by lia.
+Qed.
+
+Lemma retag_ref_clk_bor_mono h α β clk l bor T mut kind is_2p bor' α' clk' :
+  retag_ref h α β clk l bor T mut kind is_2p = Some (bor', α', clk') →
+  bor <b clk → bor' <b clk'.
+Proof.
+  rewrite /retag_ref.
+  case tsize => ?; [by intros; simplify_eq|].
+  case reborrow eqn:Eqb; [simpl|done].
+  case is_2p; last first.
+  { intros; simplify_eq. by destruct mut as [[]|]; [simpl;lia..|done]. }
+  destruct mut as [[]|]; [|done..].
+  case visit_freeze_sensitive => ?; [|done]. simpl. intros. simplify_eq.
+  simpl. by lia.
+Qed.
+
+Lemma retag_ref_wf_mem_bor h α β clk x l bor T mut kind is_2p bor' α' clk'
+  (Eq: h !! x = Some $ LitV (LitLoc l bor)) :
+  retag_ref h α β clk l bor T mut kind is_2p = Some (bor', α', clk') →
+  wf_mem_bor h clk → wf_mem_bor (<[x:=LitV (LitLoc l bor')]> h) clk'.
+Proof.
+  intros Eqr WF x' l' bor1. case (decide (x' = x)) => Eqx; [subst x'|].
+  - rewrite lookup_insert => ?. simplify_eq.
+    by eapply retag_ref_clk_bor_mono; eauto.
+  - rewrite lookup_insert_ne; [|done].
+    move => /WF. apply bor_value_included_trans. by eapply retag_ref_clk_mono.
+Qed.
+
 Lemma retag_wf_mem_bor h α clk β l kind T h' α' clk':
   retag h α clk β l kind T = Some (h', α', clk') →
   wf_mem_bor h clk → wf_mem_bor h' clk'.
@@ -653,8 +699,7 @@ Proof.
     destruct p_kind as [mut| |];
       [|destruct rt_kind; try by (intros; simplify_eq)|];
       (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
-      intros ?; simplify_eq.
-    admit. admit. admit.
+      intros ?; simplify_eq; by eapply retag_ref_wf_mem_bor; eauto.
   - naive_solver.
   - naive_solver.
   - naive_solver.
@@ -672,8 +717,16 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
-Admitted.
+Qed.
 
+(* Retag frozen_since *)
+
+Lemma retag_wf_stack_frozen h α clk β l kind T h' α' clk':
+  retag h α clk β l kind T = Some (h', α', clk') →
+  wf_stack_frozen α clk → wf_stack_frozen α' clk'.
+Proof.
+
+Abort.
 Lemma retag_step_wf σ σ' e e' obs efs h0 l T kind :
   base_step e σ.(cheap) (Some $ RetagEvt l T kind) obs e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
