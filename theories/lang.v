@@ -1134,6 +1134,7 @@ Inductive instrumented_step h α β (clock: time):
     instrumented_step h α β clock
                       (Some $ DerefEvt l lbor T mut) h α β clock
 | RetagIS h' α' clock' x T kind
+    (FNBAR: match kind with FnEntry c => β !! c = Some true | _ => True end)
     (RETAG: retag h α clock β x kind T = Some (h', α', clock')) :
     instrumented_step h α β clock
                       (Some $ RetagEvt x T kind) h' α' β clock'.
