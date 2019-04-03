@@ -24,12 +24,15 @@ Definition stack_item_included (stk: bstack) (β: barriers) (clock: time) :=
 Definition wf_stack_item (α: bstacks) (β: barriers) (clock: time) :=
   ∀ l stack, α !! l = Some stack → stack_item_included stack β clock.
 
+Definition wf_non_empty (α: bstacks) :=
+   ∀ l stack, α !! l = Some stack → stack.(borrows) ≠ [].
+
 Record state_wf' σ := {
   state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
   state_wf_mem_bor: wf_mem_bor σ.(cheap) σ.(cclk);
   state_wf_stack_frozen: wf_stack_frozen σ.(cstk) σ.(cclk);
   state_wf_stack_item: wf_stack_item σ.(cstk) σ.(cbar) σ.(cclk);
-  (* TODO: add stacks to be non-empty *)
+  state_wf_non_empty : wf_non_empty σ.(cstk);
 }.
 
 Instance state_wf : Wellformed state :=  state_wf'.
@@ -121,6 +124,9 @@ Proof.
     + rewrite Eqs /= => ?? Eq si In.
       move : (state_wf_stack_item _ WF _ _ Eq _ In).
       destruct si; [simpl; lia|done..].
+    + intros ??. rewrite init_stacks_foldr.
+      intros [->|Eq]%foldr_gmap_insert_lookup; [done|].
+      by apply (state_wf_non_empty _ WF _ _ Eq).
   - inversion IS; clear IS; simplify_eq; constructor; cbn -[ init_mem].
     + rewrite Eqs init_stacks_foldr init_mem_foldr.
       apply foldr_gmap_insert_dom, WF.
@@ -137,6 +143,9 @@ Proof.
       * intros ->%elem_of_list_singleton. lia.
       * move => /(state_wf_stack_item _ WF _ _ Eq).
         destruct si; [simpl; lia|done..].
+    + intros ??. rewrite init_stacks_foldr.
+      intros [->|Eq]%foldr_gmap_insert_lookup; [done|].
+      by apply (state_wf_non_empty _ WF _ _ Eq).
 Qed.
 
 Lemma foldr_gmap_delete_lookup `{Countable K} {A C: Type}
@@ -200,6 +209,8 @@ Proof.
     apply (state_wf_stack_frozen _ WF _ _ Eq).
   - intros ?? Eq%foldr_gmap_delete_lookup.
     apply (state_wf_stack_item _ WF _ _ Eq).
+  - intros ?? Eq%foldr_gmap_delete_lookup.
+    apply (state_wf_non_empty _ WF _ _ Eq).
 Qed.
 
 (** Copy *)
@@ -294,10 +305,30 @@ Proof.
     + move => ??. apply Lt. lia.
 Qed.
 
+Lemma accessN_item_dealloc α β l bor n α' :
+  accessN α β l bor n AccessDealloc = Some α' →
+  (∀ (i: nat), (i < n)%nat → α' !! (l +ₗ i) = None) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l').
+Proof.
+  revert α. induction n as [|n IH]; intros α; simpl.
+  { move => [<-]. split; intros ??; by [lia|]. }
+  case (α !! (l +ₗ n)) as [stkn|] eqn:Eqn; [|done] => /=.
+  case access1 as [stkn'|] eqn: Eqn'; [|done] => /= Eq3.
+  destruct (IH _ Eq3) as [IH1 IH2]. split.
+  - intros i Lt. case (decide (i = n)) => Eq'; [subst i|].
+    + rewrite IH2; [by apply lookup_delete|].
+      move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia.
+    + apply IH1. by lia.
+  - intros l' Lt. rewrite IH2.
+    + rewrite lookup_delete_ne; [done|]. move => Eql'. apply (Lt n); by [lia|].
+    + move => ??. apply Lt. lia.
+Qed.
+
 Lemma accessN_stack α β l bor n kind α' (ND: kind ≠ AccessDealloc) :
   accessN α β l bor n kind = Some α' →
   ∀ (l: loc) stk', α' !! l = Some stk' → ∃ stk, α !! l = Some stk ∧
-    stk'.(borrows) `suffix_of` stk.(borrows) ∧ stk'.(frozen_since) ⊑ stk.(frozen_since).
+    stk'.(borrows) `suffix_of` stk.(borrows) ∧
+    stk'.(frozen_since) ⊑ stk.(frozen_since).
 Proof.
   revert α. induction n as [|n IH]; intros α; [move => /= [->]; naive_solver|].
   simpl. destruct (α !! (l +ₗ n)) as [stk0|] eqn:Eq; [|done].
@@ -315,6 +346,60 @@ Proof.
     by eapply access1_stack.
   - move => /(IH _ Eq2) [stk [Eq' SUFF]]. exists stk. split; [|done].
     move : Eq'. by rewrite lookup_insert_ne.
+Qed.
+
+Lemma access1'_stack_non_empty stk bor kind β stk' :
+  access1' stk bor kind β = Some stk' → stk ≠ [] → stk' ≠ [].
+Proof.
+  revert bor. induction stk as [|si stk IH]; intros bor; simpl; [done|].
+  destruct si; [destruct bor..|].
+  - case_match; [case_match|]; [by intros; simplify_eq|done|naive_solver].
+  - intros Eq _. eapply IH; [exact Eq|by destruct stk].
+  - destruct kind; [by move => [<-]|..]; naive_solver.
+  - destruct kind; [by move => [<-]|..]; case_match => [[->//]|//].
+  - case_match => [//|]. naive_solver.
+Qed.
+
+Lemma access1_stack_non_empty β stk stk' bor kind :
+  access1 β stk bor kind = Some stk' →
+  stk.(borrows) ≠ [] → stk'.(borrows) ≠ [].
+Proof.
+  rewrite /access1.
+  case (frozen_since _) as [t|] eqn:Eqt;
+    [destruct kind|]; [by move => [<-]|..];
+    (case access1' as [stk0|] eqn:Eq; [|done]); move => [<-] /=;
+    by eapply access1'_stack_non_empty.
+Qed.
+
+Lemma accessN_stack_non_empty α β l bor n kind α' :
+  accessN α β l bor n kind = Some α' → wf_non_empty α → wf_non_empty α'.
+Proof.
+  revert α. induction n as [|n IH]; intros α; [move => /= [->//]|].
+  simpl. destruct (α !! (l +ₗ n)) as [stk0|] eqn:Eq; [|done].
+  simpl. destruct (access1 β stk0 bor kind)  as [stk0'|] eqn: Eq1; [|done].
+  simpl. intros Eq2' WF l' stk'.
+  case (decide (l' = (l +ₗ n))) => [-> Eq'|?].
+  - have ND: kind ≠ AccessDealloc.
+    { move => ?. subst kind. move : Eq2' => /accessN_item_dealloc [_ HI].
+      move : Eq'. rewrite HI; [by rewrite lookup_delete|].
+      move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia. }
+    have Eq2: accessN (<[l +ₗ n:=stk0']> α) β l bor n kind = Some α'
+      by destruct kind. clear Eq2'.
+    have ?: stk0' = stk'.
+    { destruct (accessN_item_lookup _ _ _ _ _ _ _ ND Eq2) as [_ HL].
+      move : Eq'. rewrite HL.
+      - by rewrite lookup_insert => [[->]].
+      - move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia. } subst stk0'.
+    destruct kind; simplify_eq; by eapply access1_stack_non_empty; eauto.
+  - destruct kind; apply (IH _ Eq2') => l1 ?.
+    + case (decide (l1 = l +ₗ n)) => [->|?];
+        [rewrite lookup_insert|rewrite lookup_insert_ne;[by apply WF|done]];
+      intros; simplify_eq; by eapply access1_stack_non_empty; eauto.
+    + case (decide (l1 = l +ₗ n)) => [->|?];
+        [rewrite lookup_insert|rewrite lookup_insert_ne;[by apply WF|done]];
+      intros; simplify_eq; by eapply access1_stack_non_empty; eauto.
+    + case (decide (l1 = l +ₗ n)) => [->|?];
+        [by rewrite lookup_delete|rewrite lookup_delete_ne;[by apply WF|done]].
 Qed.
 
 Instance elem_of_list_suffix_proper {A : Type} (x:A) :
@@ -347,10 +432,11 @@ Proof.
     destruct Eq as [stk [Eq [Sub1 _]]]; [done..|].
     intros si Ini. apply (state_wf_stack_item _ WF _ _ Eq).
     move : Ini. by apply elem_of_list_suffix_proper.
-  (* intros l' bor' [i Eqi]%elem_of_list_lookup.
-  have Eqbor: h' !! (l +ₗ i) = Some (LitV (LitLoc l' bor')).
-  { rewrite -Eqi. by eapply VALUES, lookup_lt_Some. }
-  by apply (state_wf_mem_bor _ WF _ _ _ Eqbor). *)
+    (* intros l' bor' [i Eqi]%elem_of_list_lookup.
+    have Eqbor: h' !! (l +ₗ i) = Some (LitV (LitLoc l' bor')).
+    { rewrite -Eqi. by eapply VALUES, lookup_lt_Some. }
+    by apply (state_wf_mem_bor _ WF _ _ _ Eqbor). *)
+  - intros l' stk'. eapply accessN_stack_non_empty; eauto. by apply WF.
 Qed.
 
 (** Write *)
@@ -425,6 +511,7 @@ Proof.
     destruct Eq as [stk [Eq [Sub1 _]]]; [done..|].
     intros si Ini. apply (state_wf_stack_item _ WF _ _ Eq).
     move : Ini. by apply elem_of_list_suffix_proper.
+  - intros l' stk'. eapply accessN_stack_non_empty; eauto. by apply WF.
 Qed.
 
 (** Deref *)
@@ -454,7 +541,7 @@ Proof.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
-  constructor; simpl; [apply WF..|].
+  constructor; simpl; [apply WF..| |apply WF].
   intros ?? Eq ? In. have SI := state_wf_stack_item _ WF _ _ Eq _ In.
   destruct si; [done..|]. rewrite lookup_insert_is_Some'. by right.
 Qed.
@@ -471,7 +558,7 @@ Proof.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
-  constructor; simpl; [apply WF..|].
+  constructor; simpl; [apply WF..| |apply WF].
   intros ?? Eq ? In. have SI := state_wf_stack_item _ WF _ _ Eq _ In.
   destruct si; [done..|]. rewrite lookup_insert_is_Some'. by right.
 Qed.
@@ -513,13 +600,16 @@ Proof.
   eapply (visit_freeze_sensitive'_elim
             (* general goal P *)
             (λ _ _ f α _ _ _ oalc, ∀ α' lc',
-              (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+              (∀ α1 α2 l n b, f α1 l n b = Some α2 →
+                  dom (gset loc) α1 ≡ dom (gset loc) α2) →
                 oalc = Some (α', lc') → dom (gset loc) α ≡ dom (gset loc) α')
             (λ _ _ f _ _ _ _ α _ _ _ oalc, ∀ α' lc',
-              (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+              (∀ α1 α2 l n b, f α1 l n b = Some α2 →
+                  dom (gset loc) α1 ≡ dom (gset loc) α2) →
                 oalc = Some (α', lc') → dom (gset loc) α ≡ dom (gset loc) α')
             (λ _ _ _ f α _ _ _ _ _ oalc, ∀ α' lc',
-              (∀ α1 α2 l n b, f α1 l n b = Some α2 → dom (gset loc) α1 ≡ dom (gset loc) α2) →
+              (∀ α1 α2 l n b, f α1 l n b = Some α2 →
+                  dom (gset loc) α1 ≡ dom (gset loc) α2) →
                 oalc = Some (α', lc') → dom (gset loc) α ≡ dom (gset loc) α')).
   - naive_solver.
   - naive_solver.
@@ -1014,13 +1104,13 @@ Proof.
   intros Eq ?. induction stk as [|[] stk]; [done|..];
     move : Eq; simpl; [destruct bor..|].
   - case decide => ?; simpl; [case_match|]; [by intros; simplify_eq|done|].
-    admit.
-  - admit.
-  - case kind; [by intros; simplify_eq|..].
-    admit. admit.
+    naive_solver.
+  - naive_solver.
+  - move : IHstk. case kind; [by intros; simplify_eq|..]; naive_solver.
   - case kind; [by intros; simplify_eq|..];
       (case_match; [by intros; simplify_eq|done]).
-Admitted.
+  - case_match; [done|]. naive_solver.
+Qed.
 
 Lemma access1_non_nil β stk bor kind stk' :
   access1 β stk bor kind = Some stk' → stk.(borrows) ≠ [] → stk'.(borrows) ≠ [].
@@ -1089,11 +1179,11 @@ Lemma reborrow_wf_stack_item h α β clk l bor T kind bor' α'
   wf_stack_item α β clk → wf_stack_item α' β clk.
 Proof.
   rewrite /reborrow. destruct bor' as [|[]].
-  - by eapply reborrowBlock_wf_stack_item; eauto.
+  - eapply reborrowBlock_wf_stack_item; eauto. admit.
   - (* apply visit_freeze_sensitive_wf_stack_frozen.
     intros ?????. by apply reborrowBlock_wf_stack_frozen. *)
     admit.
-  - by eapply reborrowBlock_wf_stack_item; eauto.
+  - eapply reborrowBlock_wf_stack_item; eauto. admit.
 Admitted.
 
 Lemma retag_ref_wf_stack_item h α β clk l bor T mut kind is_2p bor' α' clk' :
@@ -1175,7 +1265,8 @@ Proof.
   - eapply retag_wf_mem_bor; eauto. by apply WF.
   - eapply retag_wf_stack_frozen; eauto. by apply WF.
   - eapply retag_wf_stack_item; eauto. by apply WF.
-Qed.
+  - admit.
+Admitted.
 
 (** None event step *)
 Lemma None_step_wf σ σ' e e' obs efs h0 :
