@@ -663,64 +663,6 @@ Proof.
   simpl. by lia.
 Qed.
 
-Lemma retag_ref_wf_mem_bor h α β clk x l bor T mut kind is_2p bor' α' clk'
-  (Eq: h !! x = Some $ LitV (LitLoc l bor)) :
-  retag_ref h α β clk l bor T mut kind is_2p = Some (bor', α', clk') →
-  wf_mem_bor h clk → wf_mem_bor (<[x:=LitV (LitLoc l bor')]> h) clk'.
-Proof.
-  intros Eqr WF x' l' bor1. case (decide (x' = x)) => Eqx; [subst x'|].
-  - rewrite lookup_insert => ?. simplify_eq.
-    by eapply retag_ref_clk_bor_mono; eauto.
-  - rewrite lookup_insert_ne; [|done].
-    move => /WF. apply bor_value_included_trans. by eapply retag_ref_clk_mono.
-Qed.
-
-Lemma retag_wf_mem_bor h α clk β l kind T h' α' clk':
-  retag h α clk β l kind T = Some (h', α', clk') →
-  wf_mem_bor h clk → wf_mem_bor h' clk'.
-Proof.
-  eapply (retag_elim
-            (* general goal P *)
-            (λ h α clk β l kind T r, ∀ h' α' clk', r = Some (h', α', clk') →
-                wf_mem_bor h clk → wf_mem_bor h' clk')
-            (* invariant for Product's where P1 *)
-            (λ _ _ _ _ _ _ _ h α clk _ _ ohac, ∀ h' α' clk',
-                ohac = Some (h', α', clk') →
-                wf_mem_bor h clk → wf_mem_bor h' clk')
-            (* invariant for Sum's where P3 *)
-            (λ h _ _ α clk _ _ _ _ _ ohac, ∀ h' α' clk',
-                ohac = Some (h', α', clk') →
-                wf_mem_bor h clk → wf_mem_bor h' clk')).
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - (* Reference cases *)
-    clear. intros h ?? bor α clk β rt_kind p_kind T Eq h' α' clk'.
-    destruct p_kind as [mut| |];
-      [|destruct rt_kind; try by (intros; simplify_eq)|];
-      (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
-      intros ?; simplify_eq; by eapply retag_ref_wf_mem_bor; eauto.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - (* Product inner recursive case *)
-    intros ????????????? IH1 IH2 ???.
-    case retag as [hac|]; [|done]. move => /= /IH1 WF ?. apply WF.
-    destruct hac as [[]]. by eapply IH2.
-  - naive_solver.
-  - naive_solver.
-  - (* Sum case *)
-    intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-Qed.
-
 (* Retag frozen_since *)
 Lemma wf_stack_frozen_mono α :
   Proper ((≤)%nat ==> impl) (wf_stack_frozen α).
@@ -741,15 +683,17 @@ Proof. by move => SF HI si /(elem_of_list_suffix_proper _ _ _ SF) /HI. Qed.
 Lemma access1_wf_stack β stk bor kind stk' clk :
   access1 β stk bor kind = Some stk' →
   (frozen_lt stk clk → frozen_lt stk' clk) ∧
+  (stk.(borrows) ≠ [] → stk'.(borrows) ≠ []) ∧
   (stack_item_included stk β clk → stack_item_included stk' β clk).
 Proof.
   rewrite /access1. case frozen_since.
   - case kind; [by intros; simplify_eq|..];
       (case access1' eqn:Eq; [simpl; intros; simplify_eq|done]);
-      (split; [done|]);
-      by eapply suffix_stack_item_included, access1'_item_stack.
+      (split; [done|split]; [by eapply access1'_stack_item
+          |by eapply suffix_stack_item_included, access1'_stack_item]).
   - case access1' eqn:Eq; [simpl; intros; simplify_eq|done].
-    split; [done|]. by eapply suffix_stack_item_included, access1'_item_stack.
+    split; [done|split]; [by eapply access1'_stack_item
+          |by eapply suffix_stack_item_included, access1'_stack_item].
 Qed.
 
 Lemma create_borrow_wf_stack stk bor kind stk' clk (INCL: bor <b clk):
@@ -888,9 +832,7 @@ Proof.
   destruct bar as [c|]; [|destruct oi].
   - case access1 as [stk1|] eqn:Eq1; [simpl|done].
     intros; eapply create_borrow_wf_stack; eauto.
-    apply add_barrier_stack_item_included; eauto.
-    + by eapply access1_stack_item.
-    + by eapply access1_wf_stack.
+    apply add_barrier_stack_item_included; eauto; by eapply access1_wf_stack.
   - case (deref1 stk bor' kind) as [[i'|]|] eqn:Eq'.
     + case decide => ?; [case_match; [|done]; intros; by simplify_eq|].
       case access1 as [stk1|] eqn:Eq1; [simpl|done].
@@ -914,8 +856,8 @@ Lemma reborrowBlock_wf_stack α β clk l n bor bor' kind bar α'
   (INCL: bor' <b clk)
   (BAR : match bar with Some c => is_Some (β !! c) | _ => True end) :
   reborrowBlock α β l n bor bor' kind bar = Some α' →
-  wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-  wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk.
+  wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α→
+  wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
   rewrite /reborrowBlock. case xorb; [done|]. revert α.
   induction n as [|n IH]; intros α; simpl; [by intros ?; simplify_eq|].
@@ -926,22 +868,22 @@ Proof.
     (case (decide (l' = l +ₗ n)) => ?;
       [subst l'; rewrite lookup_insert; intros ?; simplify_eq
       |rewrite lookup_insert_ne; [|done]]).
-  - eapply reborrow1_wf_stack_item; eauto.
-  - apply WF1.
-  - eapply reborrow1_wf_non_empty; eauto.
-  - apply WF2.
   - eapply reborrow1_wf_stack_frozen; eauto.
+  - apply WF1.
+  - eapply reborrow1_wf_stack_item; eauto.
+  - apply WF2.
+  - eapply reborrow1_wf_non_empty; eauto.
   - apply WF3.
 Qed.
 
 Lemma unsafe_action_wf_stack
   (f: bstacks → _ → _ → _ → _) α l last fs us α' lc' β clk :
   (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-    wf_stack_item α1 β clk ∧ wf_non_empty α1 ∧ wf_stack_frozen α1 clk →
-    wf_stack_item α2 β clk ∧ wf_non_empty α2 ∧ wf_stack_frozen α2 clk) →
+    wf_stack_frozen α1 clk ∧ wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+    wf_stack_frozen α2 clk ∧ wf_stack_item α2 β clk ∧ wf_non_empty α2) →
   unsafe_action f α l last fs us = Some (α', lc') →
-  wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-  wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk.
+  wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
   intros Hf. rewrite /unsafe_action.
   case f as [α1|] eqn:Eq1; [simpl|done].
@@ -952,35 +894,35 @@ Qed.
 Lemma visit_freeze_sensitive'_wf_stack h l (f: bstacks → _ → _ → _ → _)
   α α' last cur T lc' β clk :
   (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-    wf_stack_item α1 β clk ∧ wf_non_empty α1 ∧ wf_stack_frozen α1 clk →
-    wf_stack_item α2 β clk ∧ wf_non_empty α2 ∧ wf_stack_frozen α2 clk) →
+    wf_stack_frozen α1 clk ∧ wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+    wf_stack_frozen α2 clk ∧ wf_stack_item α2 β clk ∧ wf_non_empty α2) →
   visit_freeze_sensitive' h l f α last cur T = Some (α', lc') →
-  wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-  wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk.
+  wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
   eapply (visit_freeze_sensitive'_elim
     (* general goal P *)
     (λ _ _ f α _ _ _ oalc, ∀ α' lc',
       (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-        wf_stack_item α1 β clk ∧ wf_non_empty α1 ∧ wf_stack_frozen α1 clk →
-        wf_stack_item α2 β clk ∧ wf_non_empty α2 ∧ wf_stack_frozen α2 clk) →
+        wf_stack_frozen α1 clk ∧ wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+        wf_stack_frozen α2 clk ∧ wf_stack_item α2 β clk ∧ wf_non_empty α2) →
       oalc = Some (α', lc') →
-      wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-      wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk)
+      wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α →
+      wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α')
     (λ _ _ f _ _ _ _ α _ _ _ oalc, ∀ α' lc',
       (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-        wf_stack_item α1 β clk ∧ wf_non_empty α1 ∧ wf_stack_frozen α1 clk →
-        wf_stack_item α2 β clk ∧ wf_non_empty α2 ∧ wf_stack_frozen α2 clk) →
+        wf_stack_frozen α1 clk ∧ wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+        wf_stack_frozen α2 clk ∧ wf_stack_item α2 β clk ∧ wf_non_empty α2) →
       oalc = Some (α', lc') →
-      wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-      wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk)
+      wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α →
+      wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α')
     (λ _ _ _ f α _ _ _ _ _ oalc, ∀ α' lc',
       (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-        wf_stack_item α1 β clk ∧ wf_non_empty α1 ∧ wf_stack_frozen α1 clk →
-        wf_stack_item α2 β clk ∧ wf_non_empty α2 ∧ wf_stack_frozen α2 clk) →
+        wf_stack_frozen α1 clk ∧ wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+        wf_stack_frozen α2 clk ∧ wf_stack_item α2 β clk ∧ wf_non_empty α2) →
       oalc = Some (α', lc') →
-      wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-      wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk)).
+      wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α →
+      wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α')).
   - naive_solver.
   - naive_solver.
   - (* Unsafe case *)
@@ -1012,11 +954,11 @@ Qed.
 Lemma visit_freeze_sensitive_wf_stack h l T (f: bstacks → _ → _ → _ → _)
   clk β α α' :
   (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-    wf_stack_item α1 β clk ∧ wf_non_empty α1 ∧ wf_stack_frozen α1 clk →
-    wf_stack_item α2 β clk ∧ wf_non_empty α2 ∧ wf_stack_frozen α2 clk) →
+    wf_stack_frozen α1 clk ∧ wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+    wf_stack_frozen α2 clk ∧ wf_stack_item α2 β clk ∧ wf_non_empty α2) →
   visit_freeze_sensitive h l T f α = Some α' →
-  wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-  wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk.
+  wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
   intros Hf. rewrite /visit_freeze_sensitive.
   case visit_freeze_sensitive' as [[α1 [last cur]]|] eqn:Eq; [|done].
@@ -1028,8 +970,8 @@ Lemma reborrow_wf_stack h α β clk l bor T bar bor' α'
   (INCL: bor' <b clk)
   (BAR : match bar with Some c => is_Some (β !! c) | _ => True end) :
   reborrow h α β l bor T bar bor' = Some α' →
-  wf_stack_item α β clk ∧ wf_non_empty α ∧ wf_stack_frozen α clk →
-  wf_stack_item α' β clk ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk.
+  wf_stack_frozen α clk ∧ wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
   rewrite /reborrow. destruct bor' as [|[]].
   - by eapply reborrowBlock_wf_stack; eauto.
@@ -1038,12 +980,22 @@ Proof.
   - by eapply reborrowBlock_wf_stack; eauto.
 Qed.
 
-Lemma retag_ref_wf_stack h α β clk l bor T mut bar is_2p bor' α' clk'
-  (BAR : match bar with Some c => is_Some (β !! c) | _ => True end) :
+Lemma retag_ref_wf_stack h α β clk x l bor T mut bar is_2p bor' α' clk'
+  (BAR : match bar with Some c => is_Some (β !! c) | _ => True end)
+  (Eqx: h !! x = Some $ LitV (LitLoc l bor)) :
   retag_ref h α β clk l bor T mut bar is_2p = Some (bor', α', clk') →
-  wf_stack_item α β clk → wf_non_empty α → wf_stack_frozen α clk →
-  wf_stack_item α' β clk' ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk'.
+  wf_mem_bor h clk → wf_stack_frozen α clk →
+  wf_stack_item α β clk → wf_non_empty α →
+  wf_mem_bor (<[x:=LitV (LitLoc l bor')]> h) clk' ∧ wf_stack_frozen α' clk' ∧
+  wf_stack_item α' β clk' ∧ wf_non_empty α'.
 Proof.
+  intros RE WF1 WF2 WF3 WF4. split.
+  { intros  x' l' bor1. case (decide (x' = x)) => ?; [subst x'|].
+    - rewrite lookup_insert => ?. simplify_eq.
+      by eapply retag_ref_clk_bor_mono; eauto.
+    - rewrite lookup_insert_ne; [|done].
+      move => /WF1. apply bor_value_included_trans. by eapply retag_ref_clk_mono. }
+  move : RE WF2 WF3 WF4.
   rewrite /retag_ref. case tsize eqn:Eq; [by intros; simplify_eq|].
   case reborrow as [α1|] eqn:Eq1; [simpl|done].
   destruct is_2p; [destruct mut as [[]|]|]; [|done..|].
@@ -1052,42 +1004,50 @@ Proof.
     eapply visit_freeze_sensitive_wf_stack; eauto.
     + intros ?????. apply reborrowBlock_wf_stack; [simpl; by lia|done].
     + eapply reborrow_wf_stack; eauto; [simpl; by lia|].
-      split; last split; [|done|].
-      * eapply wf_stack_item_mono; [|eauto]. by lia.
+      split; last split; [..|done].
       * eapply wf_stack_frozen_mono; [|eauto]. by lia.
-  - intros ?. simplify_eq. intros WF1 WF2 WF3.
+      * eapply wf_stack_item_mono; [|eauto]. by lia.
+  - intros ?. simplify_eq. intros WF2 WF3 WF4.
     eapply reborrow_wf_stack; eauto.
     + by destruct mut as [[]|]; simpl; [lia..|].
-    + split; last split; [|done|].
-      * eapply wf_stack_item_mono; [|exact WF1]. by lia.
-      * eapply wf_stack_frozen_mono; [|exact WF3]. by lia.
+    + split; last split; [..|done].
+      * eapply wf_stack_frozen_mono; [|exact WF2]. by lia.
+      * eapply wf_stack_item_mono; [|exact WF3]. by lia.
 Qed.
 
 Lemma retag_wf_stack h α clk β l kind T h' α' clk' :
   retag h α clk β l kind T = Some (h', α', clk') →
   borrow_barrier_Some β kind →
-  wf_stack_item α β clk → wf_non_empty α → wf_stack_frozen α clk →
-  wf_stack_item α' β clk' ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk'.
+  wf_mem_bor h clk → wf_stack_frozen α clk →
+  wf_stack_item α β clk → wf_non_empty α →
+  wf_mem_bor h' clk' ∧ wf_stack_frozen α' clk' ∧
+  wf_stack_item α' β clk' ∧ wf_non_empty α'.
 Proof.
   eapply (retag_elim
     (* general goal P *)
     (λ h α clk β l kind T ohac, ∀ h' α' clk',
         ohac = Some (h', α', clk') →
         borrow_barrier_Some β kind →
-        wf_stack_item α β clk → wf_non_empty α → wf_stack_frozen α clk →
-        wf_stack_item α' β clk' ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk')
+        wf_mem_bor h clk → wf_stack_frozen α clk →
+        wf_stack_item α β clk → wf_non_empty α →
+        wf_mem_bor h' clk' ∧ wf_stack_frozen α' clk' ∧
+        wf_stack_item α' β clk' ∧ wf_non_empty α')
     (* invariant for Product's where P1 *)
     (λ _ _ _ β _ kind _ h α clk _ _ ohac, ∀ h' α' clk',
         ohac = Some (h', α', clk') →
         borrow_barrier_Some β kind →
-        wf_stack_item α β clk → wf_non_empty α → wf_stack_frozen α clk →
-        wf_stack_item α' β clk' ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk')
+        wf_mem_bor h clk → wf_stack_frozen α clk →
+        wf_stack_item α β clk → wf_non_empty α →
+        wf_mem_bor h' clk' ∧ wf_stack_frozen α' clk' ∧
+        wf_stack_item α' β clk' ∧ wf_non_empty α')
     (* invariant for Sum's where P3 *)
     (λ h _ _ α clk β kind _ _ _ ohac, ∀ h' α' clk',
         ohac = Some (h', α', clk') →
         borrow_barrier_Some β kind →
-        wf_stack_item α β clk → wf_non_empty α → wf_stack_frozen α clk →
-        wf_stack_item α' β clk' ∧ wf_non_empty α' ∧ wf_stack_frozen α' clk')).
+        wf_mem_bor h clk → wf_stack_frozen α clk →
+        wf_stack_item α β clk → wf_non_empty α →
+        wf_mem_bor h' clk' ∧ wf_stack_frozen α' clk' ∧
+        wf_stack_item α' β clk' ∧ wf_non_empty α')).
   - naive_solver.
   - naive_solver.
   - naive_solver.
@@ -1106,7 +1066,7 @@ Proof.
   - naive_solver.
   - (* Product inner recursive case *)
     intros ????????????? IH1 IH2 ???.
-    case retag as [hac|]; [|done]. move => /= /IH1 WF ????.
+    case retag as [hac|]; [|done]. move => /= /IH1 WF ?????.
     destruct hac as [[]]. apply WF; auto; by eapply IH2.
   - naive_solver.
   - naive_solver.
@@ -1133,7 +1093,7 @@ Proof.
   have ?: borrow_barrier_Some β' kind by (destruct kind; [eexists|done..]).
   constructor; simpl.
   - move : RETAG => /retag_dom [<- <-]. by apply WF.
-  - eapply retag_wf_mem_bor; eauto. by apply WF.
+  - eapply retag_wf_stack; eauto; by apply WF.
   - eapply retag_wf_stack; eauto; by apply WF.
   - eapply retag_wf_stack; eauto; by apply WF.
   - eapply retag_wf_stack; eauto; by apply WF.
