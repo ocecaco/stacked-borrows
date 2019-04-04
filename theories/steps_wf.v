@@ -1,43 +1,6 @@
 From Equations Require Import Equations.
 From stbor Require Import helpers.
-From stbor Require Export lang notation.
-
-Class Wellformed A := Wf : A → Prop.
-Existing Class Wf.
-
-Definition wf_mem_bor (h: mem) (clock: time) :=
-  ∀ l l' bor, h !! l = Some (LitV (LitLoc l' bor)) → bor <b clock.
-
-Definition frozen_lt (stk: bstack) (clk: time) :=
-  match frozen_since stk with
-  | Some t => (t < clk)%nat
-  | None => True
-  end.
-Definition wf_stack_frozen (α: bstacks) (clock: time) :=
-  ∀ l stack, α !! l = Some stack → frozen_lt stack clock.
-
-Definition stack_item_included (stk: bstack) (β: barriers) (clock: time) :=
-  ∀ si, si ∈ stk.(borrows) → match si with
-                              | Uniq t => (t < clock)%nat
-                              | FnBarrier c => is_Some (β !! c)
-                              | _ => True
-                              end.
-Definition wf_stack_item (α: bstacks) (β: barriers) (clock: time) :=
-  ∀ l stack, α !! l = Some stack → stack_item_included stack β clock.
-Definition borrow_barrier_Some (β: barriers) kind : Prop :=
-  match kind with FnEntry c => is_Some (β !! c) | _ => True end.
-Definition wf_non_empty (α: bstacks) :=
-   ∀ l stack, α !! l = Some stack → stack.(borrows) ≠ [].
-
-Record state_wf' σ := {
-  state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
-  state_wf_mem_bor : wf_mem_bor σ.(cheap) σ.(cclk);
-  state_wf_stack_frozen : wf_stack_frozen σ.(cstk) σ.(cclk);
-  state_wf_stack_item : wf_stack_item σ.(cstk) σ.(cbar) σ.(cclk);
-  state_wf_non_empty : wf_non_empty σ.(cstk);
-}.
-
-Instance state_wf : Wellformed state :=  state_wf'.
+From stbor Require Export properties.
 
 (** Steps preserve wellformedness *)
 

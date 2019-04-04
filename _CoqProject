@@ -3,7 +3,8 @@
 theories/lang.v
 theories/notation.v
 theories/tactics.v
+theories/properties.v
 theories/helpers.v
-theories/steps.v
+theories/steps_wf.v
 theories/examples.v
 theories/simulation.v
