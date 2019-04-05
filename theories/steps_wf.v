@@ -41,10 +41,10 @@ Lemma init_stacks_foldr l n h si:
 Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 
 (** Alloc *)
-Lemma alloc_step_wf σ σ' e e' obs efs h0 l bor T:
-  base_step e σ.(cheap) (Some $ AllocEvt l bor T) obs e' h0 efs →
+Lemma alloc_step_wf σ σ' e e' efs h0 l bor T:
+  base_step e σ.(cheap) (AllocEvt l bor T) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ AllocEvt l bor T)
+                    (AllocEvt l bor T)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -103,10 +103,10 @@ Lemma accessN_dealloc_delete α β l bor n α':
   α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq O n).
 Proof. intros. eapply accessN_dealloc_delete'. by rewrite shift_loc_0. Qed.
 
-Lemma dealloc_step_wf σ σ' e e' obs efs h0 l bor T :
-  base_step e σ.(cheap) (Some $ DeallocEvt l bor T) obs e' h0 efs →
+Lemma dealloc_step_wf σ σ' e e' efs h0 l bor T :
+  base_step e σ.(cheap) (DeallocEvt l bor T) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ DeallocEvt l bor T)
+                    (DeallocEvt l bor T)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -273,10 +273,10 @@ Proof.
         [by rewrite lookup_delete|rewrite lookup_delete_ne;[by apply WF|done]].
 Qed.
 
-Lemma copy_step_wf σ σ' e e' obs efs h0 l bor T vl :
-  base_step e σ.(cheap) (Some $ CopyEvt l bor T vl) obs e' h0 efs →
+Lemma copy_step_wf σ σ' e e' efs h0 l bor T vl :
+  base_step e σ.(cheap) (CopyEvt l bor T vl) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ CopyEvt l bor T vl)
+                    (CopyEvt l bor T vl)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ' ∧ vl <<b σ'.(cclk).
 Proof.
@@ -339,10 +339,10 @@ Proof.
       apply Lt. by lia.
 Qed.
 
-Lemma write_step_wf σ σ' e e' obs efs h0 l bor T vl :
-  base_step e σ.(cheap) (Some $ WriteEvt l bor T vl) obs e' h0 efs →
+Lemma write_step_wf σ σ' e e' efs h0 l bor T vl :
+  base_step e σ.(cheap) (WriteEvt l bor T vl) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ WriteEvt l bor T vl)
+                    (WriteEvt l bor T vl)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -382,10 +382,10 @@ Proof.
 Qed.
 
 (** Deref *)
-Lemma deref_step_wf σ σ' e e' obs efs h0 l bor T mut :
-  base_step e σ.(cheap) (Some $ DerefEvt l bor T mut) obs e' h0 efs →
+Lemma deref_step_wf σ σ' e e' efs h0 l bor T mut :
+  base_step e σ.(cheap) (DerefEvt l bor T mut) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ DerefEvt l bor T mut)
+                    (DerefEvt l bor T mut)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -397,10 +397,10 @@ Proof.
 Qed.
 
 (** NewCall *)
-Lemma newcall_step_wf σ σ' e e' obs efs h0 n :
-  base_step e σ.(cheap) (Some $ NewCallEvt n) obs e' h0 efs →
+Lemma newcall_step_wf σ σ' e e' efs h0 n :
+  base_step e σ.(cheap) (NewCallEvt n) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ NewCallEvt n)
+                    (NewCallEvt n)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -414,10 +414,10 @@ Proof.
 Qed.
 
 (** EndCall *)
-Lemma endcall_step_wf σ σ' e e' obs efs h0 n :
-  base_step e σ.(cheap) (Some $ EndCallEvt n) obs e' h0 efs →
+Lemma endcall_step_wf σ σ' e e' efs h0 n :
+  base_step e σ.(cheap) (EndCallEvt n) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ EndCallEvt n)
+                    (EndCallEvt n)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -1042,10 +1042,10 @@ Proof.
   - naive_solver.
 Qed.
 
-Lemma retag_step_wf σ σ' e e' obs efs h0 l T kind :
-  base_step e σ.(cheap) (Some $ RetagEvt l T kind) obs e' h0 efs →
+Lemma retag_step_wf σ σ' e e' efs h0 l T kind :
+  base_step e σ.(cheap) (RetagEvt l T kind) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (Some $ RetagEvt l T kind) 
+                    (RetagEvt l T kind)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -1062,11 +1062,25 @@ Proof.
   - eapply retag_wf_stack; eauto; by apply WF.
 Qed.
 
-(** None event step *)
-Lemma None_step_wf σ σ' e e' obs efs h0 :
-  base_step e σ.(cheap) None obs e' h0 efs →
+(** Silent step *)
+Lemma silent_step_wf σ σ' e e' efs h0 :
+  base_step e σ.(cheap) SilentEvt e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    None
+                    SilentEvt
+                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+  Wf σ → Wf σ'.
+Proof.
+  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  intros BS IS WF.
+  inversion BS; clear BS; simplify_eq;
+  inversion IS; clear IS; simplify_eq; apply WF.
+Qed.
+
+(** SysCall step *)
+Lemma syscall_step_wf σ σ' e e' id efs h0 :
+  base_step e σ.(cheap) (SysCallEvt id) e' h0 efs →
+  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+                    (SysCallEvt id)
                   σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
@@ -1079,7 +1093,7 @@ Qed.
 Lemma head_step_wf σ σ' e e' obs efs :
   head_step e σ obs e' σ' efs → Wf σ → Wf σ'.
 Proof.
-  intros HS WF. inversion HS. simplify_eq. destruct oevent as [[]|].
+  intros HS WF. inversion HS. simplify_eq. destruct ev.
   - eapply alloc_step_wf; eauto.
   - eapply dealloc_step_wf; eauto.
   - eapply copy_step_wf; eauto.
@@ -1088,5 +1102,6 @@ Proof.
   - eapply newcall_step_wf; eauto.
   - eapply endcall_step_wf; eauto.
   - eapply retag_step_wf; eauto.
-  - eapply None_step_wf; eauto.
+  - eapply syscall_step_wf; eauto.
+  - eapply silent_step_wf; eauto.
 Qed.

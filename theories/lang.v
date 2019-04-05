@@ -511,6 +511,8 @@ Inductive event :=
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
+| SysCallEvt (id: nat)
+| SilentEvt
 .
 
 (* Compute subtype of `T` and offset to it from `path` *)
@@ -539,85 +541,82 @@ Fixpoint write_mem l (vl: list immediate) h: mem :=
   | v :: vl => write_mem (l +ₗ 1) vl (<[l := v]> h)
   end.
 
-Notation observation := nat (only parsing).
-
 Inductive base_step :
-  expr → mem → option event → list observation → expr → mem → list expr → Prop :=
+  expr → mem → event → expr → mem → list expr → Prop :=
 | BinOpBS op l1 l2 l' h :
     bin_op_eval h op l1 l2 l' →
     base_step (BinOp op (TVal [Lit l1]) (TVal [Lit l2])) h
-              None [] (TVal [Lit l']) h []
+              SilentEvt (TVal [Lit l']) h []
 | BetaBS f xl e e' el h :
     Forall (λ ei, is_Some (to_val ei)) el →
     Closed (f :b: xl +b+ []) e →
     subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
-    base_step (App (Rec f xl e) el) h None [] e' h []
+    base_step (App (Rec f xl e) el) h SilentEvt e' h []
 (* TODO: add more operations for tempvalue lists *)
 | ProjBS h el i vl v
     (DEFINED: 0 ≤ i ∧ vl !! (Z.to_nat i) = Some v)
     (VALUES: to_val (TVal el) = Some (TValV vl)) :
-    base_step (Proj (TVal el) (Lit $ LitInt i)) h None [] (of_val (ImmV v)) h []
+    base_step (Proj (TVal el) (Lit $ LitInt i)) h SilentEvt (of_val (ImmV v)) h []
 | ConcBS h el1 el2 vl1 vl2
     (VALUES1: to_val (TVal el1) = Some (TValV vl1))
     (VALUES2: to_val (TVal el2) = Some (TValV vl2)):
     base_step (Conc (TVal el1) (TVal el2)) h
-              None [] (of_val (TValV (vl1 ++ vl2))) h []
+              SilentEvt (of_val (TValV (vl1 ++ vl2))) h []
 | CopyBS l lbor T (vl: list immediate) h (LEN: length vl = tsize T)
     (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) :
     base_step (Copy (Place l lbor T)) h
-              (Some $ CopyEvt l lbor T vl) []
+              (CopyEvt l lbor T vl)
               (of_val (TValV vl)) h
               []
 | WriteBS l lbor T el vl h (LENe: length el = tsize T)
     (DEFINED: ∀ (i: nat), (i < length vl)%nat → is_Some (h !! (l +ₗ i)))
     (VALUES: to_val (TVal el) = Some (TValV vl)) :
     base_step (Write (Place l lbor T) (TVal el)) h
-              (Some $ WriteEvt l lbor T vl) []
+              (WriteEvt l lbor T vl)
               (Lit LitPoison) (write_mem l vl h)
               []
 | AllocBS l lbor T h :
     (∀ m, h !! (l +ₗ m) = None) →
     base_step (Alloc T) h
-              (Some $ AllocEvt l lbor T) []
+              (AllocEvt l lbor T)
               (Place l lbor T) (init_mem l (tsize T) h)
               []
 | FreeBS T l lbor h :
     (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
     base_step (Free (Place l lbor T)) h
-              (Some $ DeallocEvt l lbor T) []
+              (DeallocEvt l lbor T)
               (Lit LitPoison) (free_mem l (tsize T) h)
               []
 | NewCallBS call h:
-    base_step NewCall h
-              (Some $ NewCallEvt call) [] (Lit $ LitInt call) h []
+    base_step NewCall h (NewCallEvt call) (Lit $ LitInt call) h []
 | EndCallBS call h:
     (0 ≤ call)%nat →
     base_step (EndCall (Lit $ LitInt call)) h
-              (Some $ EndCallEvt call) [] (Lit LitPoison) h []
+              (EndCallEvt call) (Lit LitPoison) h []
 | RefBS l lbor T h :
     is_Some (h !! l) →
-    base_step (Ref (Place l lbor T)) h None [] (Lit (LitLoc l lbor)) h []
+    base_step (Ref (Place l lbor T)) h SilentEvt (Lit (LitLoc l lbor)) h []
 | DerefBS l lbor T mut h :
     is_Some (h !! l) →
     base_step (Deref (Lit (LitLoc l lbor)) T mut) h
-              (Some $ DerefEvt l lbor T mut) []
+              (DerefEvt l lbor T mut)
               (Place l lbor T) h
               []
 | FieldBS l lbor T path off T' h (FIELD: field_access T path = Some (off, T')) :
     base_step (Field (Place l lbor T) path) h
-              None [] (Place (l +ₗ off) lbor T') h []
+              SilentEvt (Place (l +ₗ off) lbor T') h []
 | RetagBS x xbor T kind h:
     base_step (Retag (Place x xbor T) kind) h
-              (Some $ RetagEvt x T kind) [] (Lit LitPoison) h []
+              (RetagEvt x T kind) (Lit LitPoison) h []
 | CaseBS i el e h :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
-    base_step (Case (Lit $ LitInt i) el) h None [] e h []
+    base_step (Case (Lit $ LitInt i) el) h SilentEvt e h []
 | ForkBS e h:
-    base_step (Fork e) h None [] (Lit LitPoison) h [e]
+    base_step (Fork e) h SilentEvt (Lit LitPoison) h [e]
 (* observable behavior *)
 | SysCallBS id h:
-    base_step (SysCall id) h None [id] (Lit LitPoison) h [].
+    base_step (SysCall id) h (SysCallEvt id) (Lit LitPoison) h [].
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
@@ -1094,50 +1093,52 @@ Infix "<<b" := bor_values_included (at level 60, no associativity).
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
 Inductive instrumented_step h α β (clock: time):
-  option event → mem → bstacks → barriers → time → Prop :=
-| DefaultIS :
-    instrumented_step h α β clock None h α β clock
+  event → mem → bstacks → barriers → time → Prop :=
+| SilentIS :
+    instrumented_step h α β clock SilentEvt h α β clock
+| SysCallIS id :
+    instrumented_step h α β clock (SysCallEvt id) h α β clock
 (* This implements EvalContextExt::tag_new_allocation. *)
 | AllocStackIS t x T :
     (* UniqB t is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     instrumented_step h α β clock
-                      (Some $ AllocEvt x (UniqB t) T) h
+                      (AllocEvt x (UniqB t) T) h
                       (init_stacks x (tsize T) α (Uniq clock)) β (S clock)
 (* This implements AllocationExtra::memory_read. *)
 | CopyIS α' l lbor T vl
     (ACC: accessN α β l lbor (tsize T) AccessRead = Some α')
     (BOR: vl <<b clock) :
-    instrumented_step h α β clock (Some $ CopyEvt l lbor T vl) h α' β clock
+    instrumented_step h α β clock (CopyEvt l lbor T vl) h α' β clock
 (* This implements AllocationExtra::memory_written. *)
 | WriteIS α' l lbor T vl
     (ACC: accessN α β l lbor (tsize T) AccessWrite = Some α')
     (BOR: vl <<b clock) :
     instrumented_step h α β clock
-                      (Some $ WriteEvt l lbor T vl) h α' β clock
+                      (WriteEvt l lbor T vl) h α' β clock
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor T
     (ACC: accessN α β l lbor (tsize T) AccessDealloc = Some α') :
     instrumented_step h α β clock
-                      (Some $ DeallocEvt l lbor T) h α' β clock
+                      (DeallocEvt l lbor T) h α' β clock
 | NewCallIS:
     let call : call_id := fresh (dom (gset call_id) β) in
     instrumented_step h α β clock
-                      (Some $ NewCallEvt call) h α (<[call := true]>β) clock
+                      (NewCallEvt call) h α (<[call := true]>β) clock
 | EndCallIS call
     (ACTIVE: β !! call = Some true) :
     instrumented_step h α β clock
-                      (Some $ EndCallEvt call) h α (<[call := false]>β) clock
+                      (EndCallEvt call) h α (<[call := false]>β) clock
 (* Deferencing a pointer value to a place *)
 | DerefIS l lbor T mut
     (DEREF: ptr_deref h α l lbor T mut) :
     instrumented_step h α β clock
-                      (Some $ DerefEvt l lbor T mut) h α β clock
+                      (DerefEvt l lbor T mut) h α β clock
 | RetagIS h' α' clock' x T kind
     (FNBAR: match kind with FnEntry c => β !! c = Some true | _ => True end)
     (RETAG: retag h α clock β x kind T = Some (h', α', clock')) :
     instrumented_step h α β clock
-                      (Some $ RetagEvt x T kind) h' α' β clock'.
+                      (RetagEvt x T kind) h' α' β clock'.
 
 (** COMBINED SEMANTICS -------------------------------------------------------*)
 Record state := mkState {
@@ -1150,11 +1151,11 @@ Record state := mkState {
 Implicit Type (σ: state).
 
 Inductive head_step :
-  expr → state → list observation → expr → state → list expr → Prop :=
-  | HeadStep σ e e' efs oevent obs h0 h' α' β' clock'
-      (BaseStep : base_step e σ.(cheap) oevent obs e' h0 efs)
-      (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) oevent h' α' β' clock')
-  : head_step e σ obs e' (mkState h' α' β' clock') efs .
+  expr → state → list event → expr → state → list expr → Prop :=
+  | HeadStep σ e e' efs ev h0 h' α' β' clock'
+      (BaseStep : base_step e σ.(cheap) ev e' h0 efs)
+      (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) ev h' α' β' clock')
+  : head_step e σ [ev] e' (mkState h' α' β' clock') efs .
 
 (** Closed expressions *)
 Lemma is_closed_weaken X Y e : is_closed X e → X ⊆ Y → is_closed Y e.
