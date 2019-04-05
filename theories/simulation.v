@@ -43,6 +43,7 @@ Definition sim: SIM_CFG := paco2 _sim bot2.
 Notation SIM_EXPR := (relation expr)%type.
 Notation SIM_THREAD := (SIM_EXPR → expr → state → expr → state → Prop)%type.
 
+(* TODO: sim_state is not right *)
 Definition _sim_thread (sim_thread: SIM_THREAD) (sim_terminal: SIM_EXPR)
   (e1_src: expr) (σ0_src: state) (e1_tgt: expr) (σ0_tgt: state) : Prop :=
   (* Wf ρ1_src → Wf ρ1_tgt → *)
@@ -78,6 +79,16 @@ Qed.
 Hint Resolve _sim_thread_monotone: paco.
 
 Definition sim_thread: SIM_THREAD := paco5 _sim_thread bot5.
+
+(* Inductive ctx (sim_thread : SIM_THREAD) : SIM_THREAD :=
+| CtxIncl (sim_terminal : SIM_EXPR) e_src e_tgt σ_src σ_tgt
+    (SIM: sim_thread sim_terminal e_src σ_src e_tgt σ_tgt):
+    ctx sim_thread sim_terminal e_src σ_src e_tgt σ_tgt
+| CtxBinOp (sim_terminal : SIM_EXPR)
+    e1_src e1_tgt σ1_src σ1_tgt e2_src e2_tgt σ2_src σ2_tgt
+    (SIM1: sim_thread sim_terminal e1_src σ1_src e1_tgt σ1_tgt)
+    (SIM2: sim_thread sim_terminal e2_src σ1_src e1_tgt σ1_tgt) :
+    ctx sim_thread sim_terminal e1 σ1 e2 σ2. *)
 
 (** Composition : composing disjoint configuration preserves
   configuration simulation *)
