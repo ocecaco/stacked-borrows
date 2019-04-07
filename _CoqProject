@@ -6,5 +6,6 @@ theories/tactics.v
 theories/properties.v
 theories/helpers.v
 theories/steps_wf.v
+theories/steps_progress.v
 theories/examples.v
 theories/simulation.v

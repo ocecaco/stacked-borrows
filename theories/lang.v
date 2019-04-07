@@ -581,7 +581,7 @@ Inductive base_step :
               (AllocEvt l lbor T)
               (Place l lbor T) (init_mem l (tsize T) h)
               []
-| FreeBS T l lbor h :
+| DeallocBS T l lbor h :
     (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
     base_step (Free (Place l lbor T)) h
               (DeallocEvt l lbor T)
@@ -589,10 +589,10 @@ Inductive base_step :
               []
 | NewCallBS call h:
     base_step NewCall h (NewCallEvt call) (Lit $ LitInt call) h []
-| EndCallBS call h:
-    (0 ≤ call)%nat →
+| EndCallBS (call: Z) h:
+    (0 ≤ Z.to_nat call)%nat →
     base_step (EndCall (Lit $ LitInt call)) h
-              (EndCallEvt call) (Lit LitPoison) h []
+              (EndCallEvt (Z.to_nat call)) (Lit LitPoison) h []
 | RefBS l lbor T h :
     is_Some (h !! l) →
     base_step (Ref (Place l lbor T)) h SilentEvt (Lit (LitLoc l lbor)) h []
@@ -1099,7 +1099,7 @@ Inductive instrumented_step h α β (clock: time):
 | SysCallIS id :
     instrumented_step h α β clock (SysCallEvt id) h α β clock
 (* This implements EvalContextExt::tag_new_allocation. *)
-| AllocStackIS t x T :
+| AllocIS t x T :
     (* UniqB t is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     instrumented_step h α β clock
