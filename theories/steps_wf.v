@@ -994,3 +994,78 @@ Proof.
   - eapply syscall_step_wf; eauto.
   - eapply silent_step_wf; eauto.
 Qed.
+
+Lemma retag_clk_mono h α clk β l kind T h' α' clk' :
+  retag h α clk β l kind T = Some (h', α', clk') →
+  (clk ≤ clk')%nat.
+Proof.
+  eapply (retag_elim
+    (* general goal P *)
+    (λ h α clk _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → (clk ≤ clk')%nat)
+    (* invariant for Product's where P1 *)
+    (λ _ _ _ _ _ _ _ h α clk _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → (clk ≤ clk')%nat)
+    (* invariant for Sum's where P3 *)
+    (λ h _ _ α clk β _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → (clk ≤ clk')%nat)).
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Reference cases *)
+    clear. intros h ?? bor α clk β rt_kind p_kind T Eq h' α' clk'.
+    destruct p_kind as [mut| |];
+      [|destruct rt_kind; try by (intros; simplify_eq)|];
+      (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
+      intros; simplify_eq; eapply retag_ref_clk_mono; eauto.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Product inner recursive case *)
+    intros ????????????? IH1 IH2 ???.
+    case retag as [hac|]; [|done]. move => /= /IH1 Le. destruct hac as [[]].
+    etrans; [|exact Le]. by eapply IH2.
+  - naive_solver.
+  - naive_solver.
+  - (* Sum case *)
+    intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+Qed.
+
+Lemma head_step_clk_mono σ σ' e e' obs efs :
+  head_step e σ obs e' σ' efs → (σ.(cclk) ≤ σ'.(cclk))%nat.
+Proof.
+  intros HS. inversion HS. simplify_eq.
+  inversion InstrStep; simplify_eq; simpl; try done; [lia|].
+  by eapply retag_clk_mono.
+Qed.
+
+Definition future_barrier (β β': barriers) :=
+  ∀ c b, β !! c = Some b → ∃ b', β' !! c = Some b' ∧ (b = false → b' = false).
+
+Instance future_state_preorder: PreOrder future_barrier.
+Proof.
+  constructor.
+  - intros ???. naive_solver.
+  - move => ??? H1 H2 ?? /H1 [? [/H2 ?]]. naive_solver.
+Qed.
+
+Lemma head_step_barriers_mono σ σ' e e' obs efs :
+  head_step e σ obs e' σ' efs → future_barrier σ.(cbar) σ'.(cbar).
+Proof.
+  intros HS. inversion HS. simplify_eq.
+  inversion InstrStep; simplify_eq; simpl; try done.
+  - intros c b Eq. exists b. split; [|done]. rewrite lookup_insert_ne; [done|].
+    intros ?. subst c. apply (elem_of_dom_2 (D:= gset nat)) in Eq.
+    move : Eq. apply is_fresh.
+  - intros c' b Eq. case (decide (c' = call)) => ?; [subst c'|].
+    + exists false. by rewrite lookup_insert.
+    + exists b. by rewrite lookup_insert_ne.
+Qed.
