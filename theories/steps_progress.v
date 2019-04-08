@@ -317,11 +317,15 @@ Proof.
   eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
 Qed.
 
-Lemma deref_head_step σ l bor T mut :
+Lemma deref_head_step σ l bor T mut
+  (IN: l ∈ dom (gset loc) σ.(cheap)) :
   ∃ σ',
   head_step (Deref (Lit (LitLoc l bor)) T mut) σ
             [DerefEvt l bor T mut] (Place l bor T) σ' [].
 Proof.
+  eexists. econstructor; econstructor.
+  - by apply (elem_of_dom (D:=gset loc)).
+  -
 Abort.
 
 Lemma newcall_head_step σ :
