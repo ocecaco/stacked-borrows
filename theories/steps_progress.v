@@ -26,7 +26,7 @@ Proof.
   intros. by apply (not_elem_of_dom (D:=gset loc)), is_fresh_block.
 Qed.
 
-Definition borrow_write_match (bor: borrow) (stack: list stack_item) :=
+Definition borrow_dealloc_match (bor: borrow) (stack: list stack_item) :=
   match bor with
   | UniqB t => Uniq t ∈ stack
   | AliasB _ => Raw ∈ stack
@@ -51,11 +51,11 @@ Qed.
 
 Lemma access1'_dealloc_progress bor stack β
   (BAR: Forall (λ si, ¬ is_active_barrier β si) stack)
-  (BOR: borrow_write_match bor stack) :
+  (BOR: borrow_dealloc_match bor stack) :
   ∃ stack', access1' stack bor AccessDealloc β = Some stack'.
 Proof.
   induction stack as [|si stack IH].
-  { exfalso. move : BOR. rewrite /borrow_write_match.
+  { exfalso. move : BOR. rewrite /borrow_dealloc_match.
     by destruct bor; apply not_elem_of_nil. }
   destruct (Forall_cons_1 _ _ _ BAR) as [NA BAR'].
   specialize (IH BAR').
@@ -74,7 +74,7 @@ Qed.
 Lemma accessN_dealloc_progress α β l bor (n: nat) :
   (∀ m : Z, 0 ≤ m ∧ m < n → l +ₗ m ∈ dom (gset loc) α) →
   (∀ (m: nat) stack, (m < n)%nat →
-    α !! (l +ₗ m) = Some stack → borrow_write_match bor stack.(borrows) ∧ ∀ c,
+    α !! (l +ₗ m) = Some stack → borrow_dealloc_match bor stack.(borrows) ∧ ∀ c,
       FnBarrier c ∈ stack.(borrows) → β !! c = Some false) →
   ∃ α', accessN α β l bor n AccessDealloc = Some α'.
 Proof.
@@ -101,7 +101,7 @@ Lemma dealloc_head_step (σ: state) T l bor
   (WF: Wf σ)
   (BLK: ∀ m : Z, l +ₗ m ∈ dom (gset loc) σ.(cheap) ↔ 0 ≤ m ∧ m < tsize T)
   (BOR: ∀ (n: nat) stack, (n < tsize T)%nat →
-    σ.(cstk) !! (l +ₗ n) = Some stack → borrow_write_match bor stack.(borrows) ∧
+    σ.(cstk) !! (l +ₗ n) = Some stack → borrow_dealloc_match bor stack.(borrows) ∧
     ∀ c, FnBarrier c ∈ stack.(borrows) → σ.(cbar) !! c = Some false) :
   ∃ σ',
   head_step (Free (Place l bor T)) σ [DeallocEvt l bor T] #☠ σ' [].
@@ -250,17 +250,72 @@ Proof.
   rewrite Eq2; [done|]. rewrite -Eq1. by eapply lookup_lt_Some.
 Qed.
 
-Lemma write_head_step σ l bor T el vl
+Fixpoint borrow_write_match β (bor: borrow) (stack: list stack_item) :=
+  match stack with
+  | [] => False
+  | Raw :: stack => ∃ ot, bor = AliasB ot
+  | FnBarrier c :: stack => ¬ is_active β c ∧ borrow_write_match β bor stack
+  | Uniq t :: stack =>
+      bor = UniqB t ∨ bor ≠ UniqB t ∧ borrow_write_match β bor stack
+  end.
+
+Lemma access1'_write_progress bor stack β
+  (BOR: borrow_write_match β bor stack) :
+  ∃ stack', access1' stack bor AccessWrite β = Some stack'.
+Proof.
+  induction stack as [|si stack IH]; [done|].
+  destruct si as [t1| |c]; [destruct bor as [t2|ot]|destruct bor|]; simpl;
+    [| | |by eexists|].
+  - destruct BOR as [Eq|[NEq BOR]].
+    + inversion Eq. rewrite decide_True; [by eexists|done].
+    + rewrite decide_False; [|naive_solver]. by apply IH.
+  - destruct BOR as [?|[? ?]]; [done|]. by apply IH.
+  - by destruct BOR as [??].
+  - destruct BOR as [NB BOR]. rewrite /is_active bool_decide_false.
+    + by apply IH.
+    + intros ?. apply NB. by rewrite /is_active bool_decide_true.
+Qed.
+
+Lemma accessN_write_progress α β l bor (n: nat) :
+  (∀ m, (m < n)%nat → l +ₗ m ∈ dom (gset loc) α) →
+  (∀ (m: nat) stack, (m < n)%nat →
+    α !! (l +ₗ m) = Some stack → borrow_write_match β bor stack.(borrows)) →
+  ∃ α', accessN α β l bor n AccessWrite = Some α'.
+Proof.
+  revert α. induction n as [|n IHn]; intros α IN BOR; simpl; [by eexists|].
+  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
+  { apply (elem_of_dom (D:=gset loc)), IN. by lia. }
+  rewrite Eq /=.
+  have BM: borrow_write_match β bor stack.(borrows) by apply (BOR n); [lia|done].
+  assert (is_Some (access1 β stack bor AccessWrite)) as [stack' Eq2].
+  { rewrite /access1.
+    destruct (access1'_write_progress _ _ _ BM) as [? Eq']. rewrite Eq'.
+    case frozen_since as [tf|]; by eexists. }
+  rewrite Eq2 /=. apply IHn.
+  - intros. apply elem_of_dom. rewrite lookup_insert_ne.
+    + apply (elem_of_dom (D:=gset loc)), IN. lia.
+    + move => /shift_loc_inj. lia.
+  - intros ???. rewrite lookup_insert_ne.
+    + apply BOR. lia.
+    + move => /shift_loc_inj. lia.
+Qed.
+
+Lemma write_head_step (σ: state) l bor T el vl
+  (WF: Wf σ)
   (LEN: length vl = tsize T)
   (VALUES: to_val (TVal el) = Some (TValV vl))
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
-  (LOCVAL: vl <<b σ.(cclk)) :
+  (LOCVAL: vl <<b σ.(cclk))
+  (BOR: ∀ m stack, (m < tsize T)%nat → σ.(cstk) !! (l +ₗ m) = Some stack →
+    borrow_write_match σ.(cbar) bor stack.(borrows)) :
   ∃ σ',
   head_step (Write (Place l bor T) (TVal el)) σ
             [WriteEvt l bor T vl] #☠ σ' [].
 Proof.
-  eexists. econstructor; econstructor; [done|by rewrite LEN|done|..|done].
-Abort.
+  destruct (accessN_write_progress σ.(cstk) σ.(cbar) l bor (tsize T)); [|done|].
+  { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
+  eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
+Qed.
 
 Lemma deref_head_step σ l bor T mut :
   ∃ σ',
