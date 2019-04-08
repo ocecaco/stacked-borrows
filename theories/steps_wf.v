@@ -308,15 +308,16 @@ Qed.
 
 (** Write *)
 Lemma write_mem_dom l vl h
-  (DEFINED: ∀ i : nat, (i < strings.length vl)%nat → is_Some (h !! (l +ₗ i))) :
+  (DEFINED: ∀ i : nat, (i < strings.length vl)%nat → (l +ₗ i) ∈ dom (gset loc) h) :
   dom (gset loc) (write_mem l vl h) ≡ dom (gset loc) h.
 Proof.
   revert l h DEFINED. induction vl as [|v vl IH]; intros l h DEFINED; [done|].
   rewrite /= IH.
   - apply dom_map_insert_is_Some. rewrite -(shift_loc_0_nat l).
-    apply DEFINED. simpl. lia.
-  - intros i Lt. rewrite lookup_insert_is_Some'. right.
-    rewrite (shift_loc_assoc_nat l 1). apply DEFINED. simpl. lia.
+    apply (elem_of_dom (D:=gset loc)), DEFINED. simpl. lia.
+  - intros i Lt. apply elem_of_dom. rewrite lookup_insert_is_Some'. right.
+    rewrite (shift_loc_assoc_nat l 1). apply (elem_of_dom (D:=gset loc)), DEFINED.
+    simpl. lia.
 Qed.
 
 Lemma write_mem_lookup l vl h :

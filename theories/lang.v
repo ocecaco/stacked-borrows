@@ -581,8 +581,8 @@ Inductive base_step :
               (CopyEvt l lbor T vl)
               (of_val (TValV vl)) h
               []
-| WriteBS l lbor T el vl h (LENe: length el = tsize T)
-    (DEFINED: ∀ (i: nat), (i < length vl)%nat → is_Some (h !! (l +ₗ i)))
+| WriteBS l lbor T el vl h (LENe: length vl = tsize T)
+    (DEFINED: ∀ (i: nat), (i < length vl)%nat → l +ₗ i ∈ dom (gset loc) h)
     (VALUES: to_val (TVal el) = Some (TValV vl)) :
     base_step (Write (Place l lbor T) (TVal el)) h
               (WriteEvt l lbor T vl)
