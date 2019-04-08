@@ -145,19 +145,19 @@ Lemma access1'_stack_item stk bor kind β stk' :
   access1' stk bor kind β = Some stk' →
   stk' `suffix_of` stk ∧ (stk ≠ [] → stk' ≠ []).
 Proof.
-  revert bor. induction stk as [|si stk IH]; intros bor; simpl; [done|].
+  induction stk as [|si stk IH]; simpl; [done|].
   destruct si; [destruct bor..|].
   - case_match => [|Eq]; [case_match => [[<-//]|//]|].
-    destruct (IH _ Eq) as [??]. split; [by apply suffix_cons_r|intros _].
+    destruct (IH Eq) as [??]. split; [by apply suffix_cons_r|intros _].
     destruct stk. done. naive_solver.
-  - intros Eq. destruct (IH _ Eq) as [??].
+  - intros Eq. destruct (IH Eq) as [??].
     split; [by apply suffix_cons_r|intros _]. destruct stk. done. naive_solver.
-  - destruct kind; [by move => [<-]|..]; intros Eq; destruct (IH _ Eq) as [??];
+  - destruct kind; [by move => [<-]|..]; intros Eq; destruct (IH Eq) as [??];
       (split; [by apply suffix_cons_r|intros _]);
       (destruct stk; [done|naive_solver]).
   - destruct kind; [by move => [<-]|..]; case_match => [[->//]|//].
   - case_match => [//|Eq].
-    destruct (IH _ Eq) as [??]; split; [by apply suffix_cons_r|intros _].
+    destruct (IH Eq) as [??]; split; [by apply suffix_cons_r|intros _].
     destruct stk; [done|naive_solver].
 Qed.
 
