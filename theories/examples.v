@@ -19,7 +19,7 @@ Definition demo0 : val :=
   (* x uses Alias(None) for i *)
 
   (* retag x with new borrow *)
-  Retag "x" Default ;;
+  Retag "x" Default #0 ;;
   (* stack of i: [Uniq(0); Uniq(?)], not frozen *)
   (* x now uses Uniq(0) for i *)
 
@@ -31,7 +31,7 @@ Definition demo0 : val :=
   (* stack of y  : [Uniq(y)], not frozen *)
 
   (* retag y with new borrow *)
-  Retag "y" Default ;;
+  Retag "y" Default #0 ;;
   (* stack of i: [Uniq(1); Uniq(0); Uniq(?)], not frozen *)
   (* y now uses Uniq(1) for i *)
 
@@ -72,7 +72,7 @@ Definition demo1 : val :=
   (* x uses Alias(None) for i *)
 
   (* retag x with new borrow *)
-  Retag "x" Default ;;
+  Retag "x" Default #☠ ;;
   (* stack of i: [Uniq(0); Uniq(?)], not frozen *)
   (* x now uses Uniq(0) for i *)
 
@@ -84,7 +84,7 @@ Definition demo1 : val :=
   (* stack of y1 : [Uniq(y1)], not frozen *)
 
   (* retag y1 with new borrow *)
-  Retag "y1" Default ;;
+  Retag "y1" Default #☠ ;;
   (* stack of i: [Raw; Uniq(0); Uniq(?)], frozen_since(1) *)
   (* y1 now uses Alias(1) for i *)
 
@@ -103,7 +103,7 @@ Definition demo1 : val :=
   (* stack of y2 : [Uniq(y2)], not frozen *)
 
   (* retag y2 with new borrow *)
-  Retag "y2" Default ;;
+  Retag "y2" Default #☠ ;;
   (* stack of i: [Raw; Uniq(0); Uniq(?)], frozen_since(1) *)
   (* y2 now uses Alias(2) for i *)
 
@@ -136,7 +136,7 @@ Definition demo2 : val :=
   (* x uses Alias(None) for the int *)
 
   (* retag x with new borrow *)
-  Retag "x" Default ;;
+  Retag "x" Default #☠ ;;
   (* stack of iint: [Uniq(0); Uniq(?)], not frozen *)
   (* x now uses Uniq(0) for i *)
 
@@ -148,7 +148,7 @@ Definition demo2 : val :=
   (* stack of y : [Uniq(y)], not frozen *)
 
   (* retag y with new borrow *)
-  Retag "y" Default ;;
+  Retag "y" Default #☠ ;;
   (* stack of i: [Raw; Uniq(0); Uniq(?)], frozen_since(1) *)
   (* y now uses Alias(1) for i *)
 
@@ -162,7 +162,7 @@ Definition demo2 : val :=
   (* stack of z : [Uniq(z)], not frozen *)
 
   (* retag z with new borrow *)
-  Retag "z" RawRt ;;
+  Retag "z" RawRt #☠ ;;
   (* stack of i: [Raw; Uniq(0); Uniq(?)], frozen_since(1) *)
   (* z now uses Alias(None) for the int *)
 
@@ -198,7 +198,7 @@ Definition demo4 : val :=
   (* x uses Alias(None) for i *)
 
   (* retag x with new borrow *)
-  Retag "x"Default ;;
+  Retag "x" Default #☠ ;;
   (* stack of int: [Uniq(0); Uniq(?)], not frozen *)
   (* x now uses Uniq(0) for i *)
 
@@ -210,7 +210,7 @@ Definition demo4 : val :=
   (* stack of y1 : [Uniq(y1)], not frozen *)
 
   (* retag y with new borrow *)
-  Retag "y1" RawRt ;;
+  Retag "y1" RawRt #☠ ;;
   (* stack of i: [Raw; Uniq(0); Uniq(?)], not frozen *)
   (* y1 now uses Alias(None) for i *)
 
@@ -222,7 +222,7 @@ Definition demo4 : val :=
   (* stack of y2  : [Uniq(y2)], not frozen *)
 
   (* retag y2 with new borrow *)
-  Retag "y2" RawRt ;;
+  Retag "y2" RawRt #☠ ;;
   (* stack of i : [Raw; Uniq(0); Uniq(?)], not frozen *)
   (* y2 now uses Alias(None) for i *)
 

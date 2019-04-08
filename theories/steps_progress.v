@@ -113,11 +113,15 @@ Proof.
     intros. by rewrite -(elem_of_dom (D:= gset loc) σ.(cheap)).
 Qed.
 
-Lemma copy_head_step σ l bor T :
+Lemma copy_head_step σ l bor T
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap)) :
   ∃ σ' vl,
   head_step (Copy (Place l bor T)) σ
             [CopyEvt l bor T vl] (of_val (TValV vl)) σ' [].
 Proof.
+  do 2 eexists. econstructor.
+  - econstructor.
+
 Abort.
 
 Lemma write_head_step σ l bor T el vl

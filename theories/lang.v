@@ -223,7 +223,7 @@ Inductive expr :=
 | NewCall                         (* Issue a fresh id for the call *)
 | EndCall (e: expr)               (* End the call with id `e` *)
 (* retag *)
-| Retag (e: expr) (kind: retag_kind)
+| Retag (e : expr) (kind: retag_kind) (call_id: expr)
                                   (* Retag the place `e` with retag kind `kind`. *)
 (* case *)
 | Case (e : expr) (el: list expr)
@@ -251,7 +251,7 @@ Arguments Free _%E.
 Arguments CAS _%E _%E _%E.
 Arguments AtomWrite _%E _%E.
 Arguments AtomRead _%E.
-Arguments Retag _%E _.
+Arguments Retag _%E _ _%E.
 Arguments Case _%E _%E.
 Arguments Fork _%E.
 
@@ -261,12 +261,12 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Lit _ | Place _ _ _ | Alloc _ | NewCall | SysCall _ => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | AtomWrite e1 e2 | Write e1 e2
+  | BinOp _ e1 e2 | AtomWrite e1 e2 | Write e1 e2 | Retag e1 _ e2
     | Conc e1 e2 | Proj e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
   | AtomRead e | Copy e | Deref e _ _ | Ref e | Field e _
-    | Free e | EndCall e | Retag e _ | Fork e => is_closed X e
+    | Free e | EndCall e | Fork e => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 
@@ -345,7 +345,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Field e path => Field (subst x es e) path
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
-  | Retag e kind => Retag (subst x es e) kind
+  | Retag e kind call => Retag (subst x es e) kind (subst x es call)
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
   | SysCall id => SysCall id
@@ -399,7 +399,8 @@ Inductive ectx_item :=
 | RefCtx
 | FieldCtx (path : list nat)
 | EndCallCtx
-| RetagCtx (kind: retag_kind)
+| RetagLCtx (kind: retag_kind) (call: expr)
+| RetagRCtx (v: val) (kind: retag_kind)
 | CaseCtx (el : list expr).
 
 Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
@@ -427,7 +428,8 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | RefCtx => Ref e
   | FieldCtx path => Field e path
   | EndCallCtx => EndCall e
-  | RetagCtx kind => Retag e kind
+  | RetagLCtx kind call => Retag e kind call
+  | RetagRCtx v kind => Retag (of_val v) kind e
   | CaseCtx el => Case e el
   end.
 
@@ -541,6 +543,15 @@ Fixpoint write_mem l (vl: list immediate) h: mem :=
   | v :: vl => write_mem (l +ₗ 1) vl (<[l := v]> h)
   end.
 
+Equations read_mem (l: loc) (n: nat) (h: mem) : option (list immediate) :=
+  read_mem l n h := go l n (Some [])
+  where go : loc → nat → option (list immediate) → option (list immediate) :=
+        go l O      oacc := oacc;
+        go l (S n)  oacc :=
+          acc ← oacc ;
+          v ← h !! l;
+          go (l +ₗ 1) n (Some (acc ++ [v])).
+
 Inductive base_step :
   expr → mem → event → expr → mem → list expr → Prop :=
 | BinOpBS op l1 l2 l' h :
@@ -562,8 +573,10 @@ Inductive base_step :
     (VALUES2: to_val (TVal el2) = Some (TValV vl2)):
     base_step (Conc (TVal el1) (TVal el2)) h
               SilentEvt (of_val (TValV (vl1 ++ vl2))) h []
-| CopyBS l lbor T (vl: list immediate) h (LEN: length vl = tsize T)
-    (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) :
+| CopyBS l lbor T (vl: list immediate) h
+    (READ: read_mem l (tsize T) h = Some vl)
+    (* (LEN: length vl = tsize T)
+    (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) *) :
     base_step (Copy (Place l lbor T)) h
               (CopyEvt l lbor T vl)
               (of_val (TValV vl)) h
@@ -602,12 +615,19 @@ Inductive base_step :
               (DerefEvt l lbor T mut)
               (Place l lbor T) h
               []
-| FieldBS l lbor T path off T' h (FIELD: field_access T path = Some (off, T')) :
+| FieldBS l lbor T path off T' h
+    (FIELD: field_access T path = Some (off, T')) :
     base_step (Field (Place l lbor T) path) h
               SilentEvt (Place (l +ₗ off) lbor T') h []
-| RetagBS x xbor T kind h:
-    base_step (Retag (Place x xbor T) kind) h
-              (RetagEvt x T kind) (Lit LitPoison) h []
+| RetagBS x xbor T kind kind' h e v
+    (VAL: to_val e = Some v)
+    (KIND: match kind with
+           | FnEntry _ => ∃ call, v = ImmV $ LitV $ LitInt call ∧
+                          0 ≤ call ∧ kind' = FnEntry (Z.to_nat call)
+           | _ => kind' = kind
+           end) :
+    base_step (Retag (Place x xbor T) kind e) h
+              (RetagEvt x T kind' ) (Lit LitPoison) h []
 | CaseBS i el e h :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
@@ -1459,8 +1479,8 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
   | Deref e T mut, Deref e' T' mut' =>
       bool_decide (T = T') && bool_decide (mut = mut') && expr_beq e e'
   | NewCall, NewCall => true
-  | Retag e kind, Retag e' kind' =>
-      bool_decide (kind = kind') && expr_beq e e'
+  | Retag e kind call, Retag e' kind' call' =>
+     bool_decide (kind = kind') && expr_beq e e' && expr_beq call call'
   | Copy e, Copy e' | Ref e, Ref e'
   | AtomRead e, AtomRead e' | EndCall e, EndCall e' => expr_beq e e'
   | Proj e1 e2, Proj e1' e2' | Conc e1 e2, Conc e1' e2'
@@ -1533,7 +1553,7 @@ Proof.
       | Field e path => GenNode 18 [GenLeaf $ inr $ inr $ inl $ inl path; go e]
       | NewCall => GenNode 19 []
       | EndCall e => GenNode 20 [go e]
-      | Retag e kind => GenNode 21 [GenLeaf $ inr $ inr $ inl $ inr kind; go e]
+      | Retag e kind call => GenNode 21 [GenLeaf $ inr $ inr $ inl $ inr kind; go e; go call]
       | Case e el => GenNode 22 (go e :: (go <$> el))
       | Fork e => GenNode 23 [go e]
       | SysCall id => GenNode 24 [GenLeaf $ inr $ inr $ inr id]
@@ -1564,7 +1584,8 @@ Proof.
      | GenNode 18 [GenLeaf (inr (inr (inl (inl path)))); e] => Field (go e) path
      | GenNode 19 [] => NewCall
      | GenNode 20 [e] => EndCall (go e)
-     | GenNode 21 [GenLeaf (inr (inr (inl (inr kind)))); e] => Retag (go e) kind
+     | GenNode 21 [GenLeaf (inr (inr (inl (inr kind)))); e; call] =>
+        Retag (go e) kind (go call)
      | GenNode 22 (e :: el) => Case (go e) (go <$> el)
      | GenNode 23 [e] => Fork (go e)
      | GenNode 24 [GenLeaf (inr (inr (inr id)))] => SysCall id
@@ -1665,8 +1686,8 @@ Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
   to_val e1 = None → to_val e2 = None →
   fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
 Proof.
-  destruct Ki1 as [|v1 vl1 el1| | |vl1 el1| | | | | | | | | | | | | | | | | | | |],
-           Ki2 as [|v2 vl2 el2| | |vl2 el2| | | | | | | | | | | | | | | | | | | |];
+  destruct Ki1 as [|v1 vl1 el1| | |vl1 el1| | | | | | | | | | | | | | | | | | | | |],
+           Ki2 as [|v2 vl2 el2| | |vl2 el2| | | | | | | | | | | | | | | | | | | | |];
   intros He1 He2 EQ; try discriminate; simplify_eq/=;
     repeat match goal with
     | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H

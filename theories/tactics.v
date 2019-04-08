@@ -31,7 +31,7 @@ Inductive expr :=
 | AtomRead (e: expr)
 | NewCall
 | EndCall (e : expr)
-| Retag (e : expr) (kind : retag_kind)
+| Retag (e : expr) (kind : retag_kind) (call: expr)
 | Case (e : expr) (el : list expr)
 | Fork (e : expr)
 | SysCall (id: nat).
@@ -61,7 +61,7 @@ Fixpoint to_expr (e : expr) : bor_lang.expr :=
   | AtomWrite e1 e2 => bor_lang.AtomWrite (to_expr e1) (to_expr e2)
   | NewCall => bor_lang.NewCall
   | EndCall e => bor_lang.EndCall (to_expr e)
-  | Retag e kind => bor_lang.Retag (to_expr e) kind
+  | Retag e kind call => bor_lang.Retag (to_expr e) kind (to_expr call)
   | Case e el => bor_lang.Case (to_expr e) (map to_expr el)
   | Fork e => bor_lang.Fork (to_expr e)
   | SysCall id => bor_lang.SysCall id
@@ -98,7 +98,8 @@ Ltac of_expr e :=
       let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(AtomWrite e1 e2)
   | bor_lang.NewCall => constr:(NewCall)
   | bor_lang.EndCall ?e => let e := of_expr e in constr:(EndCall e)
-  | bor_lang.Retag ?e ?kind => let e := of_expr e in constr:(Retag e kind)
+  | bor_lang.Retag ?e ?kind ?call =>
+      let e := of_expr e in let call := of_expr call in constr:(Retag e kind call)
   | bor_lang.Case ?e ?el =>
      let e := of_expr e in let el := of_expr el in constr:(Case e el)
   | bor_lang.Fork ?e => let e := of_expr e in constr:(Fork e)
@@ -120,12 +121,12 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Lit _ | Place _ _ _ | Alloc _ | NewCall => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
-  | BinOp _ e1 e2 | Write e1 e2 | AtomWrite e1 e2
+  | BinOp _ e1 e2 | Write e1 e2 | AtomWrite e1 e2 | Retag e1 _ e2
       | Proj e1 e2 | Conc e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
   | Copy e | AtomRead e| Free e | Fork e | Field e _
-    | Deref e _ _ | Ref e | EndCall e | Retag e _ => is_closed X e
+    | Deref e _ _ | Ref e | EndCall e  => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 Lemma is_closed_correct X e : is_closed X e → bor_lang.is_closed X (to_expr e).
@@ -227,7 +228,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | AtomWrite e1 e2 => AtomWrite (subst x es e1) (subst x es e2)
   | NewCall => NewCall
   | EndCall e => EndCall (subst x es e)
-  | Retag e kind => Retag (subst x es e) kind
+  | Retag e kind call => Retag (subst x es e) kind (subst x es call)
   | Case e el => Case (subst x es e) (map (subst x es) el)
   | Fork e => Fork (subst x es e)
   | SysCall id => SysCall id
