@@ -855,7 +855,7 @@ Equations visit_freeze_sensitive'
        discriminant. Note that this consitutes a read-access, and should adhere
        to the access checks. But we are skipping them here. FIXME *)
     | Some (LitV (LitInt i)) :=
-        if decide (O ≤ i < length Ts)
+        if decide (O ≤ i)
         then (* the discriminant is well-defined, visit with the
                 corresponding type *)
           alc ← visit_lookup Ts (Z.to_nat i) ;
@@ -868,8 +868,8 @@ Equations visit_freeze_sensitive'
             Some (alc.1, (alc.2.1, (should_offset - alc.2.1)%nat))
         else None
         where visit_lookup (Ts: list type) (i: nat) : option (A * (nat * nat)) :=
-        { visit_lookup [] i             := None ;
-          visit_lookup (T :: Ts) O      :=
+        { visit_lookup [] _             := None ;
+          visit_lookup (T :: _) O      :=
             visit_freeze_sensitive' h l f a last (S cur_dist) T ;
           visit_lookup (T :: Ts) (S i)  := visit_lookup Ts i } ;
     | _ := None }

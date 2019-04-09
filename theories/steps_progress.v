@@ -154,7 +154,7 @@ Proof.
     destruct (IH [] vl1) as [IH1 IH2]; [done..|simpl;intros;lia|].
     split; [done|]. intros i.
      rewrite -{2}(Nat.add_0_l i) -(nil_length (A:=immediate)). by apply IH2.
-  - clear. intros __????????. simplify_eq. intros ?.
+  - clear. intros _ _ ????????. simplify_eq.
     split; [lia|]. split; [done|intros; lia].
   - clear. move => l0 n0 h l n oacc IH acc vl -> /=.
     case lookup as [v|] eqn:Eq; [|done].
@@ -398,6 +398,42 @@ Proof.
       as [? Eq2]; [done|].
     rewrite Eq2. by destruct kind.
 Qed.
+
+Fixpoint subtype' (Tc T : type) (cur: nat) : list nat :=
+  if decide (Tc = T) then [cur] else
+  match T with
+  | Unsafe T => subtype' Tc T cur
+  | Union Ts => foldl (λ ns T, ns ++ subtype' Tc T cur) [] Ts
+  | Product Ts => foldl (λ ns T, ns ++ subtype' Tc T (cur + 1)) [] Ts
+  | Sum Ts =>
+      (foldl (λ sns T, ((sns.1 + tsize T)%nat, sns.2 ++ subtype' Tc T sns.1))
+             (cur, []) Ts).2
+  | _ => []
+  end.
+Definition subtype Tc T := subtype' Tc T O.
+
+
+Lemma visit_freeze_sensitive'_unit_is_Some {A}
+  h l (f: A → _ → nat → _ → _) a (last cur: nat) T
+  (HF: ∀ a i j b, (last ≤ i ≤ j ∧ j < cur + tsize T)%nat →
+          is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b))
+  (* (HFSTRONG: ∀ a (i: nat), (cur - last ≤ i < cur - last + tsize T) → ∃ a',
+          f a (l +ₗ last) i true = Some a' ∧
+          is_Some (f a' (l +ₗ last +ₗ i) (Z.to_nat (cur - last + tsize T - i)) false)) *)
+  (SUM: ∀ Ts (n: nat), n ∈ subtype (Sum Ts) T → ∃ i,
+          h !! (l +ₗ cur +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
+  is_Some (visit_freeze_sensitive' h l f a last cur T).
+Proof.
+  revert HF SUM.
+  eapply (visit_freeze_sensitive'_elim
+    (* general goal P *)
+    (λ h l f a last cur T oalc,
+      (∀ a i j b, (last ≤ i ≤ j ∧ j < cur + tsize T)%nat →
+          is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
+      (∀ Ts (n: nat), n ∈ subtype (Sum Ts) T → ∃ i,
+          h !! (l +ₗ cur +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) →
+      is_Some oalc)).
+Abort.
 
 Lemma ptr_deref_progress h α l bor T mut
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α) :
