@@ -26,7 +26,7 @@ Proof.
   intros. by apply (not_elem_of_dom (D:=gset loc)), is_fresh_block.
 Qed.
 
-Definition borrow_dealloc_match (bor: borrow) (stack: list stack_item) :=
+Definition borrow_in (bor: borrow) (stack: list stack_item) :=
   match bor with
   | UniqB t => Uniq t ∈ stack
   | AliasB _ => Raw ∈ stack
@@ -51,11 +51,11 @@ Qed.
 
 Lemma access1'_dealloc_progress bor stack β
   (BAR: Forall (λ si, ¬ is_active_barrier β si) stack)
-  (BOR: borrow_dealloc_match bor stack) :
+  (BOR: borrow_in bor stack) :
   ∃ stack', access1' stack bor AccessDealloc β = Some stack'.
 Proof.
   induction stack as [|si stack IH].
-  { exfalso. move : BOR. rewrite /borrow_dealloc_match.
+  { exfalso. move : BOR. rewrite /borrow_in.
     by destruct bor; apply not_elem_of_nil. }
   destruct (Forall_cons_1 _ _ _ BAR) as [NA BAR'].
   specialize (IH BAR').
@@ -74,7 +74,7 @@ Qed.
 Lemma accessN_dealloc_progress α β l bor (n: nat) :
   (∀ m : Z, 0 ≤ m ∧ m < n → l +ₗ m ∈ dom (gset loc) α) →
   (∀ (m: nat) stack, (m < n)%nat →
-    α !! (l +ₗ m) = Some stack → borrow_dealloc_match bor stack.(borrows) ∧ ∀ c,
+    α !! (l +ₗ m) = Some stack → borrow_in bor stack.(borrows) ∧ ∀ c,
       FnBarrier c ∈ stack.(borrows) → β !! c = Some false) →
   ∃ α', accessN α β l bor n AccessDealloc = Some α'.
 Proof.
@@ -101,7 +101,7 @@ Lemma dealloc_head_step (σ: state) T l bor
   (WF: Wf σ)
   (BLK: ∀ m : Z, l +ₗ m ∈ dom (gset loc) σ.(cheap) ↔ 0 ≤ m ∧ m < tsize T)
   (BOR: ∀ (n: nat) stack, (n < tsize T)%nat →
-    σ.(cstk) !! (l +ₗ n) = Some stack → borrow_dealloc_match bor stack.(borrows) ∧
+    σ.(cstk) !! (l +ₗ n) = Some stack → borrow_in bor stack.(borrows) ∧
     ∀ c, FnBarrier c ∈ stack.(borrows) → σ.(cbar) !! c = Some false) :
   ∃ σ',
   head_step (Free (Place l bor T)) σ [DeallocEvt l bor T] #☠ σ' [].
@@ -317,15 +317,123 @@ Proof.
   eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
 Qed.
 
-Lemma deref_head_step σ l bor T mut
-  (IN: l ∈ dom (gset loc) σ.(cheap)) :
+Lemma match_deref_Some stack bor :
+  borrow_in bor stack → is_Some (match_deref stack bor).
+Proof.
+  intros IN. induction stack as [|[t1| |ot] stack IH];
+    [|destruct bor as [t2|ot2]..|]; simpl.
+  - exfalso. revert IN. destruct bor; by apply not_elem_of_nil.
+  - case decide => ?; [subst; by eexists|].
+    apply IH. move : IN => /elem_of_cons [[]|] //.
+  - apply IH. move : IN => /elem_of_cons [|] //.
+  - apply IH. move : IN => /elem_of_cons [|] //.
+  - by eexists.
+  - apply IH. destruct bor; move : IN => /elem_of_cons [|] //.
+Qed.
+
+Lemma derefN_uniq_progress α l n t kind
+  (BLK : ∀ i, (i < n)%nat → l +ₗ i ∈ dom (gset loc) α)
+  (UNI : ∀ i stack, (i < n)%nat → α !! (l +ₗ i) = Some stack →
+                    Uniq t ∈ stack.(borrows)) :
+  is_Some (derefN α l (UniqB t) n kind).
+Proof.
+  induction n as [|n IH]; [by eexists|]. simpl.
+  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
+  { apply (elem_of_dom (D:=gset loc)), BLK. lia. }
+  rewrite Eq /=.
+  have IN : Uniq t ∈ borrows stack by (apply (UNI n); [lia|done]).
+  destruct (match_deref_Some stack.(borrows) (UniqB t)) as [? Eq2]; [done|].
+  rewrite Eq2 /=. apply IH.
+  - intros. apply BLK. lia.
+  - intros ???. apply UNI. lia.
+Qed.
+
+Lemma derefN_raw_progress α l n kind
+  (BLK : ∀ i, (i < n)%nat → l +ₗ i ∈ dom (gset loc) α)
+  (UNI : ∀ i stack, (i < n)%nat → α !! (l +ₗ i) = Some stack →
+                    is_Some stack.(frozen_since) ∨ Raw ∈ stack.(borrows)) :
+  is_Some (derefN α l (AliasB None) n kind).
+Proof.
+  induction n as [|n IH]; [by eexists|]; simpl.
+  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
+  { apply (elem_of_dom (D:=gset loc)), BLK. lia. }
+  rewrite Eq /=.
+  have IN : is_Some stack.(frozen_since) ∨ Raw ∈ stack.(borrows)
+    by (apply (UNI n); [lia|done]).
+  have IH': is_Some (derefN α l (AliasB None) n kind).
+  { apply IH.
+    - intros. apply BLK. lia.
+    - intros ???. apply UNI. lia. }
+  destruct stack.(frozen_since) eqn:Eqf; [done|].
+  destruct IN as [[]|IN]; [done|].
+  destruct (match_deref_Some stack.(borrows) (AliasB None)) as [? Eq2]; [done|].
+  by rewrite Eq2.
+Qed.
+
+Lemma derefN_shared_progress α l n t kind
+  (NU: kind ≠ UniqueRef)
+  (BLK : ∀ i, (i < n)%nat → l +ₗ i ∈ dom (gset loc) α)
+  (UNI : ∀ i stack, (i < n)%nat → α !! (l +ₗ i) = Some stack →
+          (∃ tf, stack.(frozen_since) = Some tf ∧ (tf ≤ t)%nat) ∨
+          (stack.(frozen_since) = None ∧ Raw ∈ stack.(borrows))) :
+  is_Some (derefN α l (AliasB (Some t)) n kind).
+Proof.
+  induction n as [|n IH]; [by eexists|]; simpl.
+  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
+  { apply (elem_of_dom (D:=gset loc)), BLK. lia. }
+  rewrite Eq /=.
+  have IN : (∃ tf, stack.(frozen_since) = Some tf ∧ (tf ≤ t)%nat) ∨
+            (stack.(frozen_since) = None ∧ Raw ∈ stack.(borrows))
+            by (apply (UNI n); [lia|done]).
+  have IH': is_Some (derefN α l (AliasB (Some t)) n kind).
+  { apply IH.
+    - intros. apply BLK. lia.
+    - intros ???. apply UNI. lia. }
+  destruct stack.(frozen_since) as [tf|] eqn:Eqf; simpl.
+  - rewrite decide_True.
+    + by destruct kind.
+    + apply inj_le. destruct IN as [[? []]|[]]; [|done]. by simplify_eq.
+  - destruct IN as [[? []]|[_ ?]]; [done|].
+    destruct (match_deref_Some stack.(borrows) (AliasB (Some t)))
+      as [? Eq2]; [done|].
+    rewrite Eq2. by destruct kind.
+Qed.
+
+Lemma ptr_deref_progress h α l bor T mut
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α) :
+  match mut with
+  | None => True
+  | Some mut =>
+      match bor with
+      | UniqB t => mut = Mutable ∧
+          (∀ (m: nat) stack, (m < tsize T)%nat → α !! (l +ₗ m) = Some stack →
+            Uniq t ∈ stack.(borrows))
+      | AliasB None =>
+          (∀ (m: nat) stack, (m < tsize T)%nat → α !! (l +ₗ m) = Some stack →
+            is_Some stack.(frozen_since) ∨ Raw ∈ stack.(borrows))
+      | AliasB (Some t) => mut = Immutable ∧
+          (∀ (m: nat) stack, (m < tsize T)%nat → α !! (l +ₗ m) = Some stack →
+            (∃ tf, stack.(frozen_since) = Some tf ∧ (tf ≤ t)%nat) ∨
+            (stack.(frozen_since) = None ∧ Raw ∈ stack.(borrows)))
+      end
+  end →
+  ptr_deref h α l bor T mut.
+Proof.
+  destruct mut as [mut|], bor as [|[t|]]; [| | |done..].
+  - intros []. by apply derefN_uniq_progress.
+  - intros [? H]. subst mut. simpl. split; [done|]. admit.
+  - by apply derefN_raw_progress.
+Abort.
+
+Lemma deref_head_step (σ: state) l bor T mut
+  (WF: Wf σ)
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap)) :
   ∃ σ',
   head_step (Deref (Lit (LitLoc l bor)) T mut) σ
             [DerefEvt l bor T mut] (Place l bor T) σ' [].
 Proof.
-  eexists. econstructor; econstructor.
-  - by apply (elem_of_dom (D:=gset loc)).
-  -
+  eexists. econstructor; econstructor; [done|].
+
 Abort.
 
 Lemma newcall_head_step σ :

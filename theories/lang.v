@@ -96,7 +96,7 @@ Definition is_unique (bor: borrow) :=
   match bor with UniqB _ => true | _ => false end.
 Definition is_aliasing (bor: borrow) :=
   match bor with AliasB _ => true | _ => false end.
-Notation borrow_default := (AliasB None).
+Notation borrow_default := (AliasB None) (only parsing).
 
 (* Retag kinds *)
 Inductive retag_kind := FnEntry (c: call_id) | TwoPhase | RawRt | Default.
@@ -609,8 +609,8 @@ Inductive base_step :
 | RefBS l lbor T h :
     is_Some (h !! l) →
     base_step (Ref (Place l lbor T)) h SilentEvt (Lit (LitLoc l lbor)) h []
-| DerefBS l lbor T mut h :
-    is_Some (h !! l) →
+| DerefBS l lbor T mut h
+    (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) :
     base_step (Deref (Lit (LitLoc l lbor)) T mut) h
               (DerefEvt l lbor T mut)
               (Place l lbor T) h
@@ -886,7 +886,7 @@ Definition visit_freeze_sensitive {A: Type}
   end.
 
 (* Perform the deref check on a block of continuous memory where some of them
- * can be inside UnsafeCells, which are described by the type `t` of the block.
+ * can be inside UnsafeCells, which are described by the type `T` of the block.
  * This implements EvalContextExt::ptr_dereference. *)
 (* TODO?: bound check of l for size (tsize t)? alloc.check_bounds(this, ptr, size)?; *)
 Definition ptr_deref h α (l: loc) (bor: borrow) T (mut: option mutability) : Prop :=
