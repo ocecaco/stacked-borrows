@@ -412,10 +412,71 @@ Fixpoint subtype' (Tc T : type) (cur: nat) : list nat :=
   end.
 Definition subtype Tc T := subtype' Tc T O.
 
-Lemma subtype_O T : O ∈ subtype T T.
+Fixpoint tnode_size (T: type) : nat :=
+  match T with
+  | Scalar sz => 1%nat
+  | Reference _ _ => 1%nat
+  | Unsafe T => 1 + tnode_size T
+  | Union Ts | Product Ts | Sum Ts => 1 + list_nat_max (tnode_size <$> Ts) O
+  end.
+
+Lemma tnode_size_elem_of T Ts:
+  T ∈ Ts → (tnode_size T < 1 + list_nat_max (tnode_size <$> Ts) O)%nat.
 Proof.
-  rewrite /subtype. induction T; simpl;
-    (rewrite decide_True; [by apply elem_of_list_singleton|done]).
+  intros IN.
+  destruct (list_nat_max_spec (tnode_size <$> Ts)) as [[EMP ?]|[? MAX]].
+  - move : EMP IN => /fmap_nil_inv ->. by intros ?%not_elem_of_nil.
+  - eapply le_lt_trans.
+    + by apply MAX, elem_of_list_fmap_1.
+    + lia.
+Qed.
+Lemma tnode_size_elem_of_union T Ts :
+  T ∈ Ts → (tnode_size T < tnode_size (Union Ts))%nat.
+Proof. by apply tnode_size_elem_of. Qed.
+Lemma tnode_size_elem_of_product T Ts :
+  T ∈ Ts → (tnode_size T < tnode_size (Product Ts))%nat.
+Proof. by apply tnode_size_elem_of. Qed.
+Lemma tnode_size_elem_of_sum T Ts :
+  T ∈ Ts → (tnode_size T < tnode_size (Sum Ts))%nat.
+Proof. by apply tnode_size_elem_of. Qed.
+
+Lemma subtype_tnoze_size T1 T2 :
+  subtype T1 T2 ≠ [] → (tnode_size T1 ≤ tnode_size T2)%nat.
+Proof.
+  induction T2 as [| |? IH|Ts|Ts|Ts].
+  - rewrite /subtype /=. case decide; [|done]. by move => -> _ /=.
+  - rewrite /subtype /=. case decide; [|done]. by move => -> _ /=.
+  - rewrite /subtype /=. case decide.
+    + move => -> _ /=. lia.
+    + move => ? /IH. lia.
+  -
+Abort.
+
+Lemma subtype_O_eq T : subtype T T = [O].
+Proof. rewrite /subtype. destruct T; simpl; by rewrite decide_True. Qed.
+
+Lemma subtype_O_elem_of T : O ∈ subtype T T.
+Proof. by rewrite subtype_O_eq elem_of_list_singleton. Qed.
+
+Lemma subtype_product_here T Tc Ts :
+  ∀ n, n ∈ subtype T Tc → n ∈ subtype T (Product (Tc :: Ts)).
+Proof.
+  intros n. rewrite /subtype. simpl.
+Abort.
+
+Lemma tsize_product_cons T Ts :
+  (tsize (Product (T :: Ts)) = tsize T + tsize (Product Ts))%nat.
+Proof.
+  rewrite /= -{1}(Nat.add_0_r (tsize T)). remember O as n. clear Heqn.
+  revert n. induction Ts as [|Tc Ts IH]; intros n; [done|].
+  by rewrite /= -Nat.add_assoc IH.
+Qed.
+
+Lemma tsize_subtype_of_product T Ts :
+  T ∈ Ts → (tsize T ≤ tsize (Product Ts))%nat.
+Proof.
+  induction Ts as [|Tc Ts IH]; [by intros ?%not_elem_of_nil|].
+  rewrite tsize_product_cons. move => /elem_of_cons [->|/IH]; lia.
 Qed.
 
 Lemma unsafe_action_is_Some_weak {A}
@@ -480,30 +541,30 @@ Proof.
   - clear. intros ??????? HF _. by apply unsafe_action_is_Some_weak.
   - clear. intros h l f a last cur_dist T HF _.
     case is_freeze; [by eexists|]. by apply unsafe_action_is_Some_weak.
-  - (* intros. naive_solver. *) (* product case *)
-    admit.
-  - naive_solver. (* product inner base case *)
+  - naive_solver.
+  - naive_solver.
   - clear.
     intros h l f a last cur_dist Ts a1 last1 cur_dist1 T1 Ts1 IH1 IH2 HF SUM.
     destruct IH2 as [[a2 [last2 cur_dist2]] Eq1].
-    { admit. }
-    { admit. }
+    { intros ???? [? Le]. apply HF. split; [done|]. clear -Le.
+      rewrite tsize_product_cons. by lia. }
+    { intros ???. apply SUM. admit. }
     rewrite Eq1 /=. apply (IH1 (a2, (last2,cur_dist2))).
     { admit. (* need some relation between last2 vs. last1, cur_dist2 vs cur_dist1 *) }
     { admit. } (* product inner recursive case *)
   - clear.
     intros h l last cur_dist _ _ Ts EqPoison _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat EqPoison.
   - clear. intros h l last cur_dist l1 tag1 _ _ Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - admit. (* sum inner decide case *)
   - clear. intros h l last cur_dist f xl e ? _ _ Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros h l last cur_dist _ _ Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - admit. (* sum inner lookup nil list case: needs extra condition --Sum not nil *)
   - admit. (* sum inner lookup list O case *)
