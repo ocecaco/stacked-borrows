@@ -412,27 +412,102 @@ Fixpoint subtype' (Tc T : type) (cur: nat) : list nat :=
   end.
 Definition subtype Tc T := subtype' Tc T O.
 
+Lemma subtype_O T : O ∈ subtype T T.
+Proof.
+  rewrite /subtype. induction T; simpl;
+    (rewrite decide_True; [by apply elem_of_list_singleton|done]).
+Qed.
 
-Lemma visit_freeze_sensitive'_unit_is_Some {A}
-  h l (f: A → _ → nat → _ → _) a (last cur: nat) T
-  (HF: ∀ a i j b, (last ≤ i ≤ j ∧ j < cur + tsize T)%nat →
+Lemma unsafe_action_is_Some_weak {A}
+  (f: A → _ → nat → _ → _) a l last cur_dist n
+  (HF: ∀ a i j b, (last ≤ i ≤ j ∧ j ≤ last + cur_dist + n)%nat →
+          is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) :
+  is_Some (unsafe_action f a l last cur_dist n).
+Proof.
+  rewrite /unsafe_action.
+  destruct (HF a last (last + cur_dist)%nat true) as [a' Eq1]; [lia|].
+  move : Eq1.
+  rewrite (_: Z.to_nat (Z.of_nat (last + cur_dist) - Z.of_nat last) = cur_dist);
+    last by rewrite Nat2Z.inj_add Z.add_simpl_l Nat2Z.id.
+  move => -> /=.
+  destruct (HF a' (last + cur_dist)%nat (last + cur_dist + n)%nat false)
+    as [? Eq2]; [lia|].
+  move : Eq2.
+  rewrite (_: Z.to_nat (Z.of_nat (last + cur_dist + n) -
+                Z.of_nat (last + cur_dist)) = n);
+    last by rewrite Nat2Z.inj_add Z.add_simpl_l Nat2Z.id.
+  move => -> /=. by eexists.
+Qed.
+
+Lemma visit_freeze_sensitive'_is_Some {A}
+  h l (f: A → _ → nat → _ → _) a (last cur_dist: nat) T
+  (HF: ∀ a i j b, (last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize T)%nat →
           is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b))
-  (* (HFSTRONG: ∀ a (i: nat), (cur - last ≤ i < cur - last + tsize T) → ∃ a',
+  (* (HFSTRONG: ∀ a (i: nat), (cur_dist ≤ i < cur_dist + tsize T) → ∃ a',
           f a (l +ₗ last) i true = Some a' ∧
-          is_Some (f a' (l +ₗ last +ₗ i) (Z.to_nat (cur - last + tsize T - i)) false)) *)
+          is_Some (f a' (l +ₗ last +ₗ i) (Z.to_nat (cur_dist + tsize T - i)) false)) *)
   (SUM: ∀ Ts (n: nat), n ∈ subtype (Sum Ts) T → ∃ i,
-          h !! (l +ₗ cur +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
-  is_Some (visit_freeze_sensitive' h l f a last cur T).
+          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts) :
+  is_Some (visit_freeze_sensitive' h l f a last cur_dist T).
 Proof.
   revert HF SUM.
   eapply (visit_freeze_sensitive'_elim
     (* general goal P *)
-    (λ h l f a last cur T oalc,
-      (∀ a i j b, (last ≤ i ≤ j ∧ j < cur + tsize T)%nat →
+    (λ h l f a last cur_dist T oalc,
+      (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize T)%nat →
           is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
       (∀ Ts (n: nat), n ∈ subtype (Sum Ts) T → ∃ i,
-          h !! (l +ₗ cur +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) →
-      is_Some oalc)).
+          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts) →
+      is_Some oalc)
+    (λ h l f _ _ _ _ a last cur_dist Ts oalc,
+      (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Product Ts))%nat →
+          is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
+      (∀ Ts' (n: nat), n ∈ subtype (Sum Ts') (Product Ts) → ∃ i,
+          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts') →
+      is_Some oalc)
+    (λ h l last cur_dist i f a _ Ts n oalc,
+      (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Sum Ts))%nat →
+          is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
+      (∀ Ts' (n: nat), n ∈ subtype (Sum Ts') (Sum Ts) → ∃ i,
+          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts') →
+          is_Some oalc)).
+  - naive_solver.
+  - naive_solver.
+  - clear. intros ??????? HF _. by apply unsafe_action_is_Some_weak.
+  - clear. intros h l f a last cur_dist T HF _.
+    case is_freeze; [by eexists|]. by apply unsafe_action_is_Some_weak.
+  - (* intros. naive_solver. *) (* product case *)
+    admit.
+  - naive_solver. (* product inner base case *)
+  - clear.
+    intros h l f a last cur_dist Ts a1 last1 cur_dist1 T1 Ts1 IH1 IH2 HF SUM.
+    destruct IH2 as [[a2 [last2 cur_dist2]] Eq1].
+    { admit. }
+    { admit. }
+    rewrite Eq1 /=. apply (IH1 (a2, (last2,cur_dist2))).
+    { admit. (* need some relation between last2 vs. last1, cur_dist2 vs cur_dist1 *) }
+    { admit. } (* product inner recursive case *)
+  - clear.
+    intros h l last cur_dist _ _ Ts EqPoison _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    move : Eq. by rewrite shift_loc_0_nat EqPoison.
+  - clear. intros h l last cur_dist l1 tag1 _ _ Ts Eq0 _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - admit. (* sum inner decide case *)
+  - clear. intros h l last cur_dist f xl e ? _ _ Ts Eq0 _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - clear. intros h l last cur_dist _ _ Ts Eq0 _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - admit. (* sum inner lookup nil list case: needs extra condition --Sum not nil *)
+  - admit. (* sum inner lookup list O case *)
+  - admit. (* sum inner lookup list S case *)
 Abort.
 
 Lemma ptr_deref_progress h α l bor T mut
