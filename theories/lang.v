@@ -848,7 +848,8 @@ Equations visit_freeze_sensitive'
         visit_LR a last cur_dist (T :: Ts) :=
           alc ← visit_freeze_sensitive' h l f a last cur_dist T ;
           visit_LR alc.1 alc.2.1 alc.2.2 Ts } ;
-  visit_freeze_sensitive' h l f a last cur_dist (Sum Ts) with h !! l
+  visit_freeze_sensitive' h l f a last cur_dist (Sum Ts)
+    with h !! (l +ₗ (last + cur_dist))
     := {
     (* This looks up the current state to see which discriminant currently is
        active (which is an integer) and redirect the visit for the type of that

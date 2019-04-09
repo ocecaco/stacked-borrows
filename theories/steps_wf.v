@@ -734,7 +734,7 @@ Proof.
       (∀ α1 α2, HF f α1 α2) → oalc = Some (α', lc') → Hα α α')
     (λ _ _ f _ _ _ _ α _ _ _ oalc, ∀ α' lc',
       (∀ α1 α2, HF f α1 α2) → oalc = Some (α', lc') → Hα α α')
-    (λ _ _ _ f α _ _ _ _ _ oalc, ∀ α' lc',
+    (λ _ _ _ _ _ f α _ _ _ oalc, ∀ α' lc',
       (∀ α1 α2, HF f α1 α2) → oalc = Some (α', lc') → Hα α α')); rewrite /HF /Hα.
   - naive_solver.
   - naive_solver.
@@ -744,15 +744,15 @@ Proof.
     intros _?????????. case is_freeze; [by intros; simplify_eq|].
     by apply unsafe_action_wf_stack.
   - naive_solver.
-  - intros _ _ ? _ _ _ _. naive_solver.
+  - naive_solver.
   - (* Product case *)
     intros ???????????? IH1 IH2 ?? Hf.
     case visit_freeze_sensitive' as [alc|]; [simpl|done]. destruct alc as [[]].
     move => /IH1 IH1' WF.
     destruct (IH1' Hf) as [EqD ?]; [by eapply IH2|]. split; [|done].
     rewrite -EqD. by eapply IH2.
-  - intros ???? _ _ _. naive_solver.
-  - intros ?????? _ _ _. naive_solver.
+  - naive_solver.
+  - naive_solver.
   - (* Sum case *)
     intros ???????? IH Eq ???. case decide => Le; [|done].
     case visit_freeze_sensitive'_clause_6_clause_1_visit_lookup
@@ -761,7 +761,7 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
-  - intros ?? _ ???? _ ? _. naive_solver.
+  - naive_solver.
   - naive_solver.
 Qed.
 
