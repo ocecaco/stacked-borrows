@@ -66,6 +66,21 @@ Fixpoint tsize (T: type) : nat :=
   | Sum Ts => 1 + list_nat_max (tsize <$> Ts) O
   end.
 
+Lemma tsize_product_cons T Ts :
+  (tsize (Product (T :: Ts)) = tsize T + tsize (Product Ts))%nat.
+Proof.
+  rewrite /= -{1}(Nat.add_0_r (tsize T)). remember O as n. clear Heqn.
+  revert n. induction Ts as [|Tc Ts IH]; intros n; [done|].
+  by rewrite /= -Nat.add_assoc IH.
+Qed.
+
+Lemma tsize_subtype_of_product T Ts :
+  T ∈ Ts → (tsize T ≤ tsize (Product Ts))%nat.
+Proof.
+  induction Ts as [|Tc Ts IH]; [by intros ?%not_elem_of_nil|].
+  rewrite tsize_product_cons. move => /elem_of_cons [->|/IH]; lia.
+Qed.
+
 (** Tree size of types *)
 Fixpoint tnode_size (T: type) : nat :=
   match T with
@@ -218,7 +233,8 @@ Proof.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
 Qed.
 
-(** Syntactical subtyping *)
+(** Syntactic subtyping *)
+
 Fixpoint subtype' (Tc T : type) (cur: nat) : list nat :=
   let base: list nat := if bool_decide (Tc = T) then [cur] else [] in
   match T with
@@ -383,41 +399,27 @@ Proof.
     by apply tnode_size_elem_of_sum.
 Qed.
 
-
-(*
-Lemma subtype_union_cons T Tc Ts :
-  T ≠ Union (Tc :: Ts) →
-  subtype T (Union (Tc :: Ts)) = subtype T Tc ++ subtype T (Union Ts).
+Lemma foldl_inner_app_elem_of_init_2 {A B C}
+  (fL: C → B → C) (fR: B → C → list A) c0 la0 lb :
+  ∀ a, a ∈ la0 →
+  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b cla.1)) (c0, la0) lb).2.
 Proof.
-  rewrite /subtype. remember O as n. clear Heqn.
-  revert n. induction Ts as [|Tc' Ts IH]; intros n.
-  - intros ?. simpl. rewrite decide_False; [|done]. admit.
-  -
-Lemma tsize_product_cons T Ts :
-  (tsize (Product (T :: Ts)) = tsize T + tsize (Product Ts))%nat.
-Proof.
-  rewrite /= -{1}(Nat.add_0_r (tsize T)). remember O as n. clear Heqn.
-  revert n. induction Ts as [|Tc Ts IH]; intros n; [done|].
-  by rewrite /= -Nat.add_assoc IH.
+  revert c0 la0. induction lb as [|b lb IH]; move => c0 la0 a INa /=; [done|].
+  apply IH. rewrite elem_of_app. by left.
 Qed.
 
-Lemma subtype_product_here T Tc Ts :
-  ∀ n, n ∈ subtype T Tc → n ∈ subtype T (Product (Tc :: Ts)).
+Lemma subtype_product_first T Tc Ts n :
+  n ∈ subtype T Tc → n ∈ subtype T (Product (Tc :: Ts)).
 Proof.
-  intros n. rewrite /subtype. simpl.
-Abort. *)
-
-Lemma tsize_product_cons T Ts :
-  (tsize (Product (T :: Ts)) = tsize T + tsize (Product Ts))%nat.
-Proof.
-  rewrite /= -{1}(Nat.add_0_r (tsize T)). remember O as n. clear Heqn.
-  revert n. induction Ts as [|Tc Ts IH]; intros n; [done|].
-  by rewrite /= -Nat.add_assoc IH.
-Qed.
-
-Lemma tsize_subtype_of_product T Ts :
-  T ∈ Ts → (tsize T ≤ tsize (Product Ts))%nat.
-Proof.
-  induction Ts as [|Tc Ts IH]; [by intros ?%not_elem_of_nil|].
-  rewrite tsize_product_cons. move => /elem_of_cons [->|/IH]; lia.
+  intros IN.
+  have Le: (tnode_size T ≤ tnode_size Tc)%nat.
+  { apply subtype_tnoze_size. move => NIL.
+    move : IN. rewrite NIL. apply not_elem_of_nil. }
+  rewrite /subtype /=.
+  case_bool_decide as Eq.
+  - exfalso. subst T. eapply lt_irrefl. eapply le_lt_trans; [exact Le|].
+    apply tnode_size_elem_of_product. by left.
+  - move : IN. rewrite /subtype //= => IN.
+    by apply (foldl_inner_app_elem_of_init_2
+                (λ n T0, (n + tsize T0))%nat (subtype' T)).
 Qed.

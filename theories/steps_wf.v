@@ -1,4 +1,3 @@
-From Equations Require Import Equations.
 From stbor Require Import helpers.
 From stbor Require Export properties.
 

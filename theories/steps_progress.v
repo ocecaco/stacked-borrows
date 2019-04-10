@@ -1,4 +1,3 @@
-From Equations Require Import Equations.
 From stbor Require Export steps_wf.
 
 Definition fresh_block (h : mem) : block :=
@@ -468,9 +467,10 @@ Proof.
     destruct IH2 as [[a2 [last2 cur_dist2]] Eq1].
     { intros ???? [? Le]. apply HF. split; [done|]. clear -Le.
       rewrite tsize_product_cons. by lia. }
-    { intros ???. apply SUM. admit. }
+    { intros ???. by apply SUM, subtype_product_first. }
     rewrite Eq1 /=. apply (IH1 (a2, (last2,cur_dist2))).
-    { admit. (* need some relation between last2 vs. last1, cur_dist2 vs cur_dist1 *) }
+    { admit. (* need some relation between last2 vs. last1, cur_dist2 vs cur_dist1:
+      extra lemma for visit_freeze_sensitive' on the offsets. *) }
     { admit. } (* product inner recursive case *)
   - clear.
     intros h l last cur_dist _ _ Ts EqPoison _ SUM.
@@ -479,14 +479,21 @@ Proof.
   - clear. intros h l last cur_dist l1 tag1 _ _ Ts Eq0 _ SUM.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - admit. (* sum inner decide case *)
+  - clear. intros h l last cur_dist n f a Ts IH1 Eqn BLK SUM.
+    destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply subtype_O_elem_of|].
+    move : Eq. rewrite shift_loc_0_nat Eqn. intros Eq. simplify_eq.
+    rewrite decide_True; [|done].
+    destruct (IH1 Ge0) as [alc2 Eq2]; [done..|].
+    rewrite Eq2 /=. by eexists.
   - clear. intros h l last cur_dist f xl e ? _ _ Ts Eq0 _ SUM.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros h l last cur_dist _ _ Ts Eq0 _ SUM.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - admit. (* sum inner lookup nil list case: needs extra condition --Sum not nil *)
+  - clear. intros ????????? _ SUB. exfalso.
+    destruct (SUB [] O) as [i' [_ [? Lt]]]; [by apply subtype_O_elem_of|].
+    simpl in Lt. lia.
   - admit. (* sum inner lookup list O case *)
   - admit. (* sum inner lookup list S case *)
 Abort.
