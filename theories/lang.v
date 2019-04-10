@@ -1,6 +1,9 @@
 From Equations Require Import Equations.
 From iris.program_logic Require Export language ectx_language ectxi_language.
 From stdpp Require Export strings list gmap infinite.
+
+From stbor Require Export type.
+
 Set Default Proof Using "Type".
 
 Module bor_lang.
@@ -22,70 +25,7 @@ Notation "l +ₗ z" := (shift_loc l%L z%Z)
 Notation time := nat (only parsing).
 Notation call_id := nat (only parsing).
 
-(** Types *)
-(* Reference types *)
-Inductive mutability := Mutable | Immutable.
-Inductive ref_kind :=
-  | UniqueRef (* &mut *)
-  | FrozenRef (* & *)
-  | RawRef    (* * (raw) or & to UnsafeCell, or Box *)
-  .
-Definition is_unique_ref (kind: ref_kind) : bool :=
-  match kind with UniqueRef => true | _ => false end.
-Inductive pointer_kind := RefPtr (mut: mutability) | RawPtr | BoxPtr.
-
-Inductive type :=
-  | Scalar (sz: nat)
-  | Reference (kind: pointer_kind) (T: type)
-  | Unsafe (T: type)
-  | Union (Ts: list type)
-  | Product (Ts: list type)
-  | Sum (Ts: list type)
-  .
-Bind Scope lrust_type with type.
-Delimit Scope lrust_type with RustT.
-
-(* Physical size of types *)
-Fixpoint list_nat_max (ns: list nat) (d: nat) :=
-  match ns with
-  | [] => d
-  | n :: ns => n `max` ((list_nat_max ns) d)
-  end.
-
-Lemma list_nat_max_spec ns :
-  ns = [] ∧ list_nat_max ns O = O ∨
-  list_nat_max ns O ∈ ns ∧ ∀ (i: nat), i ∈ ns → (i ≤ list_nat_max ns O)%nat.
-Proof.
-  induction ns as [|i ns IHi]; simpl; [rewrite elem_of_nil; naive_solver|].
-  right. destruct IHi as [[]|[In MAX]].
-  - subst. rewrite /= Nat.max_0_r elem_of_list_singleton.
-    setoid_rewrite elem_of_list_singleton. naive_solver.
-  - split.
-    + apply Max.max_case; [by left|by right].
-    + move => i' /elem_of_cons [->|In']. apply Nat.le_max_l.
-      etrans; first by apply MAX. apply Nat.le_max_r.
-Qed.
-
-Fixpoint tsize (T: type) : nat :=
-  match T with
-  | Scalar sz => sz
-  | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
-  | Unsafe T => tsize T
-  | Union Ts => list_nat_max (tsize <$> Ts) O
-  | Product Ts => foldl (λ sz T, sz + tsize T)%nat O Ts
-  | Sum Ts => 1 + list_nat_max (tsize <$> Ts) O
-  end.
-
-(* Type doesn't contain UnsafeCells. *)
-Fixpoint is_freeze (T: type) : bool :=
-  match T with
-  | Scalar _ | Reference _ _ => true
-  | Unsafe _ => false
-  | Union Ts | Product Ts | Sum Ts => forallb is_freeze Ts
-  end.
-
-(** Instrumented states *)
-(* Borrow types *)
+(** Stacked borrows *)
 Inductive borrow :=
   | UniqB (t: time)           (* A unique (mutable) reference. *)
   | AliasB (ot : option time) (* An aliasing reference, also for raw pointers
@@ -120,7 +60,6 @@ Definition is_frozen (s : bstack) : Prop := is_Some s.(frozen_since).
 Definition bstacks := gmap loc bstack.
 
 Implicit Type (α: bstacks) (β: barriers) (t: time) (c: call_id) (T: type).
-
 
 (*** BASE SEMANTICS --------------------------------------------------------***)
 
@@ -1346,31 +1285,6 @@ Proof.
               end) _); by intros [].
 Qed.
 
-Instance mutability_eq_dec : EqDecision mutability.
-Proof. solve_decision. Defined.
-Instance mutability_countable : Countable mutability.
-Proof.
-  refine (inj_countable'
-    (λ m, match m with Mutable => 0 | Immutable => 1 end)
-    (λ x, match x with 0 => Mutable | _ => Immutable end) _); by intros [].
-Qed.
-
-Instance pointer_kind_eq_dec : EqDecision pointer_kind.
-Proof. solve_decision. Defined.
-Instance pointer_kind_countable : Countable pointer_kind.
-Proof.
-  refine (inj_countable
-          (λ k, match k with
-              | RefPtr mut => inl $ inl mut
-              | RawPtr => inl $ inr ()
-              | BoxPtr => inr ()
-              end)
-          (λ s, match s with
-              | inl (inl mut) => Some $ RefPtr mut
-              | inl (inr _) => Some  RawPtr
-              | inr _ => Some BoxPtr
-              end) _); by intros [].
-Qed.
 Instance retag_kind_eq_dec : EqDecision retag_kind.
 Proof. solve_decision. Defined.
 Instance retag_kind_countable : Countable retag_kind.
@@ -1388,73 +1302,6 @@ Proof.
               | inr (inl _) => Some RawRt
               | inr (inr _) => Some Default
               end) _); by intros [].
-Qed.
-
-Fixpoint type_beq (T T': type) : bool :=
-  let fix type_list_beq Ts Ts' :=
-    match Ts, Ts' with
-    | [], [] => true
-    | T::Ts, T'::Ts' => type_beq T T' && type_list_beq Ts Ts'
-    | _, _ => false
-    end
-  in
-  match T, T' with
-  | Scalar n, Scalar n' => bool_decide (n = n')
-  | Reference k T, Reference k' T' => bool_decide (k = k') && type_beq T T'
-  | Unsafe T, Unsafe T' => type_beq T T'
-  | Union Ts, Union Ts' | Product Ts, Product Ts' | Sum Ts, Sum Ts' =>
-      type_list_beq Ts Ts'
-  | _, _ => false
-  end.
-Lemma type_beq_correct (T1 T2 : type) : type_beq T1 T2 ↔ T1 = T2.
-Proof.
-  revert T1 T2; fix FIX 1;
-    destruct T1 as [| | |Ts1|Ts1|Ts1],
-             T2 as [| | |Ts2|Ts2|Ts2];
-    simpl; try done;
-    rewrite ?andb_True ?bool_decide_spec ?FIX;
-    try (split; intro; [destruct_and?|split_and?]; congruence).
-  - match goal with |- context [?F Ts1 Ts2] => assert (F Ts1 Ts2 ↔ Ts1 = Ts2) end.
-    { revert Ts2. induction Ts1 as [|Ts1h Ts1q]; destruct Ts2; try done.
-      specialize (FIX Ts1h). naive_solver. }
-    clear FIX. naive_solver.
-  - match goal with |- context [?F Ts1 Ts2] => assert (F Ts1 Ts2 ↔ Ts1 = Ts2) end.
-    { revert Ts2. induction Ts1 as [|Ts1h Ts1q]; destruct Ts2; try done.
-      specialize (FIX Ts1h). naive_solver. }
-    clear FIX. naive_solver.
-  - match goal with |- context [?F Ts1 Ts2] => assert (F Ts1 Ts2 ↔ Ts1 = Ts2) end.
-    { revert Ts2. induction Ts1 as [|Ts1h Ts1q]; destruct Ts2; try done.
-      specialize (FIX Ts1h). naive_solver. }
-    clear FIX. naive_solver.
-Qed.
-Instance type_eq_dec : EqDecision type.
-Proof.
-  refine (λ T1 T2, cast_if (decide (type_beq T1 T2))); by rewrite -type_beq_correct.
-Defined.
-Instance type_countable : Countable type.
-Proof.
-  refine (inj_countable'
-    (fix go T := match T with
-     | Scalar sz => GenNode 0 [GenLeaf $ inl sz]
-     | Reference kind T => GenNode 1 [GenLeaf $ inr kind; go T]
-     | Unsafe T => GenNode 2 [go T]
-     | Union Ts => GenNode 3 (go <$> Ts)
-     | Product Ts => GenNode 4 (go <$> Ts)
-     | Sum Ts => GenNode 5 (go <$> Ts)
-     end)
-    (fix go s := match s with
-     | GenNode 0 [GenLeaf (inl sz)] => Scalar sz
-     | GenNode 1 [GenLeaf (inr kind); T] => Reference kind (go T)
-     | GenNode 2 [T] => Unsafe (go T)
-     | GenNode 3 Ts => Union (go <$> Ts)
-     | GenNode 4 Ts => Product (go <$> Ts)
-     | GenNode 5 Ts => Sum (go <$> Ts)
-     | _ => Scalar 0
-     end) _).
-  fix FIX 1. intros []; f_equal=>//; revert Ts; clear -FIX.
-  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
-  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
-  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
 Qed.
 
 Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
@@ -1638,7 +1485,6 @@ Proof.
   by intros [].
 Qed.
 
-Instance type_inhabited : Inhabited type := populate (Scalar 0).
 Instance expr_inhabited : Inhabited expr := populate (Lit LitPoison).
 Instance val_inhabited : Inhabited val := populate (ImmV $ LitV LitPoison).
 Instance state_Inhabited : Inhabited state.

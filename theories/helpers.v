@@ -59,6 +59,24 @@ Proof.
   - by apply union_subseteq_r.
 Qed.
 
+Lemma foldl_fun_ext {A B} (f g: A → B → A) (a: A) (lb : list B):
+  (∀ a b, b ∈ lb → f a b = g a b) → foldl f a lb = foldl g a lb.
+Proof.
+  revert a. induction lb as [|b lb IH]; [done|].
+  intros a HB. simpl. rewrite HB; [by left|].
+  apply IH. intros ???. apply HB. by right.
+Qed.
+
+Lemma foldl_fmap_shift_init {A B : Type}
+  (f: A → B → A) (g: A → A) (a: A) (lb : list B) :
+  (∀ a b, b ∈ lb → f (g a) b = g (f a b)) →
+  g (foldl f a lb) = foldl f (g a) lb.
+Proof.
+  revert a. induction lb as [|b lb IH]; [done|].
+  intros a HB. simpl. rewrite HB; [by left|].
+  apply IH. intros ???. apply HB. by right.
+Qed.
+
 (** SqSubsetEq for option *)
 Instance option_sqsubseteq `{SqSubsetEq A} : SqSubsetEq (option A) :=
   λ o1 o2, if o1 is Some x1 return _ then
