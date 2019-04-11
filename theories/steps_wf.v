@@ -727,7 +727,7 @@ Lemma visit_freeze_sensitive'_wf_stack h l (f: bstacks → _ → _ → _ → _)
   wf_stack_frozen α' clk ∧ wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
   intros Hα HF.
-  eapply (visit_freeze_sensitive'_elim
+  apply (visit_freeze_sensitive'_elim
     (* general goal P *)
     (λ _ _ f α _ _ _ oalc, ∀ α' lc',
       (∀ α1 α2, HF f α1 α2) → oalc = Some (α', lc') → Hα α α')

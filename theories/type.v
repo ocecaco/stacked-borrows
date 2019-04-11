@@ -81,34 +81,52 @@ Proof.
   rewrite tsize_product_cons. move => /elem_of_cons [->|/IH]; lia.
 Qed.
 
+Lemma tsize_subtype_of_sum T Ts :
+  T ∈ Ts → (S (tsize T) ≤ tsize (Sum Ts))%nat.
+Proof.
+  induction Ts as [|Tc Ts IH]; [by intros ?%not_elem_of_nil|].
+  move => /elem_of_cons [->/=|/IH]; [lia|cbn; lia].
+Qed.
+
 (** Tree size of types *)
 Fixpoint tnode_size (T: type) : nat :=
   match T with
   | Scalar sz => 1%nat
   | Reference _ T => 1 + tnode_size T
   | Unsafe T => 1 + tnode_size T
-  | Union Ts | Product Ts | Sum Ts => 1 + list_nat_max (tnode_size <$> Ts) O
+  | Union Ts | Product Ts | Sum Ts =>
+    1 + foldl (λ sz T, sz + 1 + (tnode_size T)) O Ts
   end.
 
-Lemma tnode_size_elem_of T Ts:
-  T ∈ Ts → (tnode_size T < 1 + list_nat_max (tnode_size <$> Ts) O)%nat.
+Lemma foldl_inner_init_le {A} (fL: nat → nat) (fR: A → nat) (la: list A)
+  (Le: ∀ n, n ≤ fL n) :
+  ∀ n, n ≤ foldl (λ sz a, fL sz + fR a)%nat n la.
 Proof.
-  intros IN.
-  destruct (list_nat_max_spec (tnode_size <$> Ts)) as [[EMP ?]|[? MAX]].
-  - move : EMP IN => /fmap_nil_inv ->. by intros ?%not_elem_of_nil.
-  - eapply le_lt_trans.
-    + by apply MAX, elem_of_list_fmap_1.
-    + lia.
+  induction la as [|a0 la IH]; [done|]. move => n /=.
+  etrans; [|eapply IH]. etrans; [apply Le|]. lia.
 Qed.
+
+Lemma tnode_size_elem_of T Ts (IN: T ∈ Ts):
+  ∀ n, (tnode_size T < 1 + foldl (λ sz T, sz + 1 + (tnode_size T)) n Ts)%nat.
+Proof.
+  induction Ts as [|Tc Ts IH]; intros n;
+    [exfalso; move : IN ; apply not_elem_of_nil|].
+  move : IN => /elem_of_cons [->|/IH Lt].
+  - rewrite Nat.add_comm -(Nat.add_0_r (tnode_size Tc)).
+    apply plus_le_lt_compat; [|lia]. simpl.
+    etrans; [|apply foldl_inner_init_le]; intros; lia.
+  - apply Lt.
+Qed.
+
 Lemma tnode_size_elem_of_union T Ts :
   T ∈ Ts → (tnode_size T < tnode_size (Union Ts))%nat.
-Proof. by apply tnode_size_elem_of. Qed.
+Proof. intros ?. by apply tnode_size_elem_of. Qed.
 Lemma tnode_size_elem_of_product T Ts :
   T ∈ Ts → (tnode_size T < tnode_size (Product Ts))%nat.
-Proof. by apply tnode_size_elem_of. Qed.
+Proof. intros ?. by apply tnode_size_elem_of. Qed.
 Lemma tnode_size_elem_of_sum T Ts :
   T ∈ Ts → (tnode_size T < tnode_size (Sum Ts))%nat.
-Proof. by apply tnode_size_elem_of. Qed.
+Proof. intros ?. by apply tnode_size_elem_of. Qed.
 
 Section type_general_ind.
 Variable (P : type → Prop)
@@ -233,8 +251,61 @@ Proof.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
 Qed.
 
-(** Syntactic subtyping *)
+(** Finding sum types *)
+Fixpoint sub_sum_types' (T : type) (cur: nat) : list (nat * type) :=
+  match T with
+  | Unsafe T => sub_sum_types' T cur
+  | Union Ts => foldl (λ ns T, ns ++ sub_sum_types' T cur) [] Ts
+  | Sum Ts =>
+      [(cur, Sum Ts)] ++ foldl (λ ns T, ns ++ sub_sum_types' T (cur + 1)) [] Ts
+  | Product Ts =>
+      (foldl (λ sns T, ((sns.1 + tsize T)%nat, sns.2 ++ sub_sum_types' T sns.1))
+             (cur, []) Ts).2
+  | _ => []
+  end.
 
+Definition sub_sum_types T := sub_sum_types' T O.
+
+Lemma sub_sum_types_O_elem_of Ts : (O, Sum Ts) ∈ sub_sum_types (Sum Ts).
+Proof. by left. Qed.
+
+Lemma foldl_inner_app_elem_of_init_2 {A B C}
+  (fL: C → B → C) (fR: B → C → list A) c0 la0 lb :
+  ∀ a, a ∈ la0 →
+  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b cla.1)) (c0, la0) lb).2.
+Proof.
+  revert c0 la0. induction lb as [|b lb IH]; move => c0 la0 a INa /=; [done|].
+  apply IH. rewrite elem_of_app. by left.
+Qed.
+
+Lemma sub_sum_types_product_first T Tc Ts n :
+  (n, T) ∈ sub_sum_types Tc → (n, T) ∈ sub_sum_types (Product (Tc :: Ts)).
+Proof.
+  rewrite /sub_sum_types /=.
+  by apply (foldl_inner_app_elem_of_init_2
+              (λ n T0, (n + tsize T0))%nat (sub_sum_types')).
+Qed.
+
+Lemma sub_sum_types_product_further T Tc Ts n :
+  (n, T) ∈ sub_sum_types (Product Ts) →
+  (tsize Tc + n, T) ∈ sub_sum_types (Product (Tc :: Ts)).
+Proof.
+  rewrite /sub_sum_types /=.
+Abort.
+
+Lemma foldl_inner_app_elem_of_further_2 {A B C}
+  (fL: C → B → C) (fR: B → C → list A) (g: C → C) c0 la0 la1 lb :
+  ∀ a,
+  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b (g cla.1))) (c0, la1) lb).2 →
+  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b cla.1)) (g c0, la0 ++ la1) lb).2.
+Proof.
+  revert c0 la0 la1. induction lb as [|b lb IH]; move => c0 la0 la1 a /= INa.
+  - rewrite elem_of_app. by right.
+  - rewrite -app_assoc.
+  apply IH. rewrite elem_of_app. by left.
+Qed.
+
+(*
 Fixpoint subtype' (Tc T : type) (cur: nat) : list nat :=
   let base: list nat := if bool_decide (Tc = T) then [cur] else [] in
   match T with
@@ -247,6 +318,7 @@ Fixpoint subtype' (Tc T : type) (cur: nat) : list nat :=
   | _ => base
   end.
 Definition subtype Tc T := subtype' Tc T O.
+
 
 Lemma subtype_O_elem_of T : O ∈ subtype T T.
 Proof.
@@ -423,3 +495,21 @@ Proof.
     by apply (foldl_inner_app_elem_of_init_2
                 (λ n T0, (n + tsize T0))%nat (subtype' T)).
 Qed.
+
+
+Lemma foldl_inner_init_lt {A} (fL: nat → nat) (fR: A → nat) (la: list A)
+  (MONO: ∀ n m, n < m → fL n < fL m) :
+  ∀ n m, n < m →
+  foldl (λ sz a, fL sz + fR a)%nat n la < foldl (λ sz a, fL sz + fR a)%nat m la.
+Proof.
+  induction la as [|a0 la IH]; [done|]. move => n m Lt /=.
+  by apply IH, plus_lt_compat_r, MONO.
+Qed.
+
+Lemma tnode_size_product_cons_le Tc Ts :
+  tnode_size (Product Ts) < tnode_size (Product (Tc :: Ts)).
+Proof.
+  cbn. apply lt_n_S, foldl_inner_init_lt; [|lia].
+  intros ??; apply plus_lt_compat_r.
+Qed.
+ *)

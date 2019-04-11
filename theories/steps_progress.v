@@ -419,6 +419,66 @@ Proof.
   move => -> /=. by eexists.
 Qed.
 
+Lemma unsafe_action_offsets {A}
+  (f: A → _ → nat → _ → _) a l (last fsz usz: nat) a' last' cur_dist' :
+  unsafe_action f a l last fsz usz = Some (a', (last', cur_dist')) →
+  (last' = last + fsz + usz ∧ cur_dist' = O)%nat.
+Proof.
+  rewrite /unsafe_action. do 2 (case f => ?; [simpl|done]).
+  intros. by simplify_eq.
+Qed.
+
+Lemma visit_freeze_sensitive'_offsets {A}
+  h l (f: A → _ → nat → _ → _) a (last cur_dist: nat) T a' last' cur_dist' :
+  let HA (oalc: option (A * (nat * nat))) l1 c1 T1 a2 l2 c2 :=
+    (oalc = Some (a2, (l2, c2)) →
+      (l1 ≤ l2 ∧ l2 + c2 = l1 + c1 + tsize T1)%nat) in
+  HA (visit_freeze_sensitive' h l f a last cur_dist T)
+     last cur_dist T a' last' cur_dist'.
+Proof.
+  intros HA.
+  apply (visit_freeze_sensitive'_elim
+    (* general goal P *)
+    (λ _ _ _ _ l1 c1 T1 oalc, ∀ a2 l2 c2, HA oalc l1 c1 T1 a2 l2 c2)
+    (λ _ _ _ _ _ _ _ _ l1 c1 Ts oalc, ∀ a2 l2 c2,
+      HA oalc l1 c1 (Product Ts) a2 l2 c2)
+    (λ _ _ l1 c1 _ _ _ _ Ts i oalc, ∀ a2 l2 c2,
+      oalc = Some (a2, (l2, c2)) → ∃ T1, Ts !! i = Some T1 ∧
+      (l1 ≤ l2 ∧ l2 + c2 = l1 + S c1 + tsize T1)%nat)); rewrite /HA.
+  - intros. simplify_eq. simpl. lia.
+  - intros. simplify_eq. simpl. lia.
+  - clear. intros _ ????????? [??]%unsafe_action_offsets. subst. simpl. lia.
+  - clear. intros _ ?????????. case is_freeze.
+    + intros. simplify_eq. lia.
+    + intros [??]%unsafe_action_offsets. subst. lia.
+  - naive_solver.
+  - intros. simplify_eq. simpl. lia.
+  - clear. intros h l f a1 l1 c1 Ts a2 l2 c2 T Ts' IH1 IH2 a4 l4 c4.
+    case visit_freeze_sensitive' as [[a3 [l3 c3]]|] eqn:Eq3; [|done].
+    cbn -[tsize].
+    destruct (IH2 a3 l3 c3) as [Le3 EqO3]; [done|].
+    intros Eq4. destruct (IH1 (a3, (l3, c3)) a4 l4 c4 Eq4) as [Le4 EqO4].
+    clear -Le3 EqO3 Le4 EqO4. simpl in Le4. rewrite EqO4. cbn -[tsize].
+    rewrite EqO3 tsize_product_cons. lia.
+  - naive_solver.
+  - naive_solver.
+  - clear. intros h l l1 c1 ii f a1 Ts1 HL Eq a2 l2 c2.
+    case decide => Ge0; [|done].
+    case visit_freeze_sensitive'_clause_6_clause_1_visit_lookup
+      as [[a3 [l3 c3]]|]; [|done]. cbn -[tsize].
+    intros. simplify_eq.
+    destruct (HL Ge0 a2 l2 c3) as [T1 [Eq1 [Le2 Eq2]]]; [done|].
+    split; [done|]. rewrite le_plus_minus_r; [done|].
+    etrans; [apply (le_plus_l _ c3)|]. rewrite Eq2. clear -Eq1.
+    rewrite (_: l1 + S c1 + tsize T1 = l1 + c1 + S (tsize T1))%nat; [|lia].
+    by eapply plus_le_compat_l, tsize_subtype_of_sum, elem_of_list_lookup_2.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+Qed.
+
 Lemma visit_freeze_sensitive'_is_Some {A}
   h l (f: A → _ → nat → _ → _) a (last cur_dist: nat) T
   (HF: ∀ a i j b, (last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize T)%nat →
@@ -426,32 +486,32 @@ Lemma visit_freeze_sensitive'_is_Some {A}
   (* (HFSTRONG: ∀ a (i: nat), (cur_dist ≤ i < cur_dist + tsize T) → ∃ a',
           f a (l +ₗ last) i true = Some a' ∧
           is_Some (f a' (l +ₗ last +ₗ i) (Z.to_nat (cur_dist + tsize T - i)) false)) *)
-  (SUM: ∀ Ts (n: nat), n ∈ subtype (Sum Ts) T → ∃ i,
+  (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
           h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts) :
   is_Some (visit_freeze_sensitive' h l f a last cur_dist T).
 Proof.
   revert HF SUM.
-  eapply (visit_freeze_sensitive'_elim
+  apply (visit_freeze_sensitive'_elim
     (* general goal P *)
     (λ h l f a last cur_dist T oalc,
       (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize T)%nat →
           is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
-      (∀ Ts (n: nat), n ∈ subtype (Sum Ts) T → ∃ i,
+      (∀ Ts (n: nat), (n, Sum Ts) ∈ sub_sum_types T → ∃ i,
           h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts) →
       is_Some oalc)
     (λ h l f _ _ _ _ a last cur_dist Ts oalc,
       (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Product Ts))%nat →
           is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
-      (∀ Ts' (n: nat), n ∈ subtype (Sum Ts') (Product Ts) → ∃ i,
+      (∀ Ts' (n: nat), (n, Sum Ts') ∈ sub_sum_types (Product Ts) → ∃ i,
           h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts') →
       is_Some oalc)
     (λ h l last cur_dist i f a _ Ts n oalc,
       (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Sum Ts))%nat →
           is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
-      (∀ Ts' (n: nat), n ∈ subtype (Sum Ts') (Sum Ts) → ∃ i,
+      (∀ Ts' (n: nat), (n, Sum Ts') ∈ sub_sum_types (Sum Ts) → ∃ i,
           h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts') →
           is_Some oalc)).
@@ -467,32 +527,40 @@ Proof.
     destruct IH2 as [[a2 [last2 cur_dist2]] Eq1].
     { intros ???? [? Le]. apply HF. split; [done|]. clear -Le.
       rewrite tsize_product_cons. by lia. }
-    { intros ???. by apply SUM, subtype_product_first. }
+    { intros ???. by apply SUM, sub_sum_types_product_first. }
+    destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ _ Eq1)
+      as [LeO EqO].
     rewrite Eq1 /=. apply (IH1 (a2, (last2,cur_dist2))).
-    { admit. (* need some relation between last2 vs. last1, cur_dist2 vs cur_dist1:
-      extra lemma for visit_freeze_sensitive' on the offsets. *) }
-    { admit. } (* product inner recursive case *)
+    { intros a' i j b. cbn -[tsize]. intros Lej. apply HF.
+      clear -LeO EqO Lej. destruct Lej as [[Le2 Lei] Lej].
+      split; [lia|]. move : Lej. rewrite EqO tsize_product_cons. lia. }
+    { intros Ts' n IN.
+      rewrite /= shift_loc_assoc -2!Nat2Z.inj_add EqO -(Nat.add_assoc _ _ n)
+              2!Nat2Z.inj_add -shift_loc_assoc.
+      apply SUM.
+      (* need subtype_product_further *)
+      admit. } (* product inner recursive case *)
   - clear.
     intros h l last cur_dist _ _ Ts EqPoison _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat EqPoison.
   - clear. intros h l last cur_dist l1 tag1 _ _ Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros h l last cur_dist n f a Ts IH1 Eqn BLK SUM.
-    destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply subtype_O_elem_of|].
+    destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. rewrite shift_loc_0_nat Eqn. intros Eq. simplify_eq.
     rewrite decide_True; [|done].
     destruct (IH1 Ge0) as [alc2 Eq2]; [done..|].
     rewrite Eq2 /=. by eexists.
   - clear. intros h l last cur_dist f xl e ? _ _ Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros h l last cur_dist _ _ Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply subtype_O_elem_of|].
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros ????????? _ SUB. exfalso.
-    destruct (SUB [] O) as [i' [_ [? Lt]]]; [by apply subtype_O_elem_of|].
+    destruct (SUB [] O) as [i' [_ [? Lt]]]; [by apply sub_sum_types_O_elem_of|].
     simpl in Lt. lia.
   - admit. (* sum inner lookup list O case *)
   - admit. (* sum inner lookup list S case *)
