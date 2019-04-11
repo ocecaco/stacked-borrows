@@ -537,9 +537,8 @@ Proof.
     { intros Ts' n IN.
       rewrite /= shift_loc_assoc -2!Nat2Z.inj_add EqO -(Nat.add_assoc _ _ n)
               2!Nat2Z.inj_add -shift_loc_assoc.
-      apply SUM.
-      (* need subtype_product_further *)
-      admit. } (* product inner recursive case *)
+      by apply SUM, sub_sum_types_product_further. }
+    (* product inner recursive case *)
   - clear.
     intros h l last cur_dist _ _ Ts EqPoison _ SUM.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].

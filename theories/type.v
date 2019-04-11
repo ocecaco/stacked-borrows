@@ -286,59 +286,43 @@ Proof.
               (λ n T0, (n + tsize T0))%nat (sub_sum_types')).
 Qed.
 
-Lemma sub_sum_types_product_further T Tc Ts n :
-  (n, T) ∈ sub_sum_types (Product Ts) →
-  (tsize Tc + n, T) ∈ sub_sum_types (Product (Tc :: Ts)).
+Lemma foldl_inner_app_fmap {A B} (f: B → list A) (g: A → A) la0 lb :
+  g <$> (foldl (λ la b, la ++ f b) la0 lb)
+  = foldl (λ la b, la ++ (g <$> f b)) (g <$> la0) lb.
 Proof.
-  rewrite /sub_sum_types /=.
-Abort.
-
-Lemma foldl_inner_app_elem_of_further_2 {A B C}
-  (fL: C → B → C) (fR: B → C → list A) (g: C → C) c0 la0 la1 lb :
-  ∀ a,
-  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b (g cla.1))) (c0, la1) lb).2 →
-  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b cla.1)) (g c0, la0 ++ la1) lb).2.
-Proof.
-  revert c0 la0 la1. induction lb as [|b lb IH]; move => c0 la0 la1 a /= INa.
-  - rewrite elem_of_app. by right.
-  - rewrite -app_assoc.
-  apply IH. rewrite elem_of_app. by left.
+  revert la0. induction lb as [|b lb IH]; move => la0; [done|].
+  by rewrite /= IH fmap_app.
 Qed.
 
-(*
-Fixpoint subtype' (Tc T : type) (cur: nat) : list nat :=
-  let base: list nat := if bool_decide (Tc = T) then [cur] else [] in
-  match T with
-  | Unsafe T => base ++ subtype' Tc T cur
-  | Union Ts => foldl (λ ns T, ns ++ subtype' Tc T cur) base Ts
-  | Sum Ts => foldl (λ ns T, ns ++ subtype' Tc T (cur + 1)) base Ts
-  | Product Ts =>
-      (foldl (λ sns T, ((sns.1 + tsize T)%nat, sns.2 ++ subtype' Tc T sns.1))
-             (cur, base) Ts).2
-  | _ => base
-  end.
-Definition subtype Tc T := subtype' Tc T O.
-
-
-Lemma subtype_O_elem_of T : O ∈ subtype T T.
+Lemma sub_sum_type'_shift T n m:
+  sub_sum_types' T (n + m) = (λ nT, ((nT.1 + m)%nat, nT.2)) <$> sub_sum_types' T n.
 Proof.
-  rewrite /subtype. destruct T; simpl; (rewrite bool_decide_true; [done|]).
-  - by apply elem_of_list_singleton.
-  - by apply elem_of_list_singleton.
-  - rewrite elem_of_app elem_of_list_singleton. by left.
-  - remember ((Union Ts)) as Tl. clear HeqTl. remember [0%nat] as nl.
-    have IN: 0%nat ∈ nl by rewrite Heqnl elem_of_list_singleton. clear Heqnl.
-    revert Tl nl IN. induction Ts as [|?? IH]; intros Tl nl IN; [done|].
-    apply IH. rewrite elem_of_app. by left.
-  - remember ((Product Ts)) as Tl. clear HeqTl. remember 0%nat as n.
-    rewrite {1}Heqn. remember [n] as nl.
-    have IN: 0%nat ∈ nl by rewrite Heqnl elem_of_list_singleton. clear Heqnl Heqn.
-    revert n Tl nl IN. induction Ts as [|?? IH]; intros n Tl nl IN; [done|].
-    apply IH. rewrite /= elem_of_app. by left.
-  - remember ((Sum Ts)) as Tl. clear HeqTl. remember [0%nat] as nl.
-    have IN: 0%nat ∈ nl by rewrite Heqnl elem_of_list_singleton. clear Heqnl.
-    revert Tl nl IN. induction Ts as [|?? IH]; intros Tl nl IN; [done|].
-    apply IH. rewrite elem_of_app. by left.
+  revert n.
+  apply (type_elim (λ T, ∀ n, sub_sum_types' T _ = _ <$> sub_sum_types' T _)).
+  - done.
+  - done.
+  - done.
+  - intros ? IH n. simpl.
+    rewrite (foldl_fun_ext
+              (λ ns T0, ns ++ sub_sum_types' T0 (n + m))
+              (λ ns T0, ns ++
+                ((λ nT, ((nT.1 + m)%nat, nT.2)) <$> sub_sum_types' T0 n))).
+    + by move => ?? /IH ->.
+    + by rewrite foldl_inner_app_fmap.
+  - intros ? IH n. simpl.
+    set g : nat * list (nat * type) → nat * list (nat * type) :=
+      λ sns, ((λ n, n + m)%nat sns.1, (λ nT, ((nT.1 + m)%nat, nT.2)) <$> sns.2).
+    change ((n + m)%nat, []) with (g (n, [])).
+    rewrite -foldl_fmap_shift_init; [|done].
+    move => ?? /IH IH1. rewrite /g /=. f_equal; [lia|by rewrite fmap_app IH1].
+  - intros ? IH n. cbn.
+    rewrite (foldl_fun_ext
+              (λ ns T0, ns ++ sub_sum_types' T0 (n + m + 1))
+              (λ ns T0, ns ++
+                ((λ nT, ((nT.1 + m)%nat, nT.2)) <$> sub_sum_types' T0 (n + 1)))).
+    + move => ?? /IH IH1. rewrite (_: (n + m + 1) = (n + 1) + m)%nat; [lia|].
+      by rewrite IH1.
+    + by rewrite foldl_inner_app_fmap.
 Qed.
 
 Lemma foldl_inner_app_elem_of {A B} (f: B → list A) la0 lb :
@@ -386,116 +370,50 @@ Proof.
   - by exists b, c'.
 Qed.
 
-Lemma foldl_inner_app_fmap {A B} (f: B → list A) (g: A → A) la0 lb :
-  g <$> (foldl (λ la b, la ++ f b) la0 lb)
-  = foldl (λ la b, la ++ (g <$> f b)) (g <$> la0) lb.
-Proof.
-  revert la0. induction lb as [|b lb IH]; move => la0; [done|].
-  by rewrite /= IH fmap_app.
-Qed.
-
-Lemma subtype'_shift Tc T n m:
-  subtype' Tc T (n + m) = (λ n, n + m)%nat <$> subtype' Tc T n.
-Proof.
-  revert n.
-  apply (type_elim (λ T, ∀ n, subtype' _ T _ = _ <$> subtype' _ T _)).
-  - intros ??. simpl. by case_bool_decide.
-  - intros ???. simpl. by case_bool_decide.
-  - intros ?. simpl. case_bool_decide; [|done].
-    intros IH ?. by rewrite fmap_app IH.
-  - intros ? IH n. simpl.
-    rewrite (foldl_fun_ext
-              (λ ns T0, ns ++ subtype' Tc T0 (n + m))
-              (λ ns T0, ns ++ ((λ n, n + m)%nat <$> subtype' Tc T0 n))).
-    + by move => ?? /IH ->.
-    + rewrite foldl_inner_app_fmap. by case_bool_decide.
-  - intros ? IH n. simpl.
-    set g : nat * list nat → nat * list nat :=
-      λ sns, ((λ n, n + m)%nat sns.1, (λ n, n + m)%nat <$> sns.2).
-    rewrite (_: ((n + m)%nat,
-                if bool_decide (Tc = Product Ts) then [(n + m)%nat] else [])
-              = g (n, if bool_decide (Tc = Product Ts) then [n] else []));
-      first by (rewrite /g /=; case_bool_decide).
-    rewrite -foldl_fmap_shift_init; [|done].
-    move => ?? /IH IH1. rewrite /g /=. f_equal; [lia|by rewrite fmap_app IH1].
-  - intros ? IH n. simpl.
-    rewrite (foldl_fun_ext
-              (λ ns T0, ns ++ subtype' Tc T0 (n + m + 1))
-              (λ ns T0, ns ++ ((λ n, n + m)%nat <$> subtype' Tc T0 (n + 1)))).
-    + move => ?? /IH IH1. rewrite (_: (n + m + 1) = (n + 1) + m)%nat; [lia|].
-      by rewrite IH1.
-    + rewrite foldl_inner_app_fmap. by case_bool_decide.
-Qed.
-
-Lemma subtype_ne T Ts :
-  subtype T Ts ≠ [] → T = Ts ∨
-  match Ts with
-  | Unsafe Ts => subtype T Ts ≠ []
-  | Union Ts | Sum Ts | Product Ts => ∃ Tc, Tc ∈ Ts ∧ subtype T Tc ≠ []
-  | _ => True
+Lemma sub_sum_types_ne T :
+  sub_sum_types T ≠ [] →
+  match T with
+  | Unsafe T => sub_sum_types T ≠ []
+  | Union Ts | Product Ts => ∃ Tc, Tc ∈ Ts ∧ sub_sum_types Tc ≠ []
+  | Sum Ts => True
+  | _ => False
   end.
 Proof.
-  destruct Ts.
-  - rewrite /subtype /=. case_bool_decide; [by left|done].
-  - rewrite /subtype /=. case_bool_decide; [by left|done].
-  - rewrite /subtype /=. case_bool_decide; [by left|].
-      rewrite app_nil_l. by right.
-  - rewrite /subtype /=. case_bool_decide; [by left|].
-    move => /foldl_inner_app_not_nil. by right.
-  - rewrite /subtype /=. case_bool_decide; [by left|].
-    move => /(foldl_inner_app_not_nil_2 (λ n T0, (n + tsize T0))%nat (subtype' T))
-      [Tc [c [?]]]. rewrite -(Nat.add_0_l c) subtype'_shift.
-    move => NE. right. exists Tc. split; [done|].
-    move => NIL. apply NE. by rewrite NIL.
-  - rewrite /subtype /=. case_bool_decide; [by left|].
-    move => /foldl_inner_app_not_nil [Tc [IN]].
-    rewrite -(Nat.add_0_l 1) subtype'_shift => NE.
-    right. exists Tc. split; [done|] => NIL. apply NE. by rewrite NIL.
+  destruct T; [done..| | |done].
+  - by rewrite /sub_sum_types /= => /foldl_inner_app_not_nil.
+  - rewrite /sub_sum_types /= =>
+            /(foldl_inner_app_not_nil_2
+                (λ n T0, (n + tsize T0))%nat (sub_sum_types')) [Tc [c [?]]].
+    rewrite -(Nat.add_0_l c) sub_sum_type'_shift => NE.
+    exists Tc. split; [done|] => NIL. apply NE. by rewrite NIL.
 Qed.
 
-Lemma subtype_tnoze_size T1 T2 :
-  subtype T1 T2 ≠ [] → (tnode_size T1 ≤ tnode_size T2)%nat.
+Fact sub_sum_types_foldl n m (la lb: list (nat * type)) (Ts: list type) :
+  let lR :=
+    (foldl (λ sns T0, (sns.1 + tsize T0, sns.2 ++ sub_sum_types' T0 sns.1))
+             (n, lb) Ts) in
+  (foldl (λ sns T0, (sns.1 + tsize T0, sns.2 ++ sub_sum_types' T0 sns.1))
+        (n + m, la ++ ((λ nT, (nT.1 + m, nT.2)) <$> lb)) Ts)
+  = (lR.1 + m, la ++ ((λ nT, (nT.1 + m, nT.2)) <$> lR.2)).
 Proof.
-  apply (type_elim (λ T, subtype _ T ≠ [] → (_ ≤ tnode_size T)%nat)).
-  - intros ?. rewrite /subtype /=. case_bool_decide; [|done]. by subst.
-  - intros ?? _. rewrite /subtype /=. case_bool_decide; [|done]. by subst.
-  - move => ? IH /subtype_ne [->//|/IH /=]. lia.
-  - move => Ts IH /subtype_ne [->//|[Tc [IN NE]]].
-    eapply Nat.lt_le_incl, le_lt_trans; [apply (IH _ IN NE)|].
-    by apply tnode_size_elem_of_union.
-  - move => Ts IH /subtype_ne [->//|[Tc [IN NE]]].
-    eapply Nat.lt_le_incl, le_lt_trans; [apply (IH _ IN NE)|].
-    by apply tnode_size_elem_of_product.
-  - move => Ts IH /subtype_ne [->//|[Tc [IN NE]]].
-    eapply Nat.lt_le_incl, le_lt_trans; [apply (IH _ IN NE)|].
-    by apply tnode_size_elem_of_sum.
+  revert n lb. induction Ts as [|T Ts IH]; intros n lb; [done|].
+  revert IH. simpl. intros IH.
+  rewrite sub_sum_type'_shift -app_assoc -fmap_app.
+  rewrite (_: n + m + tsize T = (n + tsize T) + m)%nat; [lia|].
+  by rewrite (IH (n + tsize T)).
 Qed.
 
-Lemma foldl_inner_app_elem_of_init_2 {A B C}
-  (fL: C → B → C) (fR: B → C → list A) c0 la0 lb :
-  ∀ a, a ∈ la0 →
-  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b cla.1)) (c0, la0) lb).2.
+Lemma sub_sum_types_product_further T Tc Ts n :
+  (n, T) ∈ sub_sum_types (Product Ts) →
+  (tsize Tc + n, T) ∈ sub_sum_types (Product (Tc :: Ts)).
 Proof.
-  revert c0 la0. induction lb as [|b lb IH]; move => c0 la0 a INa /=; [done|].
-  apply IH. rewrite elem_of_app. by left.
+  rewrite /sub_sum_types /= => IN.
+  rewrite -(app_nil_r (sub_sum_types' Tc 0)) -{2}(Nat.add_0_l (tsize Tc))
+          (_: [] = (λ nT: nat * type, (nT.1 + (tsize Tc), nT.2)) <$> []); [done|].
+  rewrite sub_sum_types_foldl /= elem_of_app.
+  right. simpl. apply elem_of_list_fmap.
+  exists (n, T). by rewrite Nat.add_comm /=.
 Qed.
-
-Lemma subtype_product_first T Tc Ts n :
-  n ∈ subtype T Tc → n ∈ subtype T (Product (Tc :: Ts)).
-Proof.
-  intros IN.
-  have Le: (tnode_size T ≤ tnode_size Tc)%nat.
-  { apply subtype_tnoze_size. move => NIL.
-    move : IN. rewrite NIL. apply not_elem_of_nil. }
-  rewrite /subtype /=.
-  case_bool_decide as Eq.
-  - exfalso. subst T. eapply lt_irrefl. eapply le_lt_trans; [exact Le|].
-    apply tnode_size_elem_of_product. by left.
-  - move : IN. rewrite /subtype //= => IN.
-    by apply (foldl_inner_app_elem_of_init_2
-                (λ n T0, (n + tsize T0))%nat (subtype' T)).
-Qed.
-
 
 Lemma foldl_inner_init_lt {A} (fL: nat → nat) (fR: A → nat) (la: list A)
   (MONO: ∀ n m, n < m → fL n < fL m) :
@@ -512,4 +430,3 @@ Proof.
   cbn. apply lt_n_S, foldl_inner_init_lt; [|lia].
   intros ??; apply plus_lt_compat_r.
 Qed.
- *)
