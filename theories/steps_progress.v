@@ -561,8 +561,20 @@ Proof.
   - clear. intros ????????? _ SUB. exfalso.
     destruct (SUB [] O) as [i' [_ [? Lt]]]; [by apply sub_sum_types_O_elem_of|].
     simpl in Lt. lia.
-  - admit. (* sum inner lookup list O case *)
-  - admit. (* sum inner lookup list S case *)
+  - clear. intros h l l1 c1 ii f a Ts1 T Ts IH BLK SUM. apply IH.
+    + intros ???? [? Le]. apply BLK. split; [done|].
+      etrans; [apply Le|]. rewrite -Nat.add_assoc plus_Snm_nSm Nat.add_assoc.
+      apply (plus_le_compat_l _ _ (l1 + c1)), tsize_subtype_of_sum. by left.
+    + intros ?? IN.
+      rewrite (_: l +ₗ (l1 + S c1) +ₗ n = l +ₗ (l1 + c1) +ₗ S n); last first.
+      { rewrite 2!shift_loc_assoc. f_equal. lia. }
+      by apply SUM, sub_sum_types_sum_first.
+  - clear. intros h l l1 c1 ii fa a Ts0 T Ts i IH BLK SUM. apply IH.
+    + intros ???? [? Le]. apply BLK. split; [done|].
+      etrans; [apply Le|]. apply (plus_le_compat_l _ _ (l1 + c1)).
+      admit.
+    + intros ?? IN. apply SUM.
+      admit.
 Abort.
 
 Lemma ptr_deref_progress h α l bor T mut

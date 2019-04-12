@@ -269,23 +269,6 @@ Definition sub_sum_types T := sub_sum_types' T O.
 Lemma sub_sum_types_O_elem_of Ts : (O, Sum Ts) ∈ sub_sum_types (Sum Ts).
 Proof. by left. Qed.
 
-Lemma foldl_inner_app_elem_of_init_2 {A B C}
-  (fL: C → B → C) (fR: B → C → list A) c0 la0 lb :
-  ∀ a, a ∈ la0 →
-  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b cla.1)) (c0, la0) lb).2.
-Proof.
-  revert c0 la0. induction lb as [|b lb IH]; move => c0 la0 a INa /=; [done|].
-  apply IH. rewrite elem_of_app. by left.
-Qed.
-
-Lemma sub_sum_types_product_first T Tc Ts n :
-  (n, T) ∈ sub_sum_types Tc → (n, T) ∈ sub_sum_types (Product (Tc :: Ts)).
-Proof.
-  rewrite /sub_sum_types /=.
-  by apply (foldl_inner_app_elem_of_init_2
-              (λ n T0, (n + tsize T0))%nat (sub_sum_types')).
-Qed.
-
 Lemma foldl_inner_app_fmap {A B} (f: B → list A) (g: A → A) la0 lb :
   g <$> (foldl (λ la b, la ++ f b) la0 lb)
   = foldl (λ la b, la ++ (g <$> f b)) (g <$> la0) lb.
@@ -388,6 +371,23 @@ Proof.
     exists Tc. split; [done|] => NIL. apply NE. by rewrite NIL.
 Qed.
 
+Lemma foldl_inner_app_elem_of_init_2 {A B C}
+  (fL: C → B → C) (fR: B → C → list A) c0 la0 lb :
+  ∀ a, a ∈ la0 →
+  a ∈ (foldl (λ cla b, (fL cla.1 b, cla.2 ++ fR b cla.1)) (c0, la0) lb).2.
+Proof.
+  revert c0 la0. induction lb as [|b lb IH]; move => c0 la0 a INa /=; [done|].
+  apply IH. rewrite elem_of_app. by left.
+Qed.
+
+Lemma sub_sum_types_product_first T Tc Ts n :
+  (n, T) ∈ sub_sum_types Tc → (n, T) ∈ sub_sum_types (Product (Tc :: Ts)).
+Proof.
+  rewrite /sub_sum_types /=.
+  by apply (foldl_inner_app_elem_of_init_2
+              (λ n T0, (n + tsize T0))%nat (sub_sum_types')).
+Qed.
+
 Fact sub_sum_types_foldl n m (la lb: list (nat * type)) (Ts: list type) :
   let lR :=
     (foldl (λ sns T0, (sns.1 + tsize T0, sns.2 ++ sub_sum_types' T0 sns.1))
@@ -413,6 +413,23 @@ Proof.
   rewrite sub_sum_types_foldl /= elem_of_app.
   right. simpl. apply elem_of_list_fmap.
   exists (n, T). by rewrite Nat.add_comm /=.
+Qed.
+
+Lemma foldl_inner_app_elem_of_init {A B}
+  (f: list A → B → list A) la0 lb :
+  ∀ a, a ∈ la0 → a ∈ (foldl (λ a b, a ++ f a b)) la0 lb.
+Proof.
+  revert la0. induction lb as [|b lb IH]; move => la0 a INa /=; [done|].
+  apply IH. rewrite elem_of_app. by left.
+Qed.
+
+Lemma sub_sum_types_sum_first T Tc Ts n :
+  (n, T) ∈ sub_sum_types Tc → (S n, T) ∈ sub_sum_types (Sum (Tc :: Ts)).
+Proof.
+  rewrite /sub_sum_types /= => IN. right.
+  apply foldl_inner_app_elem_of_init.
+  rewrite -(Nat.add_0_l 1) sub_sum_type'_shift -Nat.add_1_r elem_of_list_fmap.
+  by exists (n, T).
 Qed.
 
 Lemma foldl_inner_init_lt {A} (fL: nat → nat) (fR: A → nat) (la: list A)
