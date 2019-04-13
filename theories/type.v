@@ -88,6 +88,10 @@ Proof.
   move => /elem_of_cons [->/=|/IH]; [lia|cbn; lia].
 Qed.
 
+Lemma tsize_sum_cons_le T Ts :
+  tsize (Sum Ts) ≤ tsize (Sum (T :: Ts)).
+Proof. cbn. lia. Qed.
+
 (** Tree size of types *)
 Fixpoint tnode_size (T: type) : nat :=
   match T with
@@ -441,9 +445,72 @@ Proof.
   by apply IH, plus_lt_compat_r, MONO.
 Qed.
 
-Lemma tnode_size_product_cons_le Tc Ts :
+Lemma tnode_size_product_cons_lt Tc Ts :
   tnode_size (Product Ts) < tnode_size (Product (Tc :: Ts)).
+Proof. cbn. apply lt_n_S, foldl_inner_init_lt; [intros|]; lia. Qed.
+
+Lemma tnode_size_sum_cons_lt Tc Ts :
+  tnode_size (Sum Ts) < tnode_size (Sum (Tc :: Ts)).
+Proof. cbn. apply lt_n_S, foldl_inner_init_lt; [intros|]; lia. Qed.
+
+Lemma sub_sum_types'_le n m Tc T: (n, Tc) ∈ sub_sum_types' T m → m ≤ n.
 Proof.
-  cbn. apply lt_n_S, foldl_inner_init_lt; [|lia].
-  intros ??; apply plus_lt_compat_r.
+  rewrite -{1}(Nat.add_0_l m) sub_sum_type'_shift elem_of_list_fmap =>
+          [[[??] [? ?]]]. simplify_eq. simpl. lia.
+Qed.
+
+Lemma sub_sum_types_sum_eq Ts1 Ts2 :
+  (0, Sum Ts1) ∈ sub_sum_types (Sum Ts2) → Ts1 = Ts2.
+Proof.
+  rewrite /sub_sum_types /= elem_of_cons => [[?|]]; [by simplify_eq|].
+  intros [?%not_elem_of_nil|[? [? IN%sub_sum_types'_le]]]%foldl_inner_app_elem_of;
+    [done|lia].
+Qed.
+
+Lemma sub_sum_types_elem_of n T Ts:
+  (n, T) ∈ sub_sum_types (Sum Ts) →
+  (n = 0 ∧ T = Sum Ts) ∨ (0 < n ∧ ∃ Tc, Tc ∈ Ts ∧ (n - 1, T) ∈ sub_sum_types Tc).
+Proof.
+  rewrite {1}/sub_sum_types /= elem_of_cons => [[?|]]; [simplify_eq; by left|].
+  intros [?%not_elem_of_nil|[Tc [IN1 IN2]]]%foldl_inner_app_elem_of; [done|right].
+  move : IN2. rewrite -(Nat.add_0_l 1) sub_sum_type'_shift elem_of_list_fmap.
+  move => [[n1 T'] [Eq IN2]]. simplify_eq. simpl. split; [lia|].
+  exists Tc. split; [done|]. by rewrite Nat.add_sub.
+Qed.
+
+
+Lemma foldl_inner_app_elem_of_inv {A B} (f: B → list A) la0 lb :
+  ∀ a, a ∈ foldl (λ la b, la ++ f b) la0 lb ↔ a ∈ la0 ∨ ∃ b, b ∈ lb ∧ a ∈ f b.
+Proof.
+  revert la0. induction lb as [|b lb IH]; move => la0 a.
+  { simpl. setoid_rewrite elem_of_nil. naive_solver. }
+  rewrite /= IH elem_of_app. setoid_rewrite elem_of_cons. naive_solver.
+Qed.
+
+Lemma sub_sum_types_elem_of_2 n T Ts:
+  (n, T) ∈ sub_sum_types (Sum Ts) ↔
+  (n = 0 ∧ T = Sum Ts) ∨ (0 < n ∧ ∃ Tc, Tc ∈ Ts ∧ (n - 1, T) ∈ sub_sum_types Tc).
+Proof.
+  rewrite {1}/sub_sum_types /= elem_of_cons. split; intros [IN|IN].
+  - simplify_eq. by left.
+  - revert IN.
+    intros [?%not_elem_of_nil|[Tc [IN1 IN2]]]%foldl_inner_app_elem_of; [done|right].
+    move : IN2. rewrite -(Nat.add_0_l 1) sub_sum_type'_shift elem_of_list_fmap.
+    move => [[n1 T'] [Eq IN2]]. simplify_eq. simpl. split; [lia|].
+    exists Tc. split; [done|]. by rewrite Nat.add_sub.
+  - destruct IN. subst. by left.
+  - right. rewrite foldl_inner_app_elem_of_inv. right.
+    destruct IN as [Gt0 [Tc [IN1 IN2]]]. exists Tc. split; [done|].
+    rewrite -(Nat.add_0_l 1) sub_sum_type'_shift elem_of_list_fmap.
+    exists (n - 1, T). split; [|done]. simpl. f_equal. lia.
+Qed.
+
+Lemma sub_sum_types_sum_further Tn Tc Ts n :
+  0 < n →
+  (n, Sum Tn) ∈ sub_sum_types (Sum Ts) →
+  (n, Sum Tn) ∈ sub_sum_types (Sum (Tc :: Ts)).
+Proof.
+  intros Gt0. rewrite 2!sub_sum_types_elem_of_2.
+  intros [[? _]|(_ & Tc' & IN1 & IN2)]; [subst; by lia|]. right.
+  split; [done|]. exists Tc'. split; [by right|done].
 Qed.

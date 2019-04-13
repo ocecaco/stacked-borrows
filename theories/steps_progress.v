@@ -571,8 +571,8 @@ Proof.
       by apply SUM, sub_sum_types_sum_first.
   - clear. intros h l l1 c1 ii fa a Ts0 T Ts i IH BLK SUM. apply IH.
     + intros ???? [? Le]. apply BLK. split; [done|].
-      etrans; [apply Le|]. apply (plus_le_compat_l _ _ (l1 + c1)).
-      admit.
+      etrans; [apply Le|].
+      by apply (plus_le_compat_l _ _ (l1 + c1)), tsize_sum_cons_le.
     + intros ?? IN. apply SUM.
       admit.
 Abort.
