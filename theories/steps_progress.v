@@ -511,9 +511,9 @@ Proof.
     (λ h l last cur_dist i f a _ Ts n oalc,
       (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Sum Ts))%nat →
           is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b)) →
-      (∀ Ts' (n: nat), (n, Sum Ts') ∈ sub_sum_types (Sum Ts) → ∃ i,
-          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
-          0 ≤ i < length Ts') →
+      (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
+          h !! (l +ₗ (last + cur_dist) +ₗ S n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts') → (n < length Ts)%nat →
           is_Some oalc)).
   - naive_solver.
   - naive_solver.
@@ -550,32 +550,34 @@ Proof.
     destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. rewrite shift_loc_0_nat Eqn. intros Eq. simplify_eq.
     rewrite decide_True; [|done].
-    destruct (IH1 Ge0) as [alc2 Eq2]; [done..|].
-    rewrite Eq2 /=. by eexists.
+    destruct (IH1 Ge0) as [alc2 Eq2]; [done|..].
+    + intros T' Ts' n IN1 IN2. apply SUM, sub_sum_types_elem_of_2.
+      right. split; [lia|]. exists T'. split; [done|]. by rewrite /= Nat.sub_0_r.
+    + rewrite -(Nat2Z.id (length Ts)). apply Z2Nat.inj_lt; lia.
+    + rewrite Eq2 /=. by eexists.
   - clear. intros h l last cur_dist f xl e ? _ _ Ts Eq0 _ SUM.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros h l last cur_dist _ _ Ts Eq0 _ SUM.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros ????????? _ SUB. exfalso.
-    destruct (SUB [] O) as [i' [_ [? Lt]]]; [by apply sub_sum_types_O_elem_of|].
-    simpl in Lt. lia.
-  - clear. intros h l l1 c1 ii f a Ts1 T Ts IH BLK SUM. apply IH.
+  - clear. intros _ _ _ _ _ _ _ _ i _ _. simpl. lia.
+  - clear. intros h l l1 c1 ii f a Ts1 T Ts IH BLK SUM _. apply IH.
     + intros ???? [? Le]. apply BLK. split; [done|].
       etrans; [apply Le|]. rewrite -Nat.add_assoc plus_Snm_nSm Nat.add_assoc.
       apply (plus_le_compat_l _ _ (l1 + c1)), tsize_subtype_of_sum. by left.
     + intros ?? IN.
       rewrite (_: l +ₗ (l1 + S c1) +ₗ n = l +ₗ (l1 + c1) +ₗ S n); last first.
       { rewrite 2!shift_loc_assoc. f_equal. lia. }
-      by apply SUM, sub_sum_types_sum_first.
-  - clear. intros h l l1 c1 ii fa a Ts0 T Ts i IH BLK SUM. apply IH.
+      apply (SUM T); [by left|done].
+  - clear. intros h l l1 c1 ii fa a Ts0 T Ts i IH BLK SUM Lt.
+    apply IH.
     + intros ???? [? Le]. apply BLK. split; [done|].
       etrans; [apply Le|].
       by apply (plus_le_compat_l _ _ (l1 + c1)), tsize_sum_cons_le.
-    + intros ?? IN. apply SUM.
-      admit.
-Abort.
+    + intros ?? n IN. apply SUM. by right.
+    + move : Lt => /=. lia.
+Qed.
 
 Lemma ptr_deref_progress h α l bor T mut
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α) :
