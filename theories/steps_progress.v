@@ -579,6 +579,25 @@ Proof.
     + move : Lt => /=. lia.
 Qed.
 
+Lemma visit_freeze_sensitive_is_Some {A}
+  h l (f: A → _ → nat → _ → _) a T
+  (HF: ∀ a i j b, (i ≤ j ∧ j ≤ tsize T)%nat →
+          is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b))
+  (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
+          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
+  is_Some (visit_freeze_sensitive h l T f a).
+Proof.
+  rewrite /visit_freeze_sensitive.
+  destruct (visit_freeze_sensitive'_is_Some h l f a O O T) as [[a1 [l1 c1]] Eq1].
+  { rewrite 2!Nat.add_0_l. intros ???? [[??]?]. by apply HF. }
+  { rewrite Z.add_0_l shift_loc_0. apply SUM. }
+  rewrite Eq1 -(Nat.add_sub c1 l1) -(Nat2Z.id (c1 + l1 - l1))
+          Nat2Z.inj_sub; [|lia].
+  apply HF. split; [lia|].
+  move : Eq1. intros [? Eq]%visit_freeze_sensitive'_offsets.
+  move : Eq. rewrite 2!Nat.add_0_l. lia.
+Qed.
+
 Lemma ptr_deref_progress h α l bor T mut
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α) :
   match mut with
@@ -594,16 +613,25 @@ Lemma ptr_deref_progress h α l bor T mut
       | AliasB (Some t) => mut = Immutable ∧
           (∀ (m: nat) stack, (m < tsize T)%nat → α !! (l +ₗ m) = Some stack →
             (∃ tf, stack.(frozen_since) = Some tf ∧ (tf ≤ t)%nat) ∨
-            (stack.(frozen_since) = None ∧ Raw ∈ stack.(borrows)))
+            (stack.(frozen_since) = None ∧ Raw ∈ stack.(borrows))) ∧
+          (∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
+            h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts)
       end
   end →
   ptr_deref h α l bor T mut.
 Proof.
   destruct mut as [mut|], bor as [|[t|]]; [| | |done..].
   - intros []. by apply derefN_uniq_progress.
-  - intros [? H]. subst mut. simpl. split; [done|]. admit.
+  - intros [? [IN ?]]. subst mut. simpl. split; [done|].
+    apply visit_freeze_sensitive_is_Some; [|done].
+    intros _ i j b [Le1 Le2]. apply derefN_shared_progress.
+    + by destruct b.
+    + intros i' Lt. rewrite shift_loc_assoc -Nat2Z.inj_add. apply BLK.
+      move : Lt. rewrite -Nat2Z.inj_sub // Nat2Z.id. lia.
+    + intros i' stk Lt. rewrite shift_loc_assoc -Nat2Z.inj_add. apply IN.
+      move : Lt. rewrite -Nat2Z.inj_sub // Nat2Z.id. lia.
   - by apply derefN_raw_progress.
-Abort.
+Qed.
 
 Lemma deref_head_step (σ: state) l bor T mut
   (WF: Wf σ)
@@ -613,7 +641,9 @@ Lemma deref_head_step (σ: state) l bor T mut
             [DerefEvt l bor T mut] (Place l bor T) σ' [].
 Proof.
   eexists. econstructor; econstructor; [done|].
-
+  apply ptr_deref_progress.
+  - move => ? /BLK. by rewrite (state_wf_dom _ WF).
+  -
 Abort.
 
 Lemma newcall_head_step σ :
