@@ -598,8 +598,7 @@ Proof.
   move : Eq. rewrite 2!Nat.add_0_l. lia.
 Qed.
 
-Lemma ptr_deref_progress h α l bor T mut
-  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α) :
+Definition ptr_deref_pre (h: mem) (α: bstacks) l bor T mut : Prop :=
   match mut with
   | None => True
   | Some mut =>
@@ -617,7 +616,11 @@ Lemma ptr_deref_progress h α l bor T mut
           (∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
             h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts)
       end
-  end →
+  end.
+
+Lemma ptr_deref_progress h α l bor T mut
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α) :
+  ptr_deref_pre h α l bor T mut →
   ptr_deref h α l bor T mut.
 Proof.
   destruct mut as [mut|], bor as [|[t|]]; [| | |done..].
@@ -635,16 +638,16 @@ Qed.
 
 Lemma deref_head_step (σ: state) l bor T mut
   (WF: Wf σ)
-  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap)) :
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
+  (MUT: ptr_deref_pre σ.(cheap) σ.(cstk) l bor T mut) :
   ∃ σ',
   head_step (Deref (Lit (LitLoc l bor)) T mut) σ
             [DerefEvt l bor T mut] (Place l bor T) σ' [].
 Proof.
   eexists. econstructor; econstructor; [done|].
-  apply ptr_deref_progress.
-  - move => ? /BLK. by rewrite (state_wf_dom _ WF).
-  -
-Abort.
+  apply ptr_deref_progress; [|done].
+  move => ? /BLK. by rewrite (state_wf_dom _ WF).
+Qed.
 
 Lemma newcall_head_step σ :
   let c := fresh (dom (gset call_id) σ.(cbar)) in
@@ -657,10 +660,18 @@ Lemma endcall_head_step σ c (NZ: 0 ≤ c)
   head_step (EndCall #c) σ [EndCallEvt (Z.to_nat c)] #☠ σ' [].
 Proof. eexists. econstructor; econstructor. lia. done. Qed.
 
-Lemma retag_head_step σ x xbor T kind call :
+Lemma retag_head_step σ x xbor T kind (call: Z) (Gt0: 0 ≤ call)
+  (BAR: match kind with
+        | FnEntry _ => σ.(cbar) !! (Z.to_nat call) = Some true
+        | _ => True
+        end) :
   ∃ σ' kind',
-  head_step (Retag (Place x xbor T) kind call) σ [RetagEvt x T kind'] #☠ σ' [].
+  head_step (Retag (Place x xbor T) kind #call) σ [RetagEvt x T kind'] #☠ σ' [].
 Proof.
+  eexists.
+  exists (match kind with FnEntry _ => FnEntry (Z.to_nat call) | _ => kind end).
+  econstructor. { econstructor; eauto. destruct kind; auto. naive_solver. }
+  econstructor. { by destruct kind. }
 Abort.
 
 Lemma syscall_head_step σ id :
