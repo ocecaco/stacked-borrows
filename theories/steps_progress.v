@@ -514,7 +514,7 @@ Proof.
       (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
           h !! (l +ₗ (last + cur_dist) +ₗ S n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts') → (n < length Ts)%nat →
-          is_Some oalc)).
+      is_Some oalc)).
   - naive_solver.
   - naive_solver.
   - clear. intros ??????? HF _. by apply unsafe_action_is_Some_weak.
@@ -553,7 +553,7 @@ Proof.
     destruct (IH1 Ge0) as [alc2 Eq2]; [done|..].
     + intros T' Ts' n IN1 IN2. apply SUM, sub_sum_types_elem_of_2.
       right. split; [lia|]. exists T'. split; [done|]. by rewrite /= Nat.sub_0_r.
-    + rewrite -(Nat2Z.id (length Ts)). apply Z2Nat.inj_lt; lia.
+    + rewrite -(Nat2Z.id (length Ts)) -Z2Nat.inj_lt; lia.
     + rewrite Eq2 /=. by eexists.
   - clear. intros h l last cur_dist f xl e ? _ _ Ts Eq0 _ SUM.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
@@ -654,11 +654,216 @@ Lemma newcall_head_step σ :
   ∃ σ', head_step NewCall σ [NewCallEvt c] (Lit $ LitInt c) σ' [].
 Proof. eexists. econstructor; econstructor. Qed.
 
+
 Lemma endcall_head_step σ c (NZ: 0 ≤ c)
   (BAR: σ.(cbar) !! (Z.to_nat c) = Some true) :
   ∃ σ',
   head_step (EndCall #c) σ [EndCallEvt (Z.to_nat c)] #☠ σ' [].
 Proof. eexists. econstructor; econstructor. lia. done. Qed.
+
+Definition is_loc_val (v: immediate) :=
+  match v with
+  | LitV (LitLoc _ _) => True
+  | _ => False
+  end.
+
+Lemma retag_lookup h α clk β l kind T h' α' clk' :
+  let Hh h h' :=
+    (∀ l v, h !! l = Some v → ¬ is_loc_val v → h' !! l = Some v) in
+  retag h α clk β l kind T = Some (h', α', clk') →
+  Hh h h'.
+Proof.
+  intros Hh.
+  eapply (retag_elim
+    (* general goal P *)
+    (λ h _ _ _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → Hh h h')
+    (* invariant for Product's where P1 *)
+    (λ _ _ _ _ _ _ _ h _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → Hh h h')
+    (* invariant for Sum's where P3 *)
+    (λ h _ _ _ _ _ _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → Hh h h')); rewrite /Hh.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Reference cases *)
+    clear. intros h ?? bor α clk β rt_kind p_kind T Eq h' α' clk'.
+    destruct p_kind as [mut| |];
+      [|destruct rt_kind; try by (intros; simplify_eq)|];
+      (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
+      intros ???; simplify_eq; intros Eq0 NL; (rewrite lookup_insert_ne; [done|]);
+      intros ?; subst x; rewrite Eq0 in Eq; simplify_eq; by apply NL.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Product inner recursive case *)
+    intros ????????????? IH1 IH2 ???.
+    case retag as [hac|]; [|done]. move => /= /IH1 IH.
+    destruct hac as [[]]. intros. apply IH; [|done]. by eapply IH2.
+  - naive_solver.
+  - naive_solver.
+  - (* Sum case *)
+    intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+Qed.
+
+Lemma retag_lookup_ref h α clk β l kind T h' α' clk' :
+  let Hh h h' :=
+    (∀ l v, h !! l = Some v → is_loc_val v → ∃ v', h' !! l = Some v' ∧ is_loc_val v') in
+  retag h α clk β l kind T = Some (h', α', clk') →
+  Hh h h'.
+Proof.
+  intros Hh.
+  eapply (retag_elim
+    (* general goal P *)
+    (λ h _ _ _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → Hh h h')
+    (* invariant for Product's where P1 *)
+    (λ _ _ _ _ _ _ _ h _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → Hh h h')
+    (* invariant for Sum's where P3 *)
+    (λ h _ _ _ _ _ _ _ _ _ ohac, ∀ h' α' clk',
+        ohac = Some (h', α', clk') → Hh h h')); rewrite /Hh.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Reference cases *)
+    clear. intros h ?? bor α clk β rt_kind p_kind T Eq h' α' clk'.
+    destruct p_kind as [mut| |];
+      [|destruct rt_kind; try by (intros; simplify_eq; naive_solver)|];
+      (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
+      intros ? l0 ?; simplify_eq; intros Eq0 NL;
+      (case (decide (l0 = x)) => [->|?];
+        [rewrite lookup_insert; naive_solver
+        |rewrite lookup_insert_ne; [naive_solver|done]]).
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - (* Product inner recursive case *)
+    intros ????????????? IH1 IH2 ???.
+    case retag as [hac|]; [|done]. move => /= /IH1 IH.
+    destruct hac as [[h2 α2] clk2]. intros.
+    destruct (IH2 h2 α2 clk2 eq_refl l1 v) as [v2 []]; [done..|].
+    by apply (IH l1 v2).
+  - naive_solver.
+  - naive_solver.
+  - (* Sum case *)
+    intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+Qed.
+
+Lemma retag_is_Some h α clk β x kind T
+  (REF: ∀ (n: nat), n ∈ sub_ref_types T → ∃ l tag,
+          h !! (x +ₗ n) = Some (LitV (LitLoc l tag)))
+  (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
+          h !! (x +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
+  is_Some (retag h α clk β x kind T).
+Proof.
+  revert REF SUM.
+  apply (retag_elim
+    (* general goal P *)
+    (λ h α clk β l kind T ohac,
+      (∀ (n: nat), n ∈ sub_ref_types T → ∃ l0 tag0,
+          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
+      (∀ Ts (n: nat), (n, Sum Ts) ∈ sub_sum_types T → ∃ i,
+          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts) →
+      is_Some ohac)
+    (λ _ _ _ β _ kind _ h α clk l Ts ohac,
+      (∀ (n: nat), n ∈ sub_ref_types (Product Ts) → ∃ l0 tag0,
+          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
+      (∀ Ts' (n: nat), (n, Sum Ts') ∈ sub_sum_types (Product Ts) → ∃ i,
+          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts') →
+      is_Some ohac)
+    (λ h l _ α clk β kind _ Ts n ohac,
+      (∀ (n: nat), n ∈ sub_ref_types (Sum Ts) → ∃ l0 tag0,
+          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
+      (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
+          h !! (l +ₗ S n) = Some (LitV (LitInt i)) ∧
+          0 ≤ i < length Ts') → (n < length Ts)%nat →
+      is_Some ohac)).
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - naive_solver.
+  - clear. intros h x _ _ _ _ kind T Eq0 REF _.
+    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+    move : Eq. by rewrite shift_loc_0 Eq0.
+  - clear. intros h x l tag α clk β rkind pkind T Eq0 REF SUM.
+    (* needs retag_ref *) admit.
+  - clear. intros h x n _ _ _ _ kind T Eq0 REF _.
+    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+    move : Eq. by rewrite shift_loc_0 Eq0.
+  - clear. intros h x ???? _ _ _ _ kind T Eq0 REF _.
+    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+    move : Eq. by rewrite shift_loc_0 Eq0.
+  - clear. intros h x _ _ _ _ kind T Eq0 REF _.
+    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+    move : Eq. by rewrite shift_loc_0 Eq0.
+  - naive_solver.
+  - clear.
+    intros h α clk β x kind Ts h1 α1 clk1 x1 T Ts1 IH1 IH2 REF SUM.
+    destruct IH2 as [[[h2 α2] clk2] Eq1].
+    { intros ??. by apply REF, sub_ref_types_product_first. }
+    { intros ???. by apply SUM, sub_sum_types_product_first. }
+    rewrite Eq1 /=. apply (IH1 ((h2, α2), clk2)).
+    { intros n IN. rewrite /= shift_loc_assoc -Nat2Z.inj_add.
+      destruct (REF (tsize T + n)%nat) as [l0 [tag0 Eq0]].
+      - admit.
+      - move : Eq1 => /retag_lookup_ref Eq1.
+        destruct (Eq1 _ _ Eq0) as [v' []]; [done|].
+        destruct v' as [[|l tag|]|]; [done| |done..]. by exists l, tag. }
+    { intros Ts' n IN. rewrite /= shift_loc_assoc.
+      destruct (SUM Ts' (tsize T + n)%nat) as [i [Eqi Lti]].
+      - by apply sub_sum_types_product_further.
+      - exists i. split; [|done]. move : Eq1 => /retag_lookup EqL.
+        apply EqL; [by rewrite -Nat2Z.inj_add|by intros []]. }
+  - clear. intros h x _ _ _ _ Ts Eq0 _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - clear. intros h x l tag _ _ _ _ Ts Eq0 _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - clear. intros h x n α clk β kind Ts IH Eq0 REF SUM.
+    destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply sub_sum_types_O_elem_of|].
+    move : Eq. rewrite shift_loc_0_nat Eq0. intros Eq. simplify_eq.
+    rewrite decide_True; [|done].
+    apply IH; [done|done|..|rewrite -(Nat2Z.id (length Ts)) -Z2Nat.inj_lt; lia].
+    intros T' Ts' n IN1 IN2. apply SUM, sub_sum_types_elem_of_2.
+    right. split; [lia|]. exists T'. split; [done|]. by rewrite /= Nat.sub_0_r.
+  - clear. intros h x f xl e ? _ _ _ _ Ts Eq0 _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - clear. intros h x _ _ _ _ Ts Eq0 _ SUM.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - clear. intros h x _ _ _ _ _ _ i _ _. simpl. lia.
+  - clear. intros h x _ α clk β kind _ T Ts IH REF SUM Lt. apply IH.
+    + intros n IN. rewrite shift_loc_assoc -(Nat2Z.inj_add 1 n) Nat.add_1_l.
+      by apply REF, sub_ref_types_sum_first.
+    + intros Ts' n IN. rewrite shift_loc_assoc -(Nat2Z.inj_add 1 n) Nat.add_1_l.
+      apply (SUM T); [by left|done].
+  - clear. intros h x ii α clk β kind Ts0 T Ts i IH REF SUM Lt. apply IH.
+    + intros ??. by apply REF, sub_ref_types_sum_further.
+    + intros ?? n IN. apply SUM. by right.
+    + move : Lt => /=. lia.
+Abort.
 
 Lemma retag_head_step σ x xbor T kind (call: Z) (Gt0: 0 ≤ call)
   (BAR: match kind with
