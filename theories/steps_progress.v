@@ -767,8 +767,48 @@ Proof.
   - naive_solver.
 Qed.
 
+Lemma reborrow1_is_Some stk bor bor' kind β bar :
+  is_Some (reborrow1 stk bor bor' kind β bar).
+Proof.
+  rewrite /reborrow1.
+Abort.
+
+Lemma reborrowN_is_Some α β l n bor bor' kind bar
+  (BLK: ∀ m, (m < n)%nat → l +ₗ m ∈ dom (gset loc) α) :
+  is_Some (reborrowN α β l n bor bor' kind bar).
+Proof.
+  revert α BLK. induction n as [|n IH]; intros α BLK; [by eexists|]; simpl.
+  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
+  { apply (elem_of_dom (D:=gset loc)), BLK. lia. }
+  rewrite Eq /=.
+  (* reborrow1 *)
+Abort.
+
+Lemma reborrow_is_Some h α β l bor T bar bor'
+  (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
+          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts):
+  is_Some (reborrow h α β l bor T bar bor').
+Proof.
+  rewrite /reborrow. destruct bor' as [|[]].
+  - rewrite /reborrowBlock /=.
+    (* reborrowN_is_Some *) admit.
+  - apply visit_freeze_sensitive_is_Some; [|done].
+    intros α1 i j [] Le; rewrite /reborrowBlock /=.
+    + (* reborrowN_is_Some *) admit.
+    + (* reborrowN_is_Some *) admit.
+  - rewrite /reborrowBlock /=.
+    (* reborrowN_is_Some *) admit.
+Abort.
+
+Lemma retag_ref_is_Some h α β clk l bor T mut bar tp
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) h) :
+  is_Some (retag_ref h α β clk l bor T mut bar tp).
+Proof.
+  rewrite /retag_ref. destruct (tsize T) as [|sT]; [by eexists|].
+Abort.
+
 Lemma retag_is_Some h α clk β x kind T
-  (REF: ∀ (n: nat), n ∈ sub_ref_types T → ∃ l tag,
+  (REF: ∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types T → ∃ l tag,
           h !! (x +ₗ n) = Some (LitV (LitLoc l tag)))
   (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
           h !! (x +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
@@ -778,21 +818,21 @@ Proof.
   apply (retag_elim
     (* general goal P *)
     (λ h α clk β l kind T ohac,
-      (∀ (n: nat), n ∈ sub_ref_types T → ∃ l0 tag0,
+      (∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types T → ∃ l0 tag0,
           h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
       (∀ Ts (n: nat), (n, Sum Ts) ∈ sub_sum_types T → ∃ i,
           h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts) →
       is_Some ohac)
     (λ _ _ _ β _ kind _ h α clk l Ts ohac,
-      (∀ (n: nat), n ∈ sub_ref_types (Product Ts) → ∃ l0 tag0,
+      (∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types (Product Ts) → ∃ l0 tag0,
           h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
       (∀ Ts' (n: nat), (n, Sum Ts') ∈ sub_sum_types (Product Ts) → ∃ i,
           h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts') →
       is_Some ohac)
     (λ h l _ α clk β kind _ Ts n ohac,
-      (∀ (n: nat), n ∈ sub_ref_types (Sum Ts) → ∃ l0 tag0,
+      (∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types (Sum Ts) → ∃ l0 tag0,
           h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
       (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
           h !! (l +ₗ S n) = Some (LitV (LitInt i)) ∧
@@ -802,30 +842,33 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
-  - clear. intros h x _ _ _ _ kind T Eq0 REF _.
-    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+  - clear. intros h x _ _ _ _ pk T Eq0 REF _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
     move : Eq. by rewrite shift_loc_0 Eq0.
   - clear. intros h x l tag α clk β rkind pkind T Eq0 REF SUM.
-    (* needs retag_ref *) admit.
-  - clear. intros h x n _ _ _ _ kind T Eq0 REF _.
-    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+    destruct pkind; simpl.
+    + (* needs retag_ref *) admit.
+    + (* needs retag_ref *) admit.
+    + (* needs retag_ref *) admit.
+  - clear. intros h x n _ _ _ _ pk T Eq0 REF _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
     move : Eq. by rewrite shift_loc_0 Eq0.
-  - clear. intros h x ???? _ _ _ _ kind T Eq0 REF _.
-    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+  - clear. intros h x ???? _ _ _ _ pk T Eq0 REF _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
     move : Eq. by rewrite shift_loc_0 Eq0.
-  - clear. intros h x _ _ _ _ kind T Eq0 REF _.
-    destruct (REF _ (sub_ref_types_O_elem_of kind T)) as [?[? Eq]].
+  - clear. intros h x _ _ _ _ pk T Eq0 REF _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
     move : Eq. by rewrite shift_loc_0 Eq0.
   - naive_solver.
   - clear.
     intros h α clk β x kind Ts h1 α1 clk1 x1 T Ts1 IH1 IH2 REF SUM.
     destruct IH2 as [[[h2 α2] clk2] Eq1].
-    { intros ??. by apply REF, sub_ref_types_product_first. }
+    { intros ????. by eapply REF, sub_ref_types_product_first. }
     { intros ???. by apply SUM, sub_sum_types_product_first. }
     rewrite Eq1 /=. apply (IH1 ((h2, α2), clk2)).
-    { intros n IN. rewrite /= shift_loc_assoc -Nat2Z.inj_add.
-      destruct (REF (tsize T + n)%nat) as [l0 [tag0 Eq0]].
-      - admit.
+    { intros n pk Tr IN. rewrite /= shift_loc_assoc -Nat2Z.inj_add.
+      destruct (REF (tsize T + n)%nat pk Tr) as [l0 [tag0 Eq0]].
+      - by apply sub_ref_types_product_further.
       - move : Eq1 => /retag_lookup_ref Eq1.
         destruct (Eq1 _ _ Eq0) as [v' []]; [done|].
         destruct v' as [[|l tag|]|]; [done| |done..]. by exists l, tag. }
@@ -855,12 +898,12 @@ Proof.
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros h x _ _ _ _ _ _ i _ _. simpl. lia.
   - clear. intros h x _ α clk β kind _ T Ts IH REF SUM Lt. apply IH.
-    + intros n IN. rewrite shift_loc_assoc -(Nat2Z.inj_add 1 n) Nat.add_1_l.
-      by apply REF, sub_ref_types_sum_first.
+    + intros n pk Tr IN. rewrite shift_loc_assoc -(Nat2Z.inj_add 1 n) Nat.add_1_l.
+      by eapply REF, sub_ref_types_sum_first.
     + intros Ts' n IN. rewrite shift_loc_assoc -(Nat2Z.inj_add 1 n) Nat.add_1_l.
       apply (SUM T); [by left|done].
   - clear. intros h x ii α clk β kind Ts0 T Ts i IH REF SUM Lt. apply IH.
-    + intros ??. by apply REF, sub_ref_types_sum_further.
+    + intros ????. by eapply REF, sub_ref_types_sum_further.
     + intros ?? n IN. apply SUM. by right.
     + move : Lt => /=. lia.
 Abort.
