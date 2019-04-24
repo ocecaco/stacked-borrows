@@ -510,9 +510,9 @@ Proof.
 Qed.
 
 (** Finding ref types *)
-Fixpoint sub_ref_types' (T : type) (cur: nat) : list nat :=
+Fixpoint sub_ref_types' (T : type) (cur: nat) : list (nat * type) :=
   match T with
-  | Reference _ _ => [cur]
+  | Reference pk Tref => [(cur, Reference pk Tref)]
   | Unsafe T => sub_ref_types' T cur
   | Union Ts => foldl (λ ns T, ns ++ sub_ref_types' T cur) [] Ts
   | Sum Ts => foldl (λ ns T, ns ++ sub_ref_types' T (cur + 1)) [] Ts
@@ -524,32 +524,12 @@ Fixpoint sub_ref_types' (T : type) (cur: nat) : list nat :=
 
 Definition sub_ref_types T := sub_ref_types' T O.
 
-Lemma sub_ref_types_O_elem_of pk T : O ∈ sub_ref_types (Reference pk T).
+Lemma sub_ref_types_O_elem_of pk T :
+  (O, Reference pk T) ∈ sub_ref_types (Reference pk T).
 Proof. by left. Qed.
 
-Lemma sub_ref_types_product_first T Ts n :
-  n ∈ sub_ref_types T → n ∈ sub_ref_types (Product (T :: Ts)).
-Proof.
-  rewrite /sub_ref_types /=.
-  by apply (foldl_inner_app_elem_of_init_2
-              (λ n T0, (n + tsize T0))%nat (sub_ref_types'  )).
-Qed.
-
-Lemma sub_ref_types_product_further T Ts n :
-  n ∈ sub_ref_types (Product Ts) →
-  (tsize T + n)%nat ∈ sub_ref_types (Product (T :: Ts)).
-Proof.
-  rewrite /sub_ref_types /= => IN .
-  rewrite -(app_nil_r (sub_ref_types' T 0)) -{2}(Nat.add_0_l (tsize T)).
-Abort.
-
-Lemma sub_ref_types_sum_in T Ts n :
-  T ∈ Ts → n ∈ sub_ref_types T → S n ∈ sub_ref_types (Sum Ts).
-Proof.
-Abort.
-
 Lemma sub_ref_type'_shift T n m:
-  sub_ref_types' T (n + m) = (λ n, n + m)%nat <$> sub_ref_types' T n.
+  sub_ref_types' T (n + m) = (λ nT, ((nT.1 + m)%nat, nT.2)) <$> sub_ref_types' T n.
 Proof.
   revert n.
   apply (type_elim (λ T, ∀ n, sub_ref_types' T _ = _ <$> sub_ref_types' T _)).
@@ -559,12 +539,13 @@ Proof.
   - intros ? IH n. simpl.
     rewrite (foldl_fun_ext
               (λ ns T0, ns ++ sub_ref_types' T0 (n + m))
-              (λ ns T0, ns ++ ((λ n, n + m)%nat <$> sub_ref_types' T0 n))).
+              (λ ns T0, ns ++
+                ((λ nT, ((nT.1 + m)%nat, nT.2)) <$> sub_ref_types' T0 n))).
     + by move => ?? /IH ->.
     + by rewrite foldl_inner_app_fmap.
   - intros ? IH n. simpl.
-    set g : nat * list nat → nat * list nat :=
-      λ sns, ((λ n, n + m)%nat sns.1, (λ n, n + m)%nat <$> sns.2).
+    set g : nat * list (nat * type) → nat * list (nat * type) :=
+      λ sns, ((λ n, n + m)%nat sns.1, (λ nT, ((nT.1 + m)%nat, nT.2)) <$> sns.2).
     change ((n + m)%nat, []) with (g (n, [])).
     rewrite -foldl_fmap_shift_init; [|done].
     move => ?? /IH IH1. rewrite /g /=. f_equal; [lia|by rewrite fmap_app IH1].
@@ -572,23 +553,58 @@ Proof.
     rewrite (foldl_fun_ext
               (λ ns T0, ns ++ sub_ref_types' T0 (n + m + 1))
               (λ ns T0, ns ++
-                ((λ n, n + m)%nat <$> sub_ref_types' T0 (n + 1)))).
+                ((λ nT, ((nT.1 + m)%nat, nT.2)) <$> sub_ref_types' T0 (n + 1)))).
     + move => ?? /IH IH1. rewrite (_: (n + m + 1) = (n + 1) + m)%nat; [lia|].
       by rewrite IH1.
     + by rewrite foldl_inner_app_fmap.
 Qed.
 
-Lemma sub_ref_types_sum_first T Ts n :
-  n ∈ sub_ref_types T → S n ∈ sub_ref_types (Sum (T :: Ts)).
+Lemma sub_ref_types_product_first T Ts n :
+  n ∈ sub_ref_types T → n ∈ sub_ref_types (Product (T :: Ts)).
+Proof.
+  rewrite /sub_ref_types /=.
+  by apply (foldl_inner_app_elem_of_init_2
+              (λ n T0, (n + tsize T0))%nat (sub_ref_types'  )).
+Qed.
+
+Fact sub_ref_types_foldl n m (la lb: list (nat * type)) (Ts: list type) :
+  let lR :=
+    (foldl (λ sns T0, (sns.1 + tsize T0, sns.2 ++ sub_ref_types' T0 sns.1))
+             (n, lb) Ts) in
+  (foldl (λ sns T0, (sns.1 + tsize T0, sns.2 ++ sub_ref_types' T0 sns.1))
+        (n + m, la ++ ((λ nT, (nT.1 + m, nT.2)) <$> lb)) Ts)
+  = (lR.1 + m, la ++ ((λ nT, (nT.1 + m, nT.2)) <$> lR.2)).
+Proof.
+  revert n lb. induction Ts as [|T Ts IH]; intros n lb; [done|].
+  revert IH. simpl. intros IH.
+  rewrite sub_ref_type'_shift -app_assoc -fmap_app.
+  rewrite (_: n + m + tsize T = (n + tsize T) + m)%nat; [lia|].
+  by rewrite (IH (n + tsize T)).
+Qed.
+
+Lemma sub_ref_types_product_further T Ts Tr pk n :
+  (n, Reference pk Tr) ∈ sub_ref_types (Product Ts) →
+  (tsize T + n, Reference pk Tr)%nat ∈ sub_ref_types (Product (T :: Ts)).
+Proof.
+  rewrite /sub_ref_types /= => IN .
+  rewrite -(app_nil_r (sub_ref_types' T 0)) -{2}(Nat.add_0_l (tsize T))
+          (_: [] = (λ nT: nat * type, (nT.1 + (tsize T), nT.2)) <$> []); [done|].
+  rewrite sub_ref_types_foldl /= elem_of_app.
+  right. simpl. apply elem_of_list_fmap.
+  exists (n, Reference pk Tr). by rewrite Nat.add_comm /=.
+Qed.
+
+Lemma sub_ref_types_sum_first T Tc Ts n :
+  (n, T) ∈ sub_ref_types Tc → (S n, T) ∈ sub_ref_types (Sum (Tc :: Ts)).
 Proof.
   rewrite /sub_ref_types /= => IN.
   apply foldl_inner_app_elem_of_init.
   rewrite -(Nat.add_0_l 1) sub_ref_type'_shift -Nat.add_1_r elem_of_list_fmap.
-  by exists n.
+  by exists (n, T).
 Qed.
 
-Lemma sub_ref_types_sum_further T Ts n :
-  n ∈ sub_ref_types (Sum Ts) → n ∈ sub_ref_types (Sum (T :: Ts)).
+Lemma sub_ref_types_sum_further T Tc Ts n :
+  (n, T) ∈ sub_ref_types (Sum Ts) → (n, T) ∈ sub_ref_types (Sum (Tc :: Ts)).
 Proof.
   rewrite /sub_ref_types /= 2!foldl_inner_app_elem_of_inv.
   intros [?%not_elem_of_nil|]; [done|by right].
