@@ -759,31 +759,128 @@ Proof.
   - naive_solver.
 Qed.
 
+Lemma create_borrow_is_Some stk bor kind
+  (BOR: match bor with
+         | UniqB _ => kind = UniqueRef ∧ stk.(frozen_since) = None
+         | AliasB None => kind = RawRef ∧ stk.(frozen_since) = None
+         | AliasB (Some t) =>
+            kind = RawRef ∧ stk.(frozen_since) = None ∨
+            kind = FrozenRef ∧
+              match stk.(frozen_since) with
+              | Some t' => (t' ≤ t)%nat
+              | _ => True
+              end
+         end) :
+  is_Some (create_borrow stk bor kind).
+Proof.
+  destruct bor as [t|[t|]];
+    [destruct BOR as [? EQN]
+    |destruct BOR as [[? EQN]|[? EQN]]
+    |destruct BOR as [? EQN]]; subst; simpl.
+  - rewrite EQN. by eexists.
+  - rewrite EQN. by eexists.
+  - case_match; [|by eexists]. rewrite decide_True; [by eexists|done].
+  - rewrite EQN. by eexists.
+Qed.
+
+Lemma add_barrier_frozen_eq stk bar :
+  (add_barrier stk bar).(frozen_since) = stk.(frozen_since).
+Proof.
+  rewrite /add_barrier. case_match; [done|]. case_match; [done..|]. by case_decide.
+Qed.
+
+Lemma access1_is_Some β stk bor kind
+  (ACC: match kind with
+        | UniqueRef => stk.(frozen_since) = None ∧ borrow_write_match β bor stk.(borrows)
+        | FrozenRef => is_Some stk.(frozen_since) ∨ borrow_read_match β bor stk.(borrows)
+        | RawRef => stk.(frozen_since) = None ∧ borrow_read_match β bor stk.(borrows)
+        end) :
+  is_Some (access1 β stk bor (to_access_kind kind)).
+Proof.
+  destruct kind.
+  - destruct (access1_write_is_Some β stk bor) as [stk' Eq1]; [by destruct ACC|].
+    rewrite Eq1. by eexists.
+  - destruct (access1_read_is_Some β stk bor) as [stk' Eq1]; [done|].
+    rewrite Eq1. by eexists.
+  - destruct (access1_read_is_Some β stk bor) as [? Eq1]; [naive_solver|].
+    rewrite Eq1. by eexists.
+Qed.
+
+Lemma access1_read_frozen β stk bor stk':
+  access1 β stk bor AccessRead = Some stk' →
+  stk'.(frozen_since) = stk.(frozen_since).
+Proof.
+  rewrite /access1. case_match; [naive_solver|].
+  case access1' => ? ; [|done]. simpl. naive_solver.
+Qed.
+
+Lemma access1_write_unfreeze β stk bor kind stk' (NR: kind ≠ AccessRead) :
+  access1 β stk bor kind = Some stk' →
+  stk'.(frozen_since) = None.
+Proof.
+  rewrite /access1. case_match.
+  - destruct kind; [done|..]; (case access1' => ?; [|done]); simpl; naive_solver.
+  - case access1' => ? ; [|done]. simpl. naive_solver.
+Qed.
+
 Lemma reborrow1_is_Some stk bor bor' kind β bar
-  (BOR: deref1_pre stk bor kind) :
+  (BOR: deref1_pre stk bor kind)
+  (ACC: match kind with
+        | UniqueRef => stk.(frozen_since) = None ∧ borrow_write_match β bor stk.(borrows)
+        | FrozenRef => is_Some stk.(frozen_since) ∨ borrow_read_match β bor stk.(borrows)
+        | RawRef => stk.(frozen_since) = None ∧ borrow_read_match β bor stk.(borrows)
+        end)
+  (BOR': match bor' with
+         | UniqB _ => kind = UniqueRef
+         | AliasB None => kind = RawRef
+         | AliasB (Some _) => kind = FrozenRef ∨ kind = RawRef
+         end) :
   is_Some (reborrow1 stk bor bor' kind β bar).
 Proof.
   rewrite /reborrow1.
   destruct (deref1_is_Some _ _ _ BOR) as [oi Eqoi]. rewrite Eqoi /=.
   destruct bar; [|destruct oi as [i|]].
-  - destruct kind.
-    + destruct (access1_write_is_Some β stk bor) as [? Eq1].
-      * admit.
-      * rewrite Eq1. cbn -[create_borrow]. admit.
-    + destruct (access1_read_is_Some β stk bor) as [? Eq1].
-      * admit.
-      * rewrite Eq1. cbn -[create_borrow]. admit.
-    + destruct (access1_read_is_Some β stk bor) as [? Eq1].
-      * admit.
-      * rewrite Eq1. cbn -[create_borrow]. admit.
+  - destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
+    apply create_borrow_is_Some. rewrite add_barrier_frozen_eq.
+    destruct bor' as [t'|[t'|]]; [|destruct BOR'|].
+    + split; [done|]. subst kind. move : Eq'. by apply access1_write_unfreeze.
+    + right. split; [done|]. (* 1 *) admit.
+    + left. split; [done|]. subst kind.
+      rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
+    + split; [done|]. subst kind.
+      rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
   - destruct (deref1 stk bor' kind) as [[i'|]|] eqn:Eqi'.
-    + admit.
-    + admit.
-    + admit.
+    + (* 2 + 3 *) admit.
+    + (* 3 *) admit.
+    + destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
+      apply create_borrow_is_Some.
+      destruct bor' as [t'|[t'|]]; [|destruct BOR'|].
+      * split; [done|]. subst kind. move : Eq'. by apply access1_write_unfreeze.
+      * right. split; [done|]. (* 1 *) admit.
+      * left. split; [done|]. subst kind.
+        rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
+      * split; [done|]. subst kind.
+        rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
   - destruct (deref1 stk bor' kind) as [[i'|]|] eqn:Eqi'.
-    + admit.
-    + admit.
-    + admit.
+    + destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
+      apply create_borrow_is_Some.
+      destruct bor' as [t'|[t'|]]; [|destruct BOR'|].
+      * split; [done|]. subst kind. move : Eq'. by apply access1_write_unfreeze.
+      * right. split; [done|]. (* 1 *) admit.
+      * left. split; [done|]. subst kind.
+        rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
+      * split; [done|]. subst kind.
+        rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
+    + (* 3 *) admit.
+    + destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
+      apply create_borrow_is_Some.
+      destruct bor' as [t'|[t'|]]; [|destruct BOR'|].
+      * split; [done|]. subst kind. move : Eq'. by apply access1_write_unfreeze.
+      * right. split; [done|]. (* 1 *) admit.
+      * left. split; [done|]. subst kind.
+        rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
+      * split; [done|]. subst kind.
+        rewrite (access1_read_frozen _ _ _ _ Eq'). by destruct ACC.
 Abort.
 
 Lemma reborrowN_is_Some α β l n bor bor' kind bar
