@@ -35,6 +35,16 @@ Fixpoint is_freeze (T: type) : bool :=
   | Union Ts | Product Ts | Sum Ts => forallb is_freeze Ts
   end.
 
+Lemma is_freeze_cons_product_inv T Ts:
+  is_freeze (Product (T :: Ts)) →
+  is_freeze T ∧ is_freeze (Product Ts).
+Proof. by rewrite /= andb_True. Qed.
+
+Lemma is_freeze_cons_sum_inv T Ts:
+  is_freeze (Sum (T :: Ts)) →
+  is_freeze T ∧ is_freeze (Sum Ts).
+Proof. by rewrite /= andb_True. Qed.
+
 (** Physical size of types *)
 Fixpoint list_nat_max (ns: list nat) (d: nat) :=
   match ns with

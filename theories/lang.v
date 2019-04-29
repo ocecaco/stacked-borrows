@@ -890,20 +890,6 @@ Definition create_borrow (stack: bstack) bor (kind: ref_kind) : option bstack :=
       end
   end.
 
-Definition bor_redundant_check
-  (stack: bstack) (bor': borrow) (kind': ref_kind) (idx: option time): Prop :=
-  match idx, (deref1 stack bor' kind') with
-  | _, Some None => True
-  | Some t, Some (Some t') => (t ≤ t')%nat
-  | _,_ => False
-  end.
-Instance bor_redundant_check_dec stack bor' kind idx :
-  Decision (bor_redundant_check stack bor' kind idx).
-Proof.
-  rewrite /bor_redundant_check.
-  destruct idx as [t|]; destruct (deref1 stack bor' kind) as [[t'|]|]; solve_decision.
-Qed.
-
 Definition reborrow1 (stack: bstack) bor bor' (kind': ref_kind)
   β (bar: option call_id) : option bstack :=
   ptr_idx ← (deref1 stack bor kind');
@@ -980,7 +966,7 @@ Definition retag_ref h α β (clock: time) l bor (T: type) (mut: option mutabili
             | Some Mutable => (* two-phase only for mut borrow *)
                 let bor'' := AliasB (Some (S clock)) in
                  (* second reborrow, no barrier *)
-                α'' ← reborrow h α' β l bor T None bor'' ;
+                α'' ← reborrow h α' β l bor' T None bor'' ;
                 Some (bor'', α'', S (S clock))
             | _ => None
           end
