@@ -870,9 +870,16 @@ Proof.
 Qed.
 
 Lemma deref1_Some_None stk bor kind :
-  deref1 stk bor kind = Some None → is_aliasing bor = true.
+  deref1 stk bor kind = Some None →
+  is_aliasing bor = true ∧ is_Some stk.(frozen_since).
 Proof.
-  rewrite /deref1. destruct bor as [t|[t|]]; simpl; [|done..]. by case match_deref.
+  rewrite /deref1.
+  destruct bor as [t|[t|]]; simpl; [by case match_deref|..];
+  case frozen_since.
+  - naive_solver.
+  - destruct kind; [done|..]; by case match_deref.
+  - naive_solver.
+  - by case match_deref.
 Qed.
 
 Lemma deref1_Some_Some stk bor kind i :
@@ -959,13 +966,13 @@ Proof.
         destruct bor' as [t|]; [|by eexists]. exfalso. by apply (BORin t).
       * destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
         move : Eq'. apply create_borrow_is_Some_2; [naive_solver|done..].
-    + move : Eqi' => /deref1_Some_None ->. by eexists.
+    + move : Eqi' => /deref1_Some_None [-> _]. by eexists.
     + destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
       move : Eq'. apply create_borrow_is_Some_2; [naive_solver|done..].
   - destruct (deref1 stk bor' kind) as [[i'|]|] eqn:Eqi'.
     + destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
       move : Eq'. apply create_borrow_is_Some_2; [naive_solver|done..].
-    + move : Eqi' => /deref1_Some_None ->. by eexists.
+    + move : Eqi' => /deref1_Some_None [-> _]. by eexists.
     + destruct (access1_is_Some _ _ _ _ ACC) as [stk' Eq']. rewrite Eq'.
       move : Eq'. apply create_borrow_is_Some_2; [naive_solver|done..].
 Qed.
@@ -1345,7 +1352,7 @@ Proof.
   - apply (IH (<[l +ₗ n:=stk']> α) Eq2 m stk1); [lia|done].
 Qed.
 
-Lemma reborrow_deref1_is_freeze h α β l bor T bar bor' α' 
+Lemma reborrow_deref1_is_freeze h α β l bor T bar bor' α'
   (FRZ: is_freeze T)
   (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
           h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
@@ -1358,6 +1365,283 @@ Proof.
   - rewrite visit_freeze_sensitive_is_freeze; [|done..].
     by apply reborrowBlock_deref1_is_freeze.
   - by apply reborrowBlock_deref1_is_freeze.
+Qed.
+
+Lemma create_borrow_read_access_is_freeze β stk stk' bor' kind :
+  create_borrow stk bor' kind = Some stk' →
+  is_Some stk'.(frozen_since) ∨ borrow_read_match β bor' stk'.(borrows).
+Proof.
+  rewrite /create_borrow.
+  destruct kind; destruct bor' as [t|ot]; [| |done| | |].
+  - case frozen_since => ?; [done|simplify_eq]. naive_solver.
+  - case frozen_since => ?; [done|simplify_eq].
+    destruct ot; simpl; destruct stk.(borrows) as [|[]]; naive_solver.
+  - destruct ot; [|done]. case frozen_since eqn:Eqs.
+    + case decide => ?; [|done]. intros. simplify_eq. rewrite Eqs. naive_solver.
+    + intros ?. simplify_eq. naive_solver.
+  - case frozen_since => ?; [done|simplify_eq]. naive_solver.
+  - case frozen_since => ?; [done|simplify_eq].
+    destruct ot; simpl; destruct stk.(borrows) as [|[] ?]; naive_solver.
+Qed.
+
+(*
+Lemma access1'_is_Some_read β stk bor kind stk' :
+  access1' stk bor kind β = Some stk' → borrow_read_match β bor stk'.
+Proof.
+  induction stk as [|si stack IH]; [done|].
+  destruct si as [t1| |c]; [destruct bor as [t2|ot]|destruct bor|]; simpl;
+    [|by apply IH|..].
+  - case decide => ?; [|by apply IH]. subst. case_match; [|done].
+    intros. simplify_eq. by left.
+  - destruct kind; [|apply IH..]. intros. by simplify_eq.
+  - destruct kind; [intros; by simplify_eq|..]; (case_match; [|done]);
+      intros; by simplify_eq.
+  - case_match; [done|apply IH].
+Qed.
+
+Lemma access1_read_access β stk bor kind stk' :
+  access1 β stk bor kind = Some stk' →
+  is_Some stk'.(frozen_since) ∨ borrow_read_match β bor stk'.(borrows).
+Proof.
+  rewrite /access1. case stk.(frozen_since) eqn:Eqf; [destruct kind|..];
+    [intros; simplify_eq; rewrite Eqf; left; by eexists|..];
+    (case access1' as [stk1|] eqn:Eqa; [|done]); simpl; intros; simplify_eq; right;
+    move : Eqa; apply access1'_is_Some_read.
+Qed. *)
+
+Lemma match_deref_lookup stk bor i :
+  match_deref stk bor = Some i →
+  i < length stk ∧
+  stk !! (length stk - S i)%nat =
+    Some (match bor with | UniqB t => Uniq t | _ => Raw end).
+Proof.
+  revert i. induction stk as [|[t| |c] stk IH]; intros i; [done|..]; simpl.
+  - destruct bor; [case decide => ?; [subst|]|].
+    + intros ?. simplify_eq. split; [lia|]. by rewrite Nat.sub_diag.
+    + move => /IH [Lt Eq]. split; [lia|].
+      rewrite -Eq (lookup_app_r [Uniq t]); [|simpl; lia].
+      f_equal. simpl. lia.
+    + move => /IH [Lt Eq]. split; [lia|].
+      rewrite -Eq (lookup_app_r [Uniq _]); [|simpl; lia].
+      f_equal. simpl. lia.
+  - destruct bor; [|intros ?; simplify_eq].
+    + move => /IH [Lt Eq]. split; [lia|].
+      rewrite -Eq (lookup_app_r [Raw]); [|simpl; lia].
+      f_equal. simpl. lia.
+    + split; [lia|by rewrite Nat.sub_diag].
+  - move => /IH [Lt Eq]. split; [lia|].
+    rewrite -Eq (lookup_app_r [FnBarrier _]); [|simpl; lia].
+    f_equal. simpl. lia.
+Qed.
+
+Lemma match_deref_borrow_read_match β stk bor bor' oi oi' 
+  (BOR : borrow_read_match β bor stk)
+  (IS1 : match_deref stk bor ≫= Some ∘ Some = Some oi)
+  (IS2 : match_deref stk bor' ≫= Some ∘ Some = Some oi')
+  (Le : oi ⊑ oi') (AL: is_aliasing bor') :
+  borrow_read_match β bor' stk.
+Proof.
+  induction stk as [|[t| |c] stk' IH]; [done| |done|].
+  - simpl. right. split; [by destruct bor'|].
+    have IS2':  match_deref stk' bor' ≫= Some ∘ Some = Some oi'
+      by destruct bor'. clear IS2.
+    move : BOR IS1 => /= [?|[NE BOR]].
+    + subst bor. rewrite decide_True; [|done]. simpl. intros. simplify_eq.
+      destruct oi' as [i'|]; [|done].
+      destruct (match_deref_lookup stk' bor' i') as [Lt _].
+      * move : IS2'. case match_deref; [naive_solver|done].
+      * exfalso. apply Nat2Z.inj_lt in Lt. move : Le Lt. cbn.
+        rewrite /sqsubseteq /nat_sqsubseteq /=. lia.
+    + destruct bor.
+      * rewrite decide_False; [|by intros ?; subst].
+        intros ?. by apply IH.
+      * intros ?. by apply IH.
+  - move : BOR => /= [INA BOR]. split; [done|].
+    by apply IH.
+Qed.
+
+Lemma deref1_read_access β stk bor bor' kind
+  (BOR: match bor' with
+        | UniqB _ =>
+            match bor with
+            | UniqB _ | AliasB None => borrow_write_match β bor stk.(borrows)
+            | _ => False
+            end
+        | AliasB (Some _) =>
+            match bor with
+            | UniqB _ => borrow_read_match β bor stk.(borrows)
+            | AliasB None =>
+                is_Some stk.(frozen_since) ∨ borrow_read_match β bor stk.(borrows)
+            | AliasB (Some _) =>
+                if stk.(frozen_since) then True else
+                  borrow_read_match β bor stk.(borrows)
+            end
+        | AliasB None =>
+            match bor with
+            | UniqB _ | AliasB None => borrow_read_match β bor stk.(borrows)
+            | _ => False
+            end
+        end)
+  (AL: is_aliasing bor') oi oi':
+  deref1 stk bor kind = Some oi →
+  deref1 stk bor' kind = Some oi' →
+  oi ⊑ oi' →
+  is_Some stk.(frozen_since) ∨ borrow_read_match β bor' stk.(borrows).
+Proof.
+  rewrite /deref1.
+  destruct bor' as [|[t'|]]; [done|..];
+    (case stk.(frozen_since) eqn:Eqf; [left; by eexists|intros IS1 IS2 Le; right]);
+    destruct bor as [t|[t|]].
+  - have IS2':
+      match_deref (borrows stk) (AliasB (Some t')) ≫= Some ∘ Some = Some oi'.
+    { by destruct kind. } clear Eqf AL IS2.
+    eapply match_deref_borrow_read_match; eauto.
+  - have IS1':
+      match_deref (borrows stk) (AliasB (Some t)) ≫= Some ∘ Some = Some oi.
+    { by destruct kind. }
+    have IS2':
+      match_deref (borrows stk) (AliasB (Some t')) ≫= Some ∘ Some = Some oi'.
+    { by destruct kind. } clear Eqf AL IS1 IS2.
+    eapply match_deref_borrow_read_match; eauto.
+  - destruct BOR as [[]|BOR]; [done|].
+    have IS2':
+      match_deref (borrows stk) (AliasB (Some t')) ≫= Some ∘ Some = Some oi'.
+    { by destruct kind. } clear Eqf AL IS2.
+    eapply match_deref_borrow_read_match; eauto.
+  - clear Eqf AL. eapply match_deref_borrow_read_match; eauto.
+  - done.
+  - clear Eqf AL. eapply match_deref_borrow_read_match; eauto.
+Qed.
+
+Lemma reborrow1_read_access_is_freeze stk stk' bor bor' kind β bar
+  (BOR: match bor' with
+        | UniqB _ =>
+            match bor with
+            | UniqB _ | AliasB None => borrow_write_match β bor stk.(borrows)
+            | _ => False
+            end
+        | AliasB (Some _) =>
+            match bor with
+            | UniqB _ => borrow_read_match β bor stk.(borrows)
+            | AliasB None =>
+                is_Some stk.(frozen_since) ∨ borrow_read_match β bor stk.(borrows)
+            | AliasB (Some _) =>
+                if stk.(frozen_since) then True else
+                  borrow_read_match β bor stk.(borrows)
+            end
+        | AliasB None =>
+            match bor with
+            | UniqB _ | AliasB None => borrow_read_match β bor stk.(borrows)
+            | _ => False
+            end
+        end) :
+  reborrow1 stk bor bor' kind β bar = Some stk' →
+  is_Some stk'.(frozen_since) ∨ borrow_read_match β bor' stk'.(borrows).
+Proof.
+  rewrite /reborrow1.
+  case (deref1 stk bor kind) as [[i|]|] eqn:Eq1; simpl; [..|done];
+    destruct bar as [c|]; simpl.
+  - case access1 as [stk1|] eqn: Eq2; [|done]. simpl.
+    by apply create_borrow_read_access_is_freeze.
+  - case (deref1 stk bor' kind) as [[i'|]|] eqn:Eq2.
+    + case decide => ?.
+      * case is_aliasing eqn:Eqa; [|done]. intros ?. simplify_eq.
+        eapply deref1_read_access; eauto.
+      * case access1 as [stk1|] eqn: Eq3; [|done].
+        by apply create_borrow_read_access_is_freeze.
+    + case is_aliasing eqn:Eqa; [|done]. intros ?. simplify_eq.
+      left. by eapply deref1_Some_None.
+    + case access1 as [stk1|] eqn: Eq3; [|done].
+      by apply create_borrow_read_access_is_freeze.
+  - case access1 as [stk1|] eqn: Eq2; [|done].
+    by apply create_borrow_read_access_is_freeze.
+  - case (deref1 stk bor' kind) as [[i'|]|] eqn:Eq2.
+    + case access1 as [stk1|] eqn: Eq3; [|done].
+      by apply create_borrow_read_access_is_freeze.
+    + case is_aliasing eqn:Eqa; [|done]. intros ?. simplify_eq.
+      eapply deref1_read_access; eauto.
+    + case access1 as [stk1|] eqn: Eq3; [|done].
+      by apply create_borrow_read_access_is_freeze.
+Qed.
+
+Lemma reborrowBlock_read_access_is_freeze α β l n bor bor' kind bar α'
+  (STK: ∀ m stk, (m < n)%nat → α !! (l +ₗ m) = Some stk →
+          match bor' with
+          | UniqB _ =>
+              match bor with
+              | UniqB _ | AliasB None => borrow_write_match β bor stk.(borrows)
+              | _ => False
+              end
+          | AliasB (Some _) =>
+              match bor with
+              | UniqB _ => borrow_read_match β bor stk.(borrows)
+              | AliasB None =>
+                  is_Some stk.(frozen_since) ∨ borrow_read_match β bor stk.(borrows)
+              | AliasB (Some _) =>
+                  if stk.(frozen_since) then True else
+                    borrow_read_match β bor stk.(borrows)
+              end
+          | AliasB None =>
+              match bor with
+              | UniqB _ | AliasB None => borrow_read_match β bor stk.(borrows)
+              | _ => False
+              end
+          end) :
+  reborrowBlock α β l n bor bor' kind bar = Some α' →
+  ∀ m stk, (m < n)%nat → α' !! (l +ₗ m) = Some stk →
+  is_Some stk.(frozen_since) ∨ borrow_read_match β bor' stk.(borrows).
+Proof.
+  rewrite /reborrowBlock. case xorb; [done|].
+  revert α STK.
+  induction n as [|n IH]; intros α STK; simpl; [intros _ ??; lia|].
+  case lookup as [stk|] eqn:Eqs; [simpl|done].
+  case reborrow1 as [stk'|] eqn:Eq1; [simpl|done].
+  intros Eq2 m stk1 Lt EqL.
+  case (decide (m = n)) => [?|NEq].
+  - subst. destruct (reborrowN_lookup _ _ _ _ _ _ _ _ _ Eq2) as [HL _].
+    move : EqL. rewrite HL // lookup_insert. intros ?. simplify_eq.
+    specialize (STK _ _ Lt Eqs). clear IH Eq2 HL Lt Eqs.
+    eapply reborrow1_read_access_is_freeze; eauto.
+  - eapply (IH (<[l +ₗ n:=stk']> α)); [|done| |done]; [|lia].
+    intros m2 stk2 Lt2.
+    rewrite lookup_insert_ne; [apply STK|intros ?%shift_loc_inj]; lia.
+Qed.
+
+Lemma reborrow_read_access_is_freeze h α β l bor T bar bor' α'
+  (FRZ: is_freeze T)
+  (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
+          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts)
+  (STK: ∀ m stk, (m < tsize T)%nat → α !! (l +ₗ m) = Some stk →
+          match bor' with
+          | UniqB _ =>
+              match bor with
+              | UniqB _ | AliasB None => borrow_write_match β bor stk.(borrows)
+              | _ => False
+              end
+          | AliasB (Some _) =>
+              match bor with
+              | UniqB _ => borrow_read_match β bor stk.(borrows)
+              | AliasB None =>
+                  is_Some stk.(frozen_since) ∨ borrow_read_match β bor stk.(borrows)
+              | AliasB (Some _) =>
+                  if stk.(frozen_since) then True else
+                    borrow_read_match β bor stk.(borrows)
+              end
+          | AliasB None =>
+              match bor with
+              | UniqB _ | AliasB None => borrow_read_match β bor stk.(borrows)
+              | _ => False
+              end
+          end) :
+  reborrow h α β l bor T bar bor' = Some α' →
+  ∀ m stk, (m < tsize T)%nat → α' !! (l +ₗ m) = Some stk →
+  is_Some stk.(frozen_since) ∨ borrow_read_match β bor' stk.(borrows).
+Proof.
+  rewrite /reborrow. destruct bor' as [|[]].
+  - by apply reborrowBlock_read_access_is_freeze.
+  - rewrite visit_freeze_sensitive_is_freeze; [|done..].
+    by apply reborrowBlock_read_access_is_freeze.
+  - by apply reborrowBlock_read_access_is_freeze.
 Qed.
 
 Lemma retag_ref_is_freeze_is_Some h α β clk l bor T mut bar (tp: bool)
@@ -1392,7 +1676,7 @@ Lemma retag_ref_is_freeze_is_Some h α β clk l bor T mut bar (tp: bool)
               | AliasB None => borrow_read_match β bor stk.(borrows)
               | _ => False
               end
-          end):
+          end) :
   is_Some (retag_ref h α β clk l bor T mut bar tp).
 Proof.
   rewrite /retag_ref. destruct (tsize T) as [|sT] eqn:Eqs; [by eexists|].
@@ -1427,73 +1711,102 @@ Proof.
   { intros m stk Lt Eq. destruct WF2 as (WF2 & WF3 & WF4).
     repeat split; [..|naive_solver].
     - move : Eq1 m stk Lt Eq. by apply reborrow_deref1_is_freeze.
-    - admit.
+    - move : Eq1 m stk Lt Eq. apply reborrow_read_access_is_freeze; [done..|].
+      rewrite Eqs. intros m stk Lt Eq. move : (STK _ _ Lt Eq). rewrite /bor'.
+      destruct mut as [[]|]; naive_solver.
     - move : (WF2 _ _ Eq). rewrite /frozen_lt.
       case frozen_since; [intros ?; lia|done]. }
   rewrite Eq2 /=. by eexists.
-Abort.
+Qed.
 
-Lemma retag_is_Some h α clk β x kind T
+Lemma retag_is_freeze_is_Some h α clk β x kind T
   (REF: ∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types T → ∃ l tag,
-          h !! (x +ₗ n) = Some (LitV (LitLoc l tag)))
+          h !! (x +ₗ n) = Some (LitV (LitLoc l tag)) ∧ is_freeze Tr)
   (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
-          h !! (x +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
+          h !! (x +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts)
+  (WF: Wf (mkState h α β clk))
+  (FNBAR : match kind with | FnEntry c => β !! c = Some true | _ => True end) :
   is_Some (retag h α clk β x kind T).
 Proof.
-  revert REF SUM.
+  revert REF SUM WF FNBAR.
   apply (retag_elim
     (* general goal P *)
     (λ h α clk β l kind T ohac,
       (∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types T → ∃ l0 tag0,
-          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
+          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0)) ∧ is_freeze Tr) →
       (∀ Ts (n: nat), (n, Sum Ts) ∈ sub_sum_types T → ∃ i,
           h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts) →
+      Wf (mkState h α β clk) →
+      (match kind with | FnEntry c => β !! c = Some true | _ => True end) →
       is_Some ohac)
     (λ _ _ _ β _ kind _ h α clk l Ts ohac,
       (∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types (Product Ts) → ∃ l0 tag0,
-          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
+          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0)) ∧ is_freeze Tr) →
       (∀ Ts' (n: nat), (n, Sum Ts') ∈ sub_sum_types (Product Ts) → ∃ i,
           h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts') →
+      Wf (mkState h α β clk) →
+      (match kind with | FnEntry c => β !! c = Some true | _ => True end) →
       is_Some ohac)
     (λ h l _ α clk β kind _ Ts n ohac,
       (∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types (Sum Ts) → ∃ l0 tag0,
-          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0))) →
+          h !! (l +ₗ n) = Some (LitV (LitLoc l0 tag0)) ∧ is_freeze Tr) →
       (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
           h !! (l +ₗ S n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts') → (n < length Ts)%nat →
+      Wf (mkState h α β clk) →
+      (match kind with | FnEntry c => β !! c = Some true | _ => True end) →
       is_Some ohac)).
   - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
-  - clear. intros h x _ _ _ _ pk T Eq0 REF _.
-    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
+  - clear. intros h x _ _ _ _ pk T Eq0 REF _ _ _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as (? & ? & Eq & ?).
     move : Eq. by rewrite shift_loc_0 Eq0.
-  - clear. intros h x l tag α clk β rkind pkind T Eq0 REF SUM.
+  - clear. intros h x l tag α clk β rkind pkind T Eq0 REF SUM WF FNBAR.
+    have FRZ: is_freeze T. { destruct (REF O pkind T) as (? & ? & ? &?);
+                              [apply sub_ref_types_O_elem_of|done]. }
     destruct pkind; simpl.
-    + (* needs retag_ref *) admit.
-    + (* needs retag_ref *) admit.
-    + (* needs retag_ref *) admit.
-  - clear. intros h x n _ _ _ _ pk T Eq0 REF _.
-    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
+    + destruct (retag_ref_is_freeze_is_Some h α β clk l tag T
+                  (Some mut) (adding_barrier rkind) (is_two_phase rkind))
+        as [bac Eq]; [| |done|done|..|rewrite Eq; by eexists].
+      * admit.
+      * admit.
+      * admit.
+      * destruct rkind; [by eexists|done..].
+      * admit.
+    + destruct rkind; [by eexists..| |by eexists].
+      destruct (retag_ref_is_freeze_is_Some h α β clk l tag T None None false)
+        as [bac Eq]; [| |done..| |rewrite Eq; by eexists].
+      * admit.
+      * admit.
+      * admit.
+    + destruct (retag_ref_is_freeze_is_Some h α β clk l tag T
+                  (Some Mutable) None (is_two_phase rkind))
+        as [bac Eq]; [| |done|done|..|done|done| |rewrite Eq; by eexists].
+      * admit.
+      * admit.
+      * admit.
+  - clear. intros h x n _ _ _ _ pk T Eq0 REF _ _ _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as (? & ? & Eq & ?).
     move : Eq. by rewrite shift_loc_0 Eq0.
-  - clear. intros h x ???? _ _ _ _ pk T Eq0 REF _.
-    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
+  - clear. intros h x ???? _ _ _ _ pk T Eq0 REF _ _ _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as (? & ? & Eq & ?).
     move : Eq. by rewrite shift_loc_0 Eq0.
-  - clear. intros h x _ _ _ _ pk T Eq0 REF _.
-    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as [?[? Eq]].
+  - clear. intros h x _ _ _ _ pk T Eq0 REF _ _ _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as (? & ? & Eq & ?).
     move : Eq. by rewrite shift_loc_0 Eq0.
   - naive_solver.
   - clear.
-    intros h α clk β x kind Ts h1 α1 clk1 x1 T Ts1 IH1 IH2 REF SUM.
-    destruct IH2 as [[[h2 α2] clk2] Eq1].
+    intros h α clk β x kind Ts h1 α1 clk1 x1 T Ts1 IH1 IH2 REF SUM WF FNBAR.
+    destruct IH2 as [[[h2 α2] clk2] Eq1]; [..|done|done|].
     { intros ????. by eapply REF, sub_ref_types_product_first. }
     { intros ???. by apply SUM, sub_sum_types_product_first. }
-    rewrite Eq1 /=. apply (IH1 ((h2, α2), clk2)).
+    rewrite Eq1 /=. apply (IH1 ((h2, α2), clk2)); [..|done].
     { intros n pk Tr IN. rewrite /= shift_loc_assoc -Nat2Z.inj_add.
-      destruct (REF (tsize T + n)%nat pk Tr) as [l0 [tag0 Eq0]].
+      destruct (REF (tsize T + n)%nat pk Tr) as [l0 [tag0 [Eq0 ?]]].
       - by apply sub_ref_types_product_further.
       - move : Eq1 => /retag_lookup_ref Eq1.
         destruct (Eq1 _ _ Eq0) as [v' []]; [done|].
@@ -1503,32 +1816,36 @@ Proof.
       - by apply sub_sum_types_product_further.
       - exists i. split; [|done]. move : Eq1 => /retag_lookup EqL.
         apply EqL; [by rewrite -Nat2Z.inj_add|by intros []]. }
-  - clear. intros h x _ _ _ _ Ts Eq0 _ SUM.
+    { eapply retag_wf; eauto. }
+  - clear. intros h x _ _ _ _ Ts Eq0 _ SUM _ _.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros h x l tag _ _ _ _ Ts Eq0 _ SUM.
+  - clear. intros h x l tag _ _ _ _ Ts Eq0 _ SUM _ _.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros h x n α clk β kind Ts IH Eq0 REF SUM.
+  - clear. intros h x n α clk β kind Ts IH Eq0 REF SUM WF FNBAR.
     destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. rewrite shift_loc_0_nat Eq0. intros Eq. simplify_eq.
     rewrite decide_True; [|done].
-    apply IH; [done|done|..|rewrite -(Nat2Z.id (length Ts)) -Z2Nat.inj_lt; lia].
+    apply IH; [done|done|..|rewrite -(Nat2Z.id (length Ts)) -Z2Nat.inj_lt; lia
+              |done|done].
     intros T' Ts' n IN1 IN2. apply SUM, sub_sum_types_elem_of_2.
     right. split; [lia|]. exists T'. split; [done|]. by rewrite /= Nat.sub_0_r.
-  - clear. intros h x f xl e ? _ _ _ _ Ts Eq0 _ SUM.
+  - clear. intros h x f xl e ? _ _ _ _ Ts Eq0 _ SUM _ _.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros h x _ _ _ _ Ts Eq0 _ SUM.
+  - clear. intros h x _ _ _ _ Ts Eq0 _ SUM _ _.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros h x _ _ _ _ _ _ i _ _. simpl. lia.
-  - clear. intros h x _ α clk β kind _ T Ts IH REF SUM Lt. apply IH.
+  - clear. intros h x _ _ _ _ _ _ i _ _ Lt _ _. simpl in Lt. lia.
+  - clear. intros h x _ α clk β kind _ T Ts IH REF SUM Lt WF FNBAR.
+    apply IH; [..|done|done].
     + intros n pk Tr IN. rewrite shift_loc_assoc -(Nat2Z.inj_add 1 n) Nat.add_1_l.
       by eapply REF, sub_ref_types_sum_first.
     + intros Ts' n IN. rewrite shift_loc_assoc -(Nat2Z.inj_add 1 n) Nat.add_1_l.
       apply (SUM T); [by left|done].
-  - clear. intros h x ii α clk β kind Ts0 T Ts i IH REF SUM Lt. apply IH.
+  - clear. intros h x ii α clk β kind Ts0 T Ts i IH REF SUM Lt WF FNBAR.
+    apply IH; [..|done|done].
     + intros ????. by eapply REF, sub_ref_types_sum_further.
     + intros ?? n IN. apply SUM. by right.
     + move : Lt => /=. lia.

@@ -897,6 +897,18 @@ Proof.
   - naive_solver.
 Qed.
 
+Lemma retag_wf h α clk β l kind T h' α' clk'
+  (FNBAR : match kind with | FnEntry c => β !! c = Some true | _ => True end) :
+  retag h α clk β l kind T = Some (h', α', clk') →
+  Wf (mkState h α β clk) → Wf (mkState h' α' β clk').
+Proof.
+  have ?: borrow_barrier_Some β kind by (destruct kind; [eexists|done..]).
+  move => /retag_wf_stack WF' WF.
+  destruct WF' as (Eq1 & ? & Eq2 & ? & ? & ?); [done|apply WF..|].
+  constructor; simpl; [|done..].
+  by rewrite -Eq1 -Eq2; apply WF.
+Qed.
+
 Lemma retag_step_wf σ σ' e e' efs h0 l T kind :
   base_step e σ.(cheap) (RetagEvt l T kind) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
@@ -908,11 +920,7 @@ Proof.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
-  have ?: borrow_barrier_Some β' kind by (destruct kind; [eexists|done..]).
-  move : RETAG => /retag_wf_stack WF'.
-  destruct WF' as (Eq1 & ? & Eq2 & ? & ? & ?); [done|apply WF..|].
-  constructor; simpl; [|done..].
-  by rewrite -Eq1 -Eq2; apply WF.
+  by eapply retag_wf.
 Qed.
 
 (** Silent step *)
