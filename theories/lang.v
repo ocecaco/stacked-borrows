@@ -22,21 +22,45 @@ Definition shift_loc (l : loc) (z : Z) : loc := (l.1, l.2 + z).
 Notation "l +ₗ z" := (shift_loc l%L z%Z)
   (at level 50, left associativity) : loc_scope.
 
-Notation time := nat (only parsing).
+Notation ptr_id := nat (only parsing).
 Notation call_id := nat (only parsing).
 
 (** Stacked borrows *)
-Inductive borrow :=
-  | UniqB (t: time)           (* A unique (mutable) reference. *)
-  | AliasB (ot : option time) (* An aliasing reference, also for raw pointers
-                                 whose ot is None. *)
+Inductive tag :=
+  | Tagged (t: ptr_id)
+  | Untagged
   .
 
-Definition is_unique (bor: borrow) :=
-  match bor with UniqB _ => true | _ => false end.
-Definition is_aliasing (bor: borrow) :=
-  match bor with AliasB _ => true | _ => false end.
-Notation borrow_default := (AliasB None) (only parsing).
+Instance tag_eq_dec : EqDecision tag.
+Proof. solve_decision. Defined.
+Instance tag_countable : Countable tag.
+Proof.
+  refine (inj_countable
+          (λ tg, match tg with
+              | Tagged t => inl t
+              | Untagged => inr ()
+              end)
+          (λ s, match s with
+              | inl t => Some $ Tagged t
+              | inr _ => Some $ Untagged
+              end) _); by intros [].
+Qed.
+
+Inductive permission := Unique | SharedReadWrite | SharedReadOnly.
+Instance permission_eq_dec : EqDecision permission.
+Proof. solve_decision. Defined.
+Instance permission_countable : Countable permission.
+Proof.
+  refine (inj_countable
+    (λ p,
+      match p with
+      | Unique => 0 | SharedReadWrite => 1 | SharedReadOnly => 2
+      end)
+    (λ s,
+      match s with
+      | 0 => Some Unique | 1 => Some SharedReadWrite | _ => Some SharedReadOnly
+      end) _); by intros [].
+Qed.
 
 (* Retag kinds *)
 Inductive retag_kind := FnEntry (c: call_id) | TwoPhase | RawRt | Default.
@@ -45,21 +69,18 @@ Inductive retag_kind := FnEntry (c: call_id) | TwoPhase | RawRt | Default.
 Definition barriers := gmap call_id bool.
 
 (* Stacks of borrows. *)
-Inductive stack_item :=
-  | Uniq (t: time)            (* A unique reference may mutate this location. *)
-  | Raw                       (* The location has been mutably shared, for both
-                                 raw pointers and unfrozen shared refs. *)
-  | FnBarrier (ci : call_id)  (* A barrier for a call *)
-  .
-
-Record bstack := mkBorStack {
-  borrows       : list stack_item;  (* used as a stack, never empty *)
-  frozen_since  : option time;      (* frozen item that is always on top *)
+Record item := mkItem {
+  perm      : permission;
+  tg        : tag;
+  protector : option call_id;
 }.
-Definition is_frozen (s : bstack) : Prop := is_Some s.(frozen_since).
-Definition bstacks := gmap loc bstack.
+Instance item_eq_dec : EqDecision item.
+Proof. solve_decision. Defined.
 
-Implicit Type (α: bstacks) (β: barriers) (t: time) (c: call_id) (T: type).
+Definition stack := list item.
+Definition stacks := gmap loc stack.
+
+Implicit Type (α: stacks) (β: barriers) (t: ptr_id) (c: call_id) (T: type).
 
 (*** BASE SEMANTICS --------------------------------------------------------***)
 
@@ -85,7 +106,7 @@ Inductive bin_op :=
   .
 
 (** Base values *)
-Inductive lit := LitPoison | LitLoc (l: loc) (tag: borrow) | LitInt (n : Z).
+Inductive lit := LitPoison | LitLoc (l: loc) (tg: tag) | LitInt (n : Z).
 
 (** Binders for lambdas: list of formal arguments to functions *)
 Inductive binder := BAnon | BNamed : string → binder.
@@ -137,14 +158,12 @@ Inductive expr :=
 (* bin op *)
 | BinOp (op : bin_op) (e1 e2 : expr)
 (* place operation *)
-| Place (l: loc) (tag: borrow) (T: type)
+| Place (l: loc) (tg: tag) (T: type)
                                   (* A place is a tagged pointer: every access
                                      to memory revolves around a place. *)
-| Deref (e: expr) (T: type) (mut: option mutability)
-                                  (* Deference a pointer `e` into a place
+| Deref (e: expr) (T: type)       (* Deference a pointer `e` into a place
                                      presenting the location that `e` points to.
-                                     The location has type `T` and the pointer
-                                     has mutable kind `mut`. *)
+                                     The location has type `T`. *)
 | Ref (e: expr)                   (* Turn a place `e` into a pointer value. *)
 | Field (e: expr) (path: list nat)(* Create a place that points to a component
                                      of the place `e`. `path` defines the path
@@ -180,7 +199,7 @@ Arguments BinOp _ _%E _%E.
 Arguments TVal _%E.
 Arguments Proj _%E _%E.
 Arguments Conc _%E _%E.
-Arguments Deref _%E _%RustT _.
+Arguments Deref _%E _%RustT.
 Arguments Ref _%E.
 Arguments Field _%E _.
 Arguments Copy _%E.
@@ -204,7 +223,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
     | Conc e1 e2 | Proj e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
-  | AtomRead e | Copy e | Deref e _ _ | Ref e | Field e _
+  | AtomRead e | Copy e | Deref e _ | Ref e | Field e _
     | Free e | EndCall e | Fork e => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
@@ -224,7 +243,7 @@ Inductive immediate :=
 Inductive val :=
 | ImmV (v : immediate)
 | TValV (vl : list immediate)
-| PlaceV (l: loc) (tag: borrow) (T: type)
+| PlaceV (l: loc) (tg: tag) (T: type)
 .
 Bind Scope val_scope with val.
 Delimit Scope val_scope with V.
@@ -279,7 +298,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | CAS e0 e1 e2 => CAS (subst x es e0) (subst x es e1) (subst x es e2)
   | AtomWrite e1 e2 => AtomWrite (subst x es e1) (subst x es e2)
   | AtomRead e => AtomRead (subst x es e)
-  | Deref e T mut => Deref (subst x es e) T mut
+  | Deref e T => Deref (subst x es e) T
   | Ref e => Ref (subst x es e)
   | Field e path => Field (subst x es e) path
   | NewCall => NewCall
@@ -334,7 +353,7 @@ Inductive ectx_item :=
 | AtRdCtx
 | AtWrLCtx (e : expr)
 | AtWrRCtx (v : val)
-| DerefCtx (T: type) (mut: option mutability)
+| DerefCtx (T: type)
 | RefCtx
 | FieldCtx (path : list nat)
 | EndCallCtx
@@ -363,7 +382,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | AtRdCtx => AtomRead e
   | AtWrLCtx e2 => AtomWrite e e2
   | AtWrRCtx v1 => AtomWrite (of_val v1) e
-  | DerefCtx T mut => Deref e T mut
+  | DerefCtx T => Deref e T
   | RefCtx => Ref e
   | FieldCtx path => Field e path
   | EndCallCtx => EndCall e
@@ -444,11 +463,10 @@ Inductive bin_op_eval h : bin_op → lit → lit → lit → Prop :=
 Definition stuck_term := App (Lit $ LitInt 0) [].
 
 Inductive event :=
-| AllocEvt (l : loc) (lbor: borrow) (T: type)
-| DeallocEvt (l: loc) (lbor: borrow) (T: type)
-| CopyEvt (l: loc) (lbor: borrow) (T: type) (vl: list immediate)
-| WriteEvt (l: loc) (lbor: borrow) (T: type) (vl: list immediate)
-| DerefEvt (l: loc) (lbor: borrow) (T: type) (mut: option mutability)
+| AllocEvt (l : loc) (lbor: tag) (T: type)
+| DeallocEvt (l: loc) (lbor: tag) (T: type)
+| CopyEvt (l: loc) (lbor: tag) (T: type) (vl: list immediate)
+| WriteEvt (l: loc) (lbor: tag) (T: type) (vl: list immediate)
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
@@ -548,10 +566,10 @@ Inductive base_step :
 | RefBS l lbor T h :
     is_Some (h !! l) →
     base_step (Ref (Place l lbor T)) h SilentEvt (Lit (LitLoc l lbor)) h []
-| DerefBS l lbor T mut h
+| DerefBS l lbor T h
     (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) :
-    base_step (Deref (Lit (LitLoc l lbor)) T mut) h
-              (DerefEvt l lbor T mut)
+    base_step (Deref (Lit (LitLoc l lbor)) T) h
+              SilentEvt
               (Place l lbor T) h
               []
 | FieldBS l lbor T path off T' h
@@ -579,153 +597,190 @@ Inductive base_step :
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
-(* Initialize [l, l + n) with non-frozen singleton stacks of si *)
-Fixpoint init_stacks (l:loc) (n:nat) α (si: stack_item) : bstacks :=
-  match n with
-  | O => α
-  | S n => <[l:= mkBorStack [si] None]>(init_stacks (l +ₗ 1) n α si)
-  end.
+(** CORE SEMANTICS *)
 
-(** Dealloc check for no active barrier on the stack *)
-Definition is_active β (c: call_id) : bool :=
-  bool_decide (β !! c = Some true).
-
-Definition is_active_barrier β (si: stack_item) :=
-  match si with
-  | FnBarrier c => β !! c = Some true
-  | _ => False
-  end.
-Instance is_active_barrier_dec β : Decision (is_active_barrier β si).
-Proof. move => [?| |?] /=; solve_decision. Qed.
-
-(* Return the index of the found top active call *)
-Definition find_top_active_call (stack: list stack_item) β :
-  option nat := (list_find (is_active_barrier β) stack) ≫= (Some ∘ fst).
-
-Inductive access_kind := AccessRead | AccessWrite | AccessDealloc.
+Inductive access_kind := AccessRead | AccessWrite.
 Definition to_access_kind (kind : ref_kind): access_kind :=
   match kind with
   | UniqueRef => AccessWrite
   | _ => AccessRead
   end.
-Definition dealloc_no_active_barrier
-  (access: access_kind) (stack: list stack_item) β : bool :=
-  match access with
-  | AccessDealloc =>
-      if find_top_active_call stack β then false else true
-  | _ => true
+
+Definition grants (perm: permission) (access: access_kind) : bool :=
+  match perm, access with
+  (* permission can be used for any access *)
+  | Unique, _ | SharedReadWrite, _ => true
+  (* SharedReadOnly can only read *)
+  | SharedReadOnly, AccessRead => true
+  | SharedReadOnly, AccessWrite => false
   end.
 
-(** Access check *)
-(* Check for access per location.
- * Return None if the check fails.
- * Return Some stack' where stack' is the new stack. *)
-Fixpoint access1'
-  (stack: list stack_item) (bor: borrow) (access: access_kind) β
-  : option (list stack_item) :=
-  match stack, bor, access with
-  (* try to pop barriers *)
-  | FnBarrier c :: stack', _, _ =>
-      if (is_active β c)
-      (* cannot pop an active barrier *)
-      then None
-      (* otherwise, just pop *)
-      else access1' stack' bor access β
-  (* Uniq t matches UniqB t *)
-  |  Uniq t1 :: stack', UniqB t2, _ =>
-      if (decide (t1 = t2))
-      (* if matched *)
-      then
-        (* if deallocating, check that there is no active call_id left *)
-        if dealloc_no_active_barrier access stack' β then Some stack else None
-      (* otherwise, just pop *)
-      else access1' stack' bor access β
-  (* a Read can match Raw with both UniqB/AliasB *)
-  | Raw :: stack', _, AccessRead => Some stack
-  (* Raw matches AliasB *)
-  | Raw :: stack', AliasB _, _ =>
-      (* if deallocating, check that there is no active call_id left *)
-      if dealloc_no_active_barrier access stack' β then Some stack else None
-  (* no current match, pop and continue *)
-  | _ :: stack', _, _ => access1' stack' bor access β
-  (* empty stack, no matches *)
-  | [], _, _ => None
+(* Check if the `high` permission (which is higher above in the stack) is NOT
+  invalidated by the `matched` permission. *)
+Definition compatible_with
+  (matched: permission) (access: access_kind) (high: permission) : option bool :=
+  match matched, access, high with
+  | SharedReadOnly, _, SharedReadWrite
+  | SharedReadOnly, _, Unique =>
+      (* bug! SharedReadWrite/Unique can't be above SharedReadOnly. *)
+      None
+  | _, AccessWrite, SharedReadOnly =>
+      (* A write access invalidates all unmatched read-only pointers. *)
+      Some false
+  | _, _, Unique =>
+      (* All unmatched Unique pointers are invalidated. *)
+      Some false
+  | Unique, AccessWrite, _ =>
+      (* A Unique write invalidates everything *)
+      Some false
+  | SharedReadWrite, _, SharedReadWrite =>
+      (* A SharedReadWrite doesn't invalidate other SharedReadWrite's *)
+      Some true
+  | _, AccessRead, SharedReadWrite
+  | _, AccessRead, SharedReadOnly =>
+      (* A read access doesn't invalidate other shared permissions *)
+      Some true
   end.
 
-(* This implements Stack::access. *)
-Definition access1 β (stack: bstack) bor (kind: access_kind) : option bstack :=
-  match stack.(frozen_since), kind with
-  (* accept all reads if frozen *)
-  | Some _, AccessRead => Some stack
-  (* otherwise, unfreeze *)
-  | _,_ =>
-    stack' ← access1' stack.(borrows) bor kind β ; Some (mkBorStack stack' None)
+Definition is_active β (c: call_id) : bool :=
+  bool_decide (β !! c = Some true).
+Definition is_active_protector β (it: item) :=
+  match it.(protector) with
+  | Some c => β !! c = Some true
+  | _ => False
+  end.
+Instance is_active_protector_dec β : Decision (is_active_protector β it).
+Proof. intros it. rewrite /is_active_protector. case_match; solve_decision. Qed.
+(* Find the top active protector *)
+Definition find_top_active_protector β (stk: stack) :=
+  list_find (is_active_protector β) stk.
+
+(* Remove from `stk` the items that are incompatiable with `matched` & `access` *)
+Fixpoint rm_incompat β (stk: stack) (matched: permission) (access: access_kind)
+  : option stack :=
+  match stk with
+  | [] => Some []
+  | it :: stk =>
+      compatible ← compatible_with matched access it.(perm) ;
+      if compatible : bool then
+        (* compatible, keep it *)
+        stk' ← rm_incompat β stk matched access; Some (it :: stk')
+      else
+        (* incompatiable,
+           remove but check that we are not removing an active protector *)
+        match it.(protector) with
+        | None => rm_incompat β stk matched access
+        | Some c =>
+          if is_active β c then None else rm_incompat β stk matched access
+        end
   end.
 
-(* Perform the access check on a block of continuous memory.
- * This implements Stacks::access. *)
-Fixpoint accessN α β l (bor: borrow) (n: nat) kind : option bstacks :=
+Definition matched_grant (access: access_kind) (bor: tag) (it: item) :=
+  grants it.(perm) access ∧ it.(tg) = bor.
+Instance matched_grant_dec (access: access_kind) (bor: tag) :
+  Decision (matched_grant access bor it) := _.
+
+(* This is different from the implementation: left-to-right is top-to-bottom
+  of the stack. So 0 is top of the stack. The index returned by this function
+  also follows this scheme (smaller means higher in the stack). *)
+Definition find_granting (stk: stack) (access: access_kind) (bor: tag) :
+  option (nat * permission) :=
+  (λ nit, (nit.1, nit.2.(perm))) <$> (list_find (matched_grant access bor) stk).
+
+(* Test if a memory `access` using pointer tagged `bor` is granted.
+   If yes, return the index (in the old stack) of the item that granted it,
+   as well as the new stack. *)
+Definition access1 (stk: stack) (access: access_kind) (bor: tag) β
+  : option (nat * stack) :=
+  (* Step 1: Find granting item. *)
+  g_idx_p ← find_granting stk access bor;
+  (* Step 2: Remove incompatiable items. *)
+  stk' ← rm_incompat β (take g_idx_p.1 stk) g_idx_p.2 access;
+  Some (g_idx_p.1, stk' ++ drop g_idx_p.1 stk).
+
+(* Checks to deallocate a location: Like a write access, but also there must be
+  no active protectors at all. *)
+Definition dealloc1 (stk: stack) (bor: tag) β : option unit :=
+  (* Step 1: Find granting item. *)
+  found ← find_granting stk AccessWrite bor;
+  (* Step 2: Check that there are no active protectors left. *)
+  if find_top_active_protector β stk then None else Some ().
+
+(* Insert `it` into `stk` at `idx` unless `it` is equal to its neighbors. *)
+Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) :=
+  match idx with
+  | O =>
+    match stk with
+    | [] => [new]
+    | it' :: stk' => if decide (new = it') then stk else new :: stk
+    end
+  | S idx' =>
+    match stk !! idx', stk !! idx with
+    | None, None => take idx' stk ++ [new] ++ drop idx' stk
+    | Some it_l, Some it_r =>
+        if decide (new = it_l) then stk
+        else if decide (new = it_r) then stk
+             else take idx' stk ++ [new] ++ drop idx' stk
+    | Some it, None | None, Some it =>
+        if decide (new = it) then stk
+        else take idx' stk ++ [new] ++ drop idx' stk
+    end
+  end.
+
+(* Insert a `new` tag derived from a parent tag `derived_from`.
+   `weak` controls whether this is a weak reborrow: weak reborrows do not act as
+   accesses, and they add the new item directly on top of the one it is derived
+   from instead of all the way at the top of the stack. *)
+Definition reborrow1
+  (stk: stack) (derived_from: tag) (weak: bool) (new: item) β : option stack :=
+  (* Figure out which access `new` allows *)
+  let access := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
+  (* Figure out which item grants our parent (`derived_from`) this kind of access *)
+  g_idx_p ← find_granting stk access derived_from;
+  let derived_from_idx := g_idx_p.1 in
+  if weak then
+    if decide (new.(perm) = SharedReadOnly)
+    then None (* NO weak SharedReadOnly reborrows *)
+    else (* place `new` right above `derived_from` *)
+      Some (item_insert_dedup stk new derived_from_idx)
+  else
+    (* an actual access, let's check! *)
+    nstk' ← access1 stk access derived_from β;
+    match nstk' with
+    | (idx', stk') =>
+        if decide (idx' = derived_from_idx) (* this must always be true *)
+        then (* insert `new` to top of the stack *)
+          Some (item_insert_dedup stk new O)
+        else (* UNREACHABLE *) None
+    end.
+
+(* Initialize [l, l + n) with singleton stacks of `tg` *)
+Fixpoint init_stacks α (l:loc) (n:nat) (tg: tag) : stacks :=
+  match n with
+  | O => α
+  | S n => <[l:= [mkItem Unique tg None]]>(init_stacks α (l +ₗ 1) n tg)
+  end.
+
+Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)
+  : option stacks :=
   match n with
   | O => Some α
   | S n =>
       let l' := (l +ₗ n) in
-      stack ← α !! l'; stack' ← (access1 β stack bor kind) ;
-        match kind with
-        | AccessDealloc => accessN (delete l' α) β l bor n kind
-        | _ => accessN (<[l':=stack']> α) β l bor n kind
-        end
+      stk ← α !! l'; stk' ← f stk ;
+      if dealloc
+      then for_each (delete l' α) l n dealloc f
+      else for_each (<[l':=stk']> α) l n dealloc f
   end.
 
-(** Deref check *)
-(* Find the item that matches `bor`, then return its index (0 is the bottom of
- * the stack). *)
-Fixpoint match_deref (stack: list stack_item) (bor: borrow) : option nat :=
-  match stack, bor with
-  | Uniq t1 :: stack', UniqB t2 =>
-      if (decide (t1 = t2))
-      (* Uniq t1 matches UniqB t2 *)
-      then Some (length stack')         (* this is the index of Uniq t1 *)
-      (* otherwise, pop and continue *)
-      else match_deref stack' bor
-  | Raw :: stack', AliasB _ =>
-      (* Raw matches AliasB *)
-      Some (length stack')              (* this is the index of Raw *)
-  | _ :: stack', _ =>
-      (* no current match, continue. This one ignores barriers! *)
-      match_deref stack' bor
-  | [], _ =>
-      (* empty stack, no matches *)
-      None
-  end.
-
-(* Return None if the check fails.
- * Return Some None if the stack is frozen.
- * Return Some (Some i) where i is the matched item's index.
- * This implements Stack::deref. *)
-Definition deref1
-  (stack: bstack) (bor: borrow) (kind: ref_kind) : option (option nat) :=
-  match bor, stack.(frozen_since), kind with
-  | AliasB (Some _), _, UniqueRef =>
-      (* no shared tag for unique ref *)
-      None
-  | AliasB (Some t1), Some t2, _ =>
-      (* shared tag, frozen stack: stack must be frozen at t2 before the tag's t1 *)
-      if decide (t2 <= t1) then Some None else None
-  | AliasB _, Some _, _ =>
-      (* raw tag, frozen stack: good *)
-      Some None
-  | _ , _, _ =>
-      (* otherwise, look for bor on the stack *)
-      (match_deref stack.(borrows) bor) ≫= (Some ∘ Some)
-  end.
-
-(* Perform the deref check on a block of continuous memory.
- * This implements Stacks::deref. *)
-Fixpoint derefN α l (bor: borrow) (n: nat) (kind: ref_kind) : option unit :=
-  match n with
-  | O => Some ()
-  | S n => stack ← α !! (l +ₗ n) ; deref1 stack bor kind ;; derefN α l bor n kind
-  end.
+(* Perform the access check on a block of continuous memory.
+ * This implements Stacks::memory_read/memory_written/memory_deallocated. *)
+Definition memory_read α β l (tg: tag) (n: nat) : option stacks :=
+  for_each α l n false (λ stk, nstk' ← access1 stk AccessRead tg β; Some nstk'.2).
+Definition memory_written α β l (tg: tag) (n: nat) : option stacks :=
+  for_each α l n false (λ stk, nstk' ← access1 stk AccessWrite tg β; Some nstk'.2).
+Definition memory_deallocated α β l (tg: tag) (n: nat) : option stacks :=
+  for_each α l n true (λ stk, dealloc1 stk tg β ;; Some []).
 
 Definition unsafe_action
   {A: Type} (f: A → loc → nat → bool → option A) (a: A) (l: loc)
@@ -1237,21 +1292,6 @@ Proof.
                   LtOp => 3 | EqOp => 4 | OffsetOp => 5 end)
     (λ x, match x with 0 => AddOp | 1 => SubOp | 2 => LeOp |
                   3 => LtOp | 4 => EqOp | _ => OffsetOp end) _); by intros [].
-Qed.
-
-Instance borrow_eq_dec : EqDecision borrow.
-Proof. solve_decision. Defined.
-Instance borrow_countable : Countable borrow.
-Proof.
-  refine (inj_countable
-          (λ b, match b with
-              | UniqB n => inl n
-              | AliasB n => inr n
-              end)
-          (λ s, match s with
-              | inl n => Some $ UniqB n
-              | inr n => Some $ AliasB n
-              end) _); by intros [].
 Qed.
 
 Instance lit_eq_dec : EqDecision lit.

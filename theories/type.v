@@ -8,9 +8,9 @@ Set Default Proof Using "Type".
 
 Inductive mutability := Mutable | Immutable.
 Inductive ref_kind :=
-  | UniqueRef (* &mut *)
-  | FrozenRef (* & *)
-  | RawRef    (* * (raw) or & to UnsafeCell, or Box *)
+  | UniqueRef (* `&mut` and `Box` *)
+  | FrozenRef (* `&`, with or without interior mutability *)
+  | RawRef (mutable: bool)    (* `*mut`/`*const`, raw pointers *)
   .
 Definition is_unique_ref (kind: ref_kind) : bool :=
   match kind with UniqueRef => true | _ => false end.
