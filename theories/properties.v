@@ -4,34 +4,29 @@ From stbor Require Export lang notation.
 Class Wellformed A := Wf : A → Prop.
 Existing Class Wf.
 
-Definition wf_mem_bor (h: mem) (clock: time) :=
-  ∀ l l' bor, h !! l = Some (LitV (LitLoc l' bor)) → bor <b clock.
+Definition wf_mem_bor (h: mem) (clk: ptr_id) :=
+  ∀ l l' bor, h !! l = Some (LitV (LitLoc l' bor)) → bor <b clk.
 
-Definition frozen_lt (stk: bstack) (clk: time) :=
-  match frozen_since stk with
-  | Some t => (t < clk)%nat
-  | None => True
-  end.
-Definition wf_stack_frozen (α: bstacks) (clock: time) :=
-  ∀ l stack, α !! l = Some stack → frozen_lt stack clock.
+Definition stack_item_included (stk: stack) (β: protectors) (clk: ptr_id) :=
+  ∀ si, si ∈ stk → match si.(tg) with
+                    | Tagged t => (t < clk)%nat
+                    | _ => True
+                   end ∧
+                   match si.(protector) with
+                    | Some c =>is_Some (β !! c)
+                    | _ => True
+                   end.
+Definition wf_stack_item (α: stacks) (β: protectors) (clk: ptr_id) :=
+  ∀ l stk, α !! l = Some stk → stack_item_included stk β clk.
+Definition wf_non_empty (α: stacks) :=
+   ∀ l stk, α !! l = Some stk → stk ≠ [].
 
-Definition stack_item_included (stk: bstack) (β: barriers) (clock: time) :=
-  ∀ si, si ∈ stk.(borrows) → match si with
-                              | Uniq t => (t < clock)%nat
-                              | FnBarrier c => is_Some (β !! c)
-                              | _ => True
-                              end.
-Definition wf_stack_item (α: bstacks) (β: barriers) (clock: time) :=
-  ∀ l stack, α !! l = Some stack → stack_item_included stack β clock.
-Definition borrow_barrier_Some (β: barriers) kind : Prop :=
+Definition borrow_barrier_Some (β: protectors) kind : Prop :=
   match kind with FnEntry c => is_Some (β !! c) | _ => True end.
-Definition wf_non_empty (α: bstacks) :=
-   ∀ l stack, α !! l = Some stack → stack.(borrows) ≠ [].
 
 Record state_wf' σ := {
   state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
   state_wf_mem_bor : wf_mem_bor σ.(cheap) σ.(cclk);
-  state_wf_stack_frozen : wf_stack_frozen σ.(cstk) σ.(cclk);
   state_wf_stack_item : wf_stack_item σ.(cstk) σ.(cbar) σ.(cclk);
   state_wf_non_empty : wf_non_empty σ.(cstk);
 }.
@@ -116,7 +111,7 @@ Definition sim_immediate (v1 v2: immediate) :=
 Record sim_state (σ_src σ_tgt: state) := {
   sim_state_mem_dom : dom (gset loc) σ_src.(cheap) ≡ dom (gset loc) σ_tgt.(cheap);
   sim_state_stack_dom : dom (gset loc) σ_src.(cstk) ≡ dom (gset loc) σ_tgt.(cstk);
-  sim_state_barriers : σ_src.(cbar) = σ_tgt.(cbar);
+  sim_state_protectors : σ_src.(cbar) = σ_tgt.(cbar);
   sim_state_mem : ∀ l v1 v2,
     σ_src.(cheap) !! l = Some v1 → σ_tgt.(cheap) !! l = Some v2 → sim_immediate v1 v2;
 }.

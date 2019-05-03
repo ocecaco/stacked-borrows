@@ -34,19 +34,17 @@ Notation "'&mut' T" := (Reference (RefPtr Mutable) T%RustT)
   (at level 8, format "&mut  T") : lrust_type.
 Notation "'&' T" := (Reference (RefPtr Immutable) T%RustT)
   (at level 8, format "&  T")  : lrust_type.
-Notation "'*raw' T" := (Reference RawPtr T%RustT)
-  (at level 8, format "*raw  T") : lrust_type.
+Notation "'*mut' T" := (Reference (RawPtr Mutable) T%RustT)
+  (at level 8, format "*mut  T") : lrust_type.
+Notation "'*const' T" := (Reference (RawPtr Immutable) T%RustT)
+  (at level 8, format "*const  T") : lrust_type.
 Notation "'Box<' T '>'" := (Reference RawPtr T%RustT)
   (at level 8, format "Box< T >") : lrust_type.
 
 (** Pointer operations *)
 Notation "& e" := (Ref e%E) (at level 8, format "& e") : expr_scope.
-Notation "*mut{ T } e" := (Deref e%E T%RustT (Some Mutable))
-  (at level 9, format "*mut{ T }  e") : expr_scope.
-Notation "*{ T } e" := (Deref e%E T%RustT (Some Immutable))
+Notation "*{ T } e" := (Deref e%E T%RustT)
   (at level 9, format "*{ T }  e") : expr_scope.
-Notation "*raw{ T } e" := (Deref e%E T%RustT None)
-  (at level 9, format "*raw{ T }  e") : expr_scope.
 
 Notation "'Copy1' e" := (Proj (Copy e%E) #0) (at level 10) : expr_scope.
 

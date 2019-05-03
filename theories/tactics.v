@@ -18,8 +18,8 @@ Inductive expr :=
 | TVal (el: list expr)
 | Proj (e1 e2: expr)
 | Conc (e1 e2: expr)
-| Place (l : loc) (tag : borrow) (T: type)
-| Deref (e : expr) (T : type) (mut : option mutability)
+| Place (l : loc) (tg : tag) (T: type)
+| Deref (e : expr) (T : type)
 | Ref (e : expr)
 | Field (e : expr) (path: list nat)
 | Copy (e : expr)
@@ -49,7 +49,7 @@ Fixpoint to_expr (e : expr) : bor_lang.expr :=
   | Proj e1 e2 => bor_lang.Proj (to_expr e1) (to_expr e2)
   | Conc e1 e2 => bor_lang.Conc (to_expr e1) (to_expr e2)
   | Place l tag T => bor_lang.Place l tag T
-  | Deref e T mut => bor_lang.Deref (to_expr e) T mut
+  | Deref e T => bor_lang.Deref (to_expr e) T
   | Ref e => bor_lang.Ref (to_expr e)
   | Field e path => bor_lang.Field (to_expr e) path
   | Copy e => bor_lang.Copy (to_expr e)
@@ -82,7 +82,7 @@ Ltac of_expr e :=
       let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Proj e1 e2)
   | bor_lang.Conc ?e1 ?e2 =>
       let e1 := of_expr e1 in let e2 := of_expr e2 in constr:(Conc e1 e2)
-  | bor_lang.Deref ?e ?T ?mut => let e := of_expr e in constr:(Deref e T mut)
+  | bor_lang.Deref ?e ?T => let e := of_expr e in constr:(Deref e T)
   | bor_lang.Ref ?e => let e := of_expr e in constr:(Ref e)
   | bor_lang.Field ?e ?path => let e := of_expr e in constr:(Field e path)
   | bor_lang.Copy ?e => let e := of_expr e in constr:(Copy e)
@@ -126,7 +126,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
   | Copy e | AtomRead e| Free e | Fork e | Field e _
-    | Deref e _ _ | Ref e | EndCall e  => is_closed X e
+    | Deref e _ | Ref e | EndCall e  => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 Lemma is_closed_correct X e : is_closed X e → bor_lang.is_closed X (to_expr e).
@@ -216,7 +216,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr)  : expr :=
   | Proj e1 e2 => Proj (subst x es e1) (subst x es e2)
   | Conc e1 e2 => Conc (subst x es e1) (subst x es e2)
   | Place t tag T => Place t tag T
-  | Deref e T mut => Deref (subst x es e) T mut
+  | Deref e T => Deref (subst x es e) T
   | Ref e => Ref (subst x es e)
   | Field e path => Field (subst x es e) path
   | Copy e => Copy (subst x es e)
