@@ -102,3 +102,11 @@ Instance nat_sqsubseteq_po : @PartialOrder nat (⊑) := _.
 Instance elem_of_list_suffix_proper {A : Type} (x:A) :
   Proper ((suffix) ==> impl) (x ∈).
 Proof. intros l1 l2 [? ->] ?. rewrite elem_of_app. by right. Qed.
+
+Instance elem_of_list_sublist_proper {A : Type} (x:A) :
+  Proper ((sublist) ==> impl) (x ∈).
+Proof.
+  intros l1 l2 SUB. induction SUB; [done|..].
+  - rewrite 2!elem_of_cons. intros []; [by left|right; auto].
+  - intros ?. right. auto.
+Qed.

@@ -165,19 +165,29 @@ Lemma for_each_lookup α l n f α' :
   for_each α l n false f = Some α' →
   (∀ (i: nat) stk, (i < n)%nat → α !! (l +ₗ i) = Some stk →
     α' !! (l +ₗ i) = f stk ) ∧
+  (∀ (i: nat) stk', (i < n)%nat → α' !! (l +ₗ i) = Some stk' → ∃ stk,
+    α !! (l +ₗ i) = Some stk ∧ f stk = Some stk') ∧
   (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l').
 Proof.
   revert α. induction n as [|n IH]; intros α; simpl.
-  { move => [<-]. split; intros ??; by [lia|]. }
+  { move => [<-]. split; last split; intros ??; [lia|lia|done]. }
   case (α !! (l +ₗ n)) as [stkn|] eqn:Eqn; [|done] => /=.
-  case f as [stkn'|] eqn: Eqn'; [|done] => /= /IH [IH1 IH2]. split.
+  case f as [stkn'|] eqn: Eqn'; [|done] => /= /IH [IH1 [IH2 IH3]].
+  split; last split.
   - intros i stk Lt Eqi. case (decide (i = n)) => Eq'; [subst i|].
     + rewrite Eqi in Eqn. simplify_eq.
-      rewrite Eqn' IH2; [by rewrite lookup_insert|].
+      rewrite Eqn' IH3; [by rewrite lookup_insert|].
       move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia.
     + apply IH1; [lia|]. rewrite lookup_insert_ne; [done|].
       by move => /shift_loc_inj /Z_of_nat_inj ? //.
-  - intros l' Lt. rewrite IH2.
+  - intros i stk Lt Eqi. case (decide (i = n)) => Eq'; [subst i|].
+    + move : Eqi. rewrite IH3.
+      * rewrite lookup_insert. intros. simplify_eq. naive_solver.
+      * move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia.
+    + destruct (IH2 i stk) as [stk0 [Eq0 Eqf0]]; [lia|done|].
+      exists stk0. split; [|done]. move : Eq0. rewrite lookup_insert_ne; [done|].
+      by move => /shift_loc_inj /Z_of_nat_inj ? //.
+  - intros l' Lt. rewrite IH3.
     + rewrite lookup_insert_ne; [done|]. move => Eql'. apply (Lt n); by [lia|].
     + move => ??. apply Lt. lia.
 Qed.
@@ -206,46 +216,42 @@ Lemma for_each_access1 α β l n tg kind α' :
   ∀ (l: loc) stk', α' !! l = Some stk' → ∃ stk, α !! l = Some stk ∧
     stk' `sublist_of` stk ∧ (stk ≠ [] → stk' ≠ []).
 Proof.
-  intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 EQ2].
-  intros l1 stk1.
+  intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
+  intros l1 stk1 Eq1.
   case (decide (l1.1 = l.1)) => [Eql|NEql];
     [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
-  - have Eql2: l1 = l +ₗ (l1.2 - l.2). {
-      destruct l, l1. move : Eql Le => /= -> ?. rewrite /shift_loc /=. f_equal. lia.
-    }
-    rewrite Eql2.
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    destruct (EQ2 (Z.to_nat (l1.2 - l.2)) stk1)
+      as [stk [Eq [[n1 stk'] [Eq' Eq0]]%bind_Some]];
+      [rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia|by rewrite -Eql2|].
+    exists stk. split; [by rewrite Eql2|]. simplify_eq.
+    split; [by eapply access1_sublist_of|intros; by eapply access1_non_empty].
+  - exists stk1. split; [|done]. rewrite -EQ3; [done|].
+    intros i Lt Eq. apply NIN. rewrite Eq /=. lia.
+  - exists stk1. split; [|done]. rewrite -EQ3; [done|].
+    intros i Lt Eq. apply NEql. by rewrite Eq.
+Qed.
 
-Abort.
-
-Lemma accessN_wf_non_empty α β l bor n kind α' :
-  accessN α β l bor n kind = Some α' → wf_non_empty α → wf_non_empty α'.
+Lemma for_each_access1_non_empty α β l n tg kind α' :
+  for_each α l n false
+          (λ stk, nstk' ← access1 stk kind tg β; Some nstk'.2) = Some α' →
+  wf_non_empty α → wf_non_empty α'.
 Proof.
-  revert α. induction n as [|n IH]; intros α; [move => /= [->//]|].
-  simpl. destruct (α !! (l +ₗ n)) as [stk0|] eqn:Eq; [|done].
-  simpl. destruct (access1 β stk0 bor kind)  as [stk0'|] eqn: Eq1; [|done].
-  simpl. intros Eq2' WF l' stk'.
-  case (decide (l' = (l +ₗ n))) => [-> Eq'|?].
-  - have ND: kind ≠ AccessDealloc.
-    { move => ?. subst kind. move : Eq2' => /accessN_item_dealloc [_ HI].
-      move : Eq'. rewrite HI; [by rewrite lookup_delete|].
-      move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia. }
-    have Eq2: accessN (<[l +ₗ n:=stk0']> α) β l bor n kind = Some α'
-      by destruct kind. clear Eq2'.
-    have ?: stk0' = stk'.
-    { destruct (accessN_item_lookup _ _ _ _ _ _ _ ND Eq2) as [_ HL].
-      move : Eq'. rewrite HL.
-      - by rewrite lookup_insert => [[->]].
-      - move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia. } subst stk0'.
-    destruct kind; simplify_eq; by eapply access1_stack_item; eauto.
-  - destruct kind; apply (IH _ Eq2') => l1 ?.
-    + case (decide (l1 = l +ₗ n)) => [->|?];
-        [rewrite lookup_insert|rewrite lookup_insert_ne;[by apply WF|done]];
-      intros; simplify_eq; by eapply access1_stack_item; eauto.
-    + case (decide (l1 = l +ₗ n)) => [->|?];
-        [rewrite lookup_insert|rewrite lookup_insert_ne;[by apply WF|done]];
-      intros; simplify_eq; by eapply access1_stack_item; eauto.
-    + case (decide (l1 = l +ₗ n)) => [->|?];
-        [by rewrite lookup_delete|rewrite lookup_delete_ne;[by apply WF|done]].
+  move => /for_each_access1 EQ1 WF ?? /EQ1 [? [? [? NE]]]. by eapply NE, WF.
+Qed.
+
+Lemma for_each_access1_stack_item α β clk l n tg kind α' :
+  for_each α l n false
+          (λ stk, nstk' ← access1 stk kind tg β; Some nstk'.2) = Some α' →
+  wf_stack_item α β clk → wf_stack_item α' β clk.
+Proof.
+  intros ACC WF l' stk'.
+  move => /for_each_access1 EQ.
+  destruct (EQ _ _ _ _ _ _ ACC) as [stk [Eq [SUB ?]]].
+  intros it Ini. apply (WF _ _ Eq).
+  move : Ini. by apply elem_of_list_sublist_proper.
 Qed.
 
 Lemma copy_step_wf σ σ' e e' efs h0 l bor T vl :
@@ -260,25 +266,10 @@ Proof.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq. split; [|done].
   constructor; simpl.
-  - rewrite -(accessN_dom α _ l bor (tsize T) AccessRead); [by apply WF|done..].
+  - rewrite -(for_each_dom α l (tsize T) _ _ ACC). by apply WF.
   - apply WF.
-  - intros l' stk'.
-    move=> /(accessN_stack α β' l bor (tsize T) AccessRead α' _ _ l' stk') Eq.
-    destruct Eq as [stk [Eq [_ [_ Sub2]]]]; [done..|].
-    rewrite /frozen_lt. destruct stk'.(frozen_since) as [t'|]; [|done].
-    have Eq2 := (state_wf_stack_frozen _ WF _ _ Eq). move : Eq2.
-    rewrite /frozen_lt. destruct stk.(frozen_since) as [t|]; [|done].
-    intros. eapply le_lt_trans; [by apply Sub2|done].
-  - intros l' stk'.
-    move=> /(accessN_stack α β' l bor (tsize T) AccessRead α' _ _ l' stk') Eq.
-    destruct Eq as [stk [Eq [Sub1 _]]]; [done..|].
-    intros si Ini. apply (state_wf_stack_item _ WF _ _ Eq).
-    move : Ini. by apply elem_of_list_suffix_proper.
-    (* intros l' bor' [i Eqi]%elem_of_list_lookup.
-    have Eqbor: h' !! (l +ₗ i) = Some (LitV (LitLoc l' bor')).
-    { rewrite -Eqi. by eapply VALUES, lookup_lt_Some. }
-    by apply (state_wf_mem_bor _ WF _ _ _ Eqbor). *)
-  - intros l' stk'. eapply accessN_wf_non_empty; eauto. by apply WF.
+  - eapply for_each_access1_stack_item; eauto. apply WF.
+  - eapply for_each_access1_non_empty; eauto. apply WF.
 Qed.
 
 (** Write *)
@@ -327,7 +318,7 @@ Proof.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
   constructor; simpl.
-  - rewrite -(accessN_dom α β' l bor (tsize T) AccessWrite); [|done..].
+  - rewrite -(for_each_dom α l (tsize T) _ _ ACC).
     rewrite write_mem_dom; [by apply WF|done].
   - move => l0 l' bor'. destruct (write_mem_lookup l vl h) as [IN OUT].
     case (decide (l0.1 = l.1)) => Eq1.
@@ -342,34 +333,8 @@ Proof.
         apply NLe. rewrite Eq. lia.
     + rewrite OUT; [by apply (state_wf_mem_bor _ WF)|].
       move => ? _ Eq. apply Eq1. rewrite Eq. by apply shift_loc_block.
-  - intros l' stk'.
-    move => /(accessN_stack α β' l bor (tsize T) AccessWrite α' _ _ l' stk') Eq.
-    destruct Eq as [stk [Eq [_ [_ Sub2]]]]; [done..|].
-    move : (state_wf_stack_frozen _ WF _ _ Eq).
-    rewrite /frozen_lt. destruct stk'.(frozen_since) as [t'|]; [|done].
-    destruct stk.(frozen_since) as [t|]; [|done]. intros.
-    eapply le_lt_trans; [by apply Sub2|done].
-  - intros l' stk'.
-    move => /(accessN_stack α β' l bor (tsize T) AccessWrite α' _ _ l' stk') Eq.
-    destruct Eq as [stk [Eq [Sub1 _]]]; [done..|].
-    intros si Ini. apply (state_wf_stack_item _ WF _ _ Eq).
-    move : Ini. by apply elem_of_list_suffix_proper.
-  - intros l' stk'. eapply accessN_wf_non_empty; eauto. by apply WF.
-Qed.
-
-(** Deref *)
-Lemma deref_step_wf σ σ' e e' efs h0 l bor T mut :
-  base_step e σ.(cheap) (DerefEvt l bor T mut) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
-                    (DerefEvt l bor T mut)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
-  Wf σ → Wf σ'.
-Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
-  intros BS IS WF.
-  inversion BS. clear BS. simplify_eq.
-  inversion IS. clear IS. simplify_eq.
-  constructor; simpl; apply WF.
+  - eapply for_each_access1_stack_item; eauto. apply WF.
+  - eapply for_each_access1_non_empty; eauto. apply WF.
 Qed.
 
 (** NewCall *)
@@ -385,8 +350,10 @@ Proof.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
   constructor; simpl; [apply WF..| |apply WF].
-  intros ?? Eq ? In. have SI := state_wf_stack_item _ WF _ _ Eq _ In.
-  destruct si; [done..|]. rewrite lookup_insert_is_Some'. by right.
+  intros ?? Eq ? In.
+  destruct (state_wf_stack_item _ WF _ _ Eq _ In) as [SI1 SI2].
+  split; [done|]. destruct si.(protector); [|done].
+  rewrite lookup_insert_is_Some'. by right.
 Qed.
 
 (** EndCall *)
@@ -402,8 +369,9 @@ Proof.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
   constructor; simpl; [apply WF..| |apply WF].
-  intros ?? Eq ? In. have SI := state_wf_stack_item _ WF _ _ Eq _ In.
-  destruct si; [done..|]. rewrite lookup_insert_is_Some'. by right.
+  intros ?? Eq ? In. destruct (state_wf_stack_item _ WF _ _ Eq _ In) as [SI1 SI2].
+  split; [done|]. destruct si.(protector); [|done].
+  rewrite lookup_insert_is_Some'. by right.
 Qed.
 
 (** Retag *)
