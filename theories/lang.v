@@ -1,6 +1,6 @@
 From Equations Require Import Equations.
 From iris.program_logic Require Export language ectx_language ectxi_language.
-From stdpp Require Export strings list gmap infinite.
+From stdpp Require Export strings binders gmap infinite.
 
 From stbor Require Export type.
 
@@ -112,40 +112,13 @@ Inductive bin_op :=
 (** Base values *)
 Inductive lit := LitPoison | LitLoc (l: loc) (tg: tag) | LitInt (n : Z).
 
-(** Binders for lambdas: list of formal arguments to functions *)
-Inductive binder := BAnon | BNamed : string → binder.
-Bind Scope lrust_binder_scope with binder.
-Delimit Scope lrust_binder_scope with RustB.
-
-Notation "[ ]" := (@nil binder) : lrust_binder_scope.
-Notation "a :: b" := (@cons binder a%RustB b%RustB)
-  (at level 60, right associativity) : lrust_binder_scope.
+Notation "[ ]" := (@nil binder) : binder_scope.
+Notation "a :: b" := (@cons binder a%binder b%binder)
+  (at level 60, right associativity) : binder_scope.
 Notation "[ x1 ; x2 ; .. ; xn ]" :=
-  (@cons binder x1%RustB (@cons binder x2%RustB
-        (..(@cons binder xn%RustB (@nil binder))..))) : lrust_binder_scope.
-Notation "[ x ]" := (@cons binder x%RustB (@nil binder)) : lrust_binder_scope.
-
-Definition cons_binder (mx : binder) (X : list string) : list string :=
-  match mx with BAnon => X | BNamed x => x :: X end.
-Infix ":b:" := cons_binder (at level 60, right associativity).
-Fixpoint app_binder (mxl : list binder) (X : list string) : list string :=
-  match mxl with [] => X | b :: mxl => b :b: app_binder mxl X end.
-Infix "+b+" := app_binder (at level 60, right associativity).
-Instance binder_dec_eq : EqDecision binder.
-Proof. solve_decision. Defined.
-
-Instance set_unfold_cons_binder x mx X P :
-  SetUnfold (x ∈ X) P → SetUnfold (x ∈ mx :b: X) (BNamed x = mx ∨ P).
-Proof.
-  constructor. rewrite -(set_unfold (x ∈ X) P).
-  destruct mx; rewrite /= ?elem_of_cons; naive_solver.
-Qed.
-Instance set_unfold_app_binder x mxl X P :
-  SetUnfold (x ∈ X) P → SetUnfold (x ∈ mxl +b+ X) (BNamed x ∈ mxl ∨ P).
-Proof.
-  constructor. rewrite -(set_unfold (x ∈ X) P).
-  induction mxl as [|?? IH]; set_solver.
-Qed.
+  (@cons binder x1%binder (@cons binder x2%binder
+        (..(@cons binder xn%binder (@nil binder))..))) : binder_scope.
+Notation "[ x ]" := (@cons binder x%binder (@nil binder)) : binder_scope.
 
 (** Expressions *)
 Inductive expr :=
@@ -323,12 +296,12 @@ Fixpoint subst_l (xl : list binder) (esl : list expr) (e : expr) : option expr :
   | x::xl, es::esl => subst' x es <$> subst_l xl esl e
   | _, _ => None
   end.
-Arguments subst_l _%RustB _ _%E.
+Arguments subst_l _%binder _ _%E.
 
 Definition subst_v (xl : list binder) (vsl : vec val (length xl))
                    (e : expr) : expr :=
   Vector.fold_right2 (λ b, subst' b ∘ of_val) e _ (list_to_vec xl) vsl.
-Arguments subst_v _%RustB _ _%E.
+Arguments subst_v _%binder _ _%E.
 
 Lemma subst_v_eq (xl : list binder) (vsl : vec val (length xl)) e :
   Some $ subst_v xl vsl e = subst_l xl (of_val <$> vec_to_list vsl) e.
@@ -1193,12 +1166,6 @@ Lemma subst'_is_closed X b es e :
 Proof. destruct b; first done. apply subst_is_closed. Qed.
 
 (** Equality and other typeclass stuff *)
-Instance binder_countable : Countable binder.
-Proof.
-  refine (inj_countable'
-    (λ b, match b with BAnon => None | BNamed s => Some s end)
-    (from_option BNamed BAnon) _); by intros [].
-Qed.
 
 Instance bin_op_eq_dec : EqDecision bin_op.
 Proof. solve_decision. Defined.

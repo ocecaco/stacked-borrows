@@ -5,9 +5,6 @@ Coercion of_val : val >-> expr.
 
 Coercion Var : string >-> expr.
 
-Coercion BNamed : string >-> binder.
-Notation "<>" := BAnon : lrust_binder_scope.
-
 (** Lambda's arguments *)
 Notation "[ ]" := (@nil expr) : expr_scope.
 Notation "[ x ]" := (@cons expr x%E (@nil expr)) : expr_scope.
@@ -75,24 +72,24 @@ Notation "e1 = e2" := (BinOp EqOp e1%E e2%E)
 Notation "e1 +ₗ e2" := (BinOp OffsetOp e1%E e2%E)
   (at level 50, left associativity) : expr_scope.
 
-Notation "'rec:' f xl := e" := (Rec f%RustB xl%RustB e%E)
+Notation "'rec:' f xl := e" := (Rec f%binder xl%binder e%E)
   (at level 102, f, xl at level 1, e at level 200) : expr_scope.
-Notation "'rec:' f xl := e" := (locked (RecV f%RustB xl%RustB e%E))
+Notation "'rec:' f xl := e" := (locked (RecV f%binder xl%binder e%E))
   (at level 102, f, xl at level 1, e at level 200) : val_scope.
 
-Notation "λ: xl , e" := (Lam xl%RustB e%E)
+Notation "λ: xl , e" := (Lam xl%binder e%E)
   (at level 102, xl at level 1, e at level 200) : expr_scope.
-Notation "λ: xl , e" := (locked (LamV xl%RustB e%E))
+Notation "λ: xl , e" := (locked (LamV xl%binder e%E))
   (at level 102, xl at level 1, e at level 200) : val_scope.
 
 Notation "'let:' x := e1 'in' e2" :=
-  ((Lam (@cons binder x%RustB nil) e2%E) (@cons expr e1%E nil))
+  ((Lam (@cons binder x%binder nil) e2%E) (@cons expr e1%E nil))
   (at level 102, x at level 1, e1, e2 at level 150) : expr_scope.
 Notation "e1 ;; e2" := (let: <> := e1 in e2)%E
   (at level 100, e2 at level 200, format "e1  ;;  e2") : expr_scope.
 (* These are not actually values, but we want them to be pretty-printed. *)
 Notation "'let:' x := e1 'in' e2" :=
-  (LamV (@cons binder x%RustB nil) e2%E (@cons expr e1%E nil))
+  (LamV (@cons binder x%binder nil) e2%E (@cons expr e1%E nil))
   (at level 102, x at level 1, e1, e2 at level 150) : val_scope.
 Notation "e1 ;; e2" := (let: <> := e1 in e2)%V
   (at level 100, e2 at level 200, format "e1  ;;  e2") : val_scope.
