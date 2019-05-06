@@ -828,7 +828,7 @@ Equations visit_freeze_sensitive'
               visit_LR alc.1 alc.2.1 alc.2.2 Ts } ;
   visit_freeze_sensitive' h l f a last cur_dist (Sum Ts) :=
     (* Try a shortcut *)
-      if is_freeze (Product Ts)
+      if is_freeze (Sum Ts)
       (* No UnsafeCell, consider the whole block frozen and simply extend the
           distant. *)
       then Some (a, (last, cur_dist + (tsize (Sum Ts)))%nat)
@@ -876,7 +876,7 @@ Definition reborrowN α β l n old_tag new_tag perm
   (* mutable raw pointer/shared refs are weak borrows. *)
   let weak := bool_decide (perm = SharedReadWrite) in
   let item := mkItem perm new_tag protector in
-  for_each α l n true (λ stk, reborrow1 stk old_tag (force_weak || weak) item β).
+  for_each α l n false (λ stk, reborrow1 stk old_tag (force_weak || weak) item β).
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
@@ -958,8 +958,8 @@ Equations retag h α (clk: ptr_id) β (x: loc) (kind: retag_kind) T :
     (* left-to-right visit to retag *)
     where visit_LR h α (clk: ptr_id) (x: loc) (Ts: list type)
       : option (mem * stacks * ptr_id) :=
-      { visit_LR h α clock x []         := Some (h, α, clock) ;
-        visit_LR h α clock x (T :: Ts)  :=
+      { visit_LR h α clk x []         := Some (h, α, clk) ;
+        visit_LR h α clk x (T :: Ts)  :=
           hac ← retag h α clk β x kind T ;
           visit_LR hac.1.1 hac.1.2 hac.2 (x +ₗ (tsize T)) Ts } ;
   retag h α clk β x kind (Sum Ts) with h !! x :=
