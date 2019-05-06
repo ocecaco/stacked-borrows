@@ -378,7 +378,7 @@ Proof.
     (λ _ _ _ _ l1 c1 T1 oalc, ∀ a2 l2 c2, HA oalc l1 c1 T1 a2 l2 c2)
     (λ _ _ _ _ _ _ _ _ l1 c1 Ts oalc, ∀ a2 l2 c2,
       HA oalc l1 c1 (Product Ts) a2 l2 c2)
-    (λ _ _ l1 c1 _ _ _ _ Ts i oalc, ∀ a2 l2 c2,
+    (λ _ _ _ _ l1 c1 _ Ts i oalc, ∀ a2 l2 c2,
       oalc = Some (a2, (l2, c2)) → ∃ T1, Ts !! i = Some T1 ∧
       (l1 ≤ l2 ∧ l2 + c2 = l1 + S c1 + tsize T1)%nat)); rewrite /HA.
   - intros. simplify_eq. simpl. lia.
@@ -387,8 +387,21 @@ Proof.
   - clear. intros _ ?????????. case is_freeze.
     + intros. simplify_eq. lia.
     + intros [??]%unsafe_action_offsets. subst. lia.
+  - clear. intros ??????? IH ???.
+    case is_freeze; [intros; simplify_eq; lia|by move => /IH].
+  - clear. intros ???? l1 c1 ? IH ???.
+    case is_freeze; [intros; simplify_eq; lia|].
+    case lookup => [[[//|//|i]|//]|//].
+    case decide => [Ge0|//].
+    case visit_freeze_sensitive'_clause_6_visit_lookup
+      as [[? [l3 c3]]|] eqn:Eq1; [simpl|done].
+    intros. simplify_eq.
+    destruct (IH (LitV LitPoison) LitPoison _ Ge0 _ _ _ Eq1) as (T1&HL&Le&Eq).
+    split; [done|]. rewrite le_plus_minus_r; [done|].
+    etrans; [apply (le_plus_l _ c3)|]. rewrite Eq.
+    rewrite (_: l1 + S c1 + tsize T1 = l1 + c1 + S (tsize T1))%nat; [|lia].
+    by eapply plus_le_compat_l, tsize_subtype_of_sum, elem_of_list_lookup_2.
   - naive_solver.
-  - intros. simplify_eq. simpl. lia.
   - clear. intros h l f a1 l1 c1 Ts a2 l2 c2 T Ts' IH1 IH2 a4 l4 c4.
     case visit_freeze_sensitive' as [[a3 [l3 c3]]|] eqn:Eq3; [|done].
     cbn -[tsize].
@@ -396,20 +409,6 @@ Proof.
     intros Eq4. destruct (IH1 (a3, (l3, c3)) a4 l4 c4 Eq4) as [Le4 EqO4].
     clear -Le3 EqO3 Le4 EqO4. simpl in Le4. rewrite EqO4. cbn -[tsize].
     rewrite EqO3 tsize_product_cons. lia.
-  - naive_solver.
-  - naive_solver.
-  - clear. intros h l l1 c1 ii f a1 Ts1 HL Eq a2 l2 c2.
-    case decide => Ge0; [|done].
-    case visit_freeze_sensitive'_clause_6_clause_1_visit_lookup
-      as [[a3 [l3 c3]]|]; [|done]. cbn -[tsize].
-    intros. simplify_eq.
-    destruct (HL Ge0 a2 l2 c3) as [T1 [Eq1 [Le2 Eq2]]]; [done|].
-    split; [done|]. rewrite le_plus_minus_r; [done|].
-    etrans; [apply (le_plus_l _ c3)|]. rewrite Eq2. clear -Eq1.
-    rewrite (_: l1 + S c1 + tsize T1 = l1 + c1 + S (tsize T1))%nat; [|lia].
-    by eapply plus_le_compat_l, tsize_subtype_of_sum, elem_of_list_lookup_2.
-  - naive_solver.
-  - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
@@ -446,7 +445,7 @@ Proof.
           h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
           0 ≤ i < length Ts') →
       GI a last → ∃ a' last' cur', oalc = Some (a', (last', cur')) ∧ GI a' last')
-    (λ h l last cur_dist i f a _ Ts n oalc,
+    (λ h l f a last cur_dist _ Ts n oalc,
       (∀ a i j b, (last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Sum Ts))%nat →
           GI a i → ∃ a', f a (l +ₗ i) (Z.to_nat (j - i)) b = Some a' ∧ GI a' j) →
       (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
@@ -458,7 +457,18 @@ Proof.
   - clear. intros ??????? HF _. by apply unsafe_action_is_Some_weak.
   - clear. intros h l f a last cur_dist T HF _.
     case is_freeze; [by do 3 eexists|]. by apply unsafe_action_is_Some_weak.
-  - naive_solver.
+  - clear. intros h l f a last cur_dist Ts IH Hf SUM HI.
+    case is_freeze; [intros; simplify_eq; exists a, last; by eexists|by apply IH].
+  - clear. intros ??? a l1 c1 Ts IH Hf SUM HI.
+    case is_freeze; [intros; simplify_eq; exists a, l1; by eexists|].
+    destruct (SUM Ts O) as [i [Eq [Ge0 Lti]]]; [by apply sub_sum_types_O_elem_of|].
+    move : Eq. rewrite shift_loc_0_nat => Eq. rewrite Eq decide_True; [|done].
+    destruct (IH (LitV LitPoison) LitPoison _ Ge0) as (a2&l2&c2&Eq1&HI2);
+      [done|..|done|].
+    { intros T' Ts' n IN SUB. apply SUM, sub_sum_types_elem_of_2. right.
+      split; [lia|]. exists T'. split; [done|]. by rewrite Nat.sub_1_r. }
+    { rewrite -(Nat2Z.id (length Ts)) -Z2Nat.inj_lt; [done..|lia]. }
+    rewrite Eq1 /=. exists a2, l2. by eexists.
   - naive_solver.
   - clear.
     intros h l f a last cur_dist Ts a1 last1 cur_dist1 T1 Ts1 IH1 IH2 HF SUM HI.
@@ -477,41 +487,17 @@ Proof.
               2!Nat2Z.inj_add -shift_loc_assoc.
       by apply SUM, sub_sum_types_product_further. }
     (* product inner recursive case *)
-  - clear.
-    intros h l last cur_dist f a Ts EqPoison _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
-    move : Eq. by rewrite shift_loc_0_nat EqPoison.
-  - clear. intros h l last cur_dist l1 tag1 f a Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
-    move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros h l last cur_dist n f a Ts IH1 Eqn BLK SUM HI.
-    destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply sub_sum_types_O_elem_of|].
-    move : Eq. rewrite shift_loc_0_nat Eqn. intros Eq. simplify_eq.
-    rewrite decide_True; [|done].
-    destruct (IH1 Ge0) as (a2 & l2 & c2 & Eq2 & HI2); [done|..|done|].
-    + intros T' Ts' n IN1 IN2. apply SUM, sub_sum_types_elem_of_2.
-      right. split; [lia|]. exists T'. split; [done|]. by rewrite /= Nat.sub_0_r.
-    + rewrite -(Nat2Z.id (length Ts)) -Z2Nat.inj_lt; lia.
-    + exists a2, l2. eexists. by rewrite Eq2 /=.
-  - clear. intros h l last cur_dist fl xl e ? f a Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
-    move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros h l last cur_dist f a Ts Eq0 _ SUM.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
-    move : Eq. by rewrite shift_loc_0_nat Eq0.
-  - clear. intros ???? _ ?? _ i _ _. simpl. lia.
-  - clear. intros h l l1 c1 ii f a Ts1 T Ts IH BLK SUM _. apply IH.
-    + intros ???? [? Le]. apply BLK. split; [done|].
+  - clear. intros ?????? _ i _ _. simpl. lia.
+  - clear. intros h l f a l1 c1 _ T Ts IH Hf SUM _. apply IH.
+    + intros ???? [? Le]. apply Hf. split; [done|].
       etrans; [apply Le|]. rewrite -Nat.add_assoc plus_Snm_nSm Nat.add_assoc.
       apply (plus_le_compat_l _ _ (l1 + c1)), tsize_subtype_of_sum. by left.
     + intros ?? IN.
       rewrite (_: l +ₗ (l1 + S c1) +ₗ n = l +ₗ (l1 + c1) +ₗ S n); last first.
       { rewrite 2!shift_loc_assoc. f_equal. lia. }
       apply (SUM T); [by left|done].
-  - clear. intros h l l1 c1 ii fa a Ts0 T Ts i IH BLK SUM Lt.
-    apply IH.
-    + intros ???? [? Le]. apply BLK. split; [done|].
-      etrans; [apply Le|].
+  - clear. intros h l f a l1 c1 Ts0 T Ts i IH Hf SUM Lt. apply IH.
+    + intros ???? [? Le]. apply Hf. split; [done|]. etrans; [apply Le|].
       by apply (plus_le_compat_l _ _ (l1 + c1)), tsize_sum_cons_le.
     + intros ?? n IN. apply SUM. by right.
     + move : Lt => /=. lia.
@@ -593,9 +579,9 @@ Proof.
   - naive_solver.
   - naive_solver.
   - (* Reference cases *)
-    clear. intros h ?? bor α clk β rt_kind p_kind T Eq h' α' clk'.
-    destruct p_kind as [mut| |];
-      [|destruct rt_kind; try by (intros; simplify_eq)|];
+    clear. intros h  x l bor α clk β rt_kind p_kind T Eq h' α' clk'.
+    destruct p_kind as [[]|[]|];
+      [| |destruct rt_kind; try by (intros; simplify_eq)..|];
       (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
       intros ???; simplify_eq; intros Eq0 NL; (rewrite lookup_insert_ne; [done|]);
       intros ?; subst x; rewrite Eq0 in Eq; simplify_eq; by apply NL.
@@ -620,7 +606,8 @@ Qed.
 
 Lemma retag_lookup_ref h α clk β l kind T h' α' clk' :
   let Hh h h' :=
-    (∀ l v, h !! l = Some v → is_loc_val v → ∃ v', h' !! l = Some v' ∧ is_loc_val v') in
+    (∀ l v, h !! l = Some v →
+      is_loc_val v → ∃ v', h' !! l = Some v' ∧ is_loc_val v') in
   retag h α clk β l kind T = Some (h', α', clk') →
   Hh h h'.
 Proof.
@@ -641,9 +628,9 @@ Proof.
   - naive_solver.
   - naive_solver.
   - (* Reference cases *)
-    clear. intros h ?? bor α clk β rt_kind p_kind T Eq h' α' clk'.
-    destruct p_kind as [mut| |];
-      [|destruct rt_kind; try by (intros; simplify_eq; naive_solver)|];
+    clear. intros h x ? bor α clk β rt_kind p_kind T Eq h' α' clk'.
+    destruct p_kind as [[]|[]|];
+      [| |destruct rt_kind; try by (intros; simplify_eq; naive_solver)..|];
       (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
       intros ? l0 ?; simplify_eq; intros Eq0 NL;
       (case (decide (l0 = x)) => [->|?];
