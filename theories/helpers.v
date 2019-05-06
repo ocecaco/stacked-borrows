@@ -110,3 +110,31 @@ Proof.
   - rewrite 2!elem_of_cons. intros []; [by left|right; auto].
   - intros ?. right. auto.
 Qed.
+
+Lemma list_find_None_inv {A} (P : A → Prop) `{∀ x, Decision (P x)} l :
+  Forall (λ x, ¬ P x) l → list_find P l = None.
+Proof.
+  induction l as [|x l IHl]; [eauto|]. simpl. intros FA.
+  rewrite decide_False; [apply (Forall_inv FA)|]. rewrite IHl; [|done].
+  by eapply Forall_cons_1.
+Qed.
+
+Lemma list_find_Some_not_earlier {A} (P : A → Prop) `{∀ x, Decision (P x)} l i x:
+  list_find P l = Some (i, x) ↔
+  l !! i = Some x ∧ P x ∧ ∀ j y, (j < i)%nat → l !! j = Some y → ¬ P y.
+Proof.
+  revert i x.
+  induction l as [|a l IH]; simpl; [naive_solver|]. intros i x.
+  case decide => HP; split.
+  - intros. simplify_eq. split; last split; [done..|intros; lia].
+  - simpl. destruct i as [|i]; [naive_solver|]. simpl.
+    intros [_ [_ Lt]]. exfalso. apply (Lt O a); [lia|done..].
+  - move => /fmap_Some [[i' x'] [Eq1 Eq2]]. simpl in Eq2. simplify_eq.
+    apply IH in Eq1 as [? [? Eq2]]. split; last split; [done..|].
+    intros [|j] y Lt; simpl; [intros; by simplify_eq|apply Eq2; lia].
+  - destruct i as [|i]; [naive_solver|].
+    move => /= [Eq1 [HP1 Lt1]].
+    rewrite (_: list_find P l = Some (i, x)); [|done].
+    apply IH. split; last split; [done..|]. intros j y Lt Eq.
+    apply (Lt1 (S j) y); [lia|done].
+Qed.

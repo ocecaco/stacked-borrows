@@ -27,7 +27,7 @@ Definition borrow_barrier_Some (β: protectors) kind : Prop :=
 Record state_wf' σ := {
   state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
   state_wf_mem_bor : wf_mem_bor σ.(cheap) σ.(cclk);
-  state_wf_stack_item : wf_stack_item σ.(cstk) σ.(cbar) σ.(cclk);
+  state_wf_stack_item : wf_stack_item σ.(cstk) σ.(cpro) σ.(cclk);
   state_wf_non_empty : wf_non_empty σ.(cstk);
 }.
 
@@ -111,7 +111,7 @@ Definition sim_immediate (v1 v2: immediate) :=
 Record sim_state (σ_src σ_tgt: state) := {
   sim_state_mem_dom : dom (gset loc) σ_src.(cheap) ≡ dom (gset loc) σ_tgt.(cheap);
   sim_state_stack_dom : dom (gset loc) σ_src.(cstk) ≡ dom (gset loc) σ_tgt.(cstk);
-  sim_state_protectors : σ_src.(cbar) = σ_tgt.(cbar);
+  sim_state_protectors : σ_src.(cpro) = σ_tgt.(cpro);
   sim_state_mem : ∀ l v1 v2,
     σ_src.(cheap) !! l = Some v1 → σ_tgt.(cheap) !! l = Some v2 → sim_immediate v1 v2;
 }.

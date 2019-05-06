@@ -42,9 +42,9 @@ Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 (** Alloc *)
 Lemma alloc_step_wf σ σ' e e' efs h0 l bor T:
   base_step e σ.(cheap) (AllocEvt l bor T) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (AllocEvt l bor T)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk].
@@ -99,9 +99,9 @@ Proof. intros. eapply memory_deallocated_delete'. by rewrite shift_loc_0. Qed.
 
 Lemma dealloc_step_wf σ σ' e e' efs h0 l bor T :
   base_step e σ.(cheap) (DeallocEvt l bor T) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (DeallocEvt l bor T)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -256,9 +256,9 @@ Qed.
 
 Lemma copy_step_wf σ σ' e e' efs h0 l bor T vl :
   base_step e σ.(cheap) (CopyEvt l bor T vl) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (CopyEvt l bor T vl)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ' ∧ vl <<b σ'.(cclk).
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -308,9 +308,9 @@ Qed.
 
 Lemma write_step_wf σ σ' e e' efs h0 l bor T vl :
   base_step e σ.(cheap) (WriteEvt l bor T vl) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (WriteEvt l bor T vl)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -340,9 +340,9 @@ Qed.
 (** NewCall *)
 Lemma newcall_step_wf σ σ' e e' efs h0 n :
   base_step e σ.(cheap) (NewCallEvt n) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (NewCallEvt n)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -359,9 +359,9 @@ Qed.
 (** EndCall *)
 Lemma endcall_step_wf σ σ' e e' efs h0 n :
   base_step e σ.(cheap) (EndCallEvt n) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (EndCallEvt n)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -771,9 +771,9 @@ Qed.
 
 Lemma retag_step_wf σ σ' e e' efs h0 l T kind :
   base_step e σ.(cheap) (RetagEvt l T kind) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (RetagEvt l T kind)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -786,9 +786,9 @@ Qed.
 (** Silent step *)
 Lemma silent_step_wf σ σ' e e' efs h0 :
   base_step e σ.(cheap) SilentEvt e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     SilentEvt
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -800,9 +800,9 @@ Qed.
 (** SysCall step *)
 Lemma syscall_step_wf σ σ' e e' id efs h0 :
   base_step e σ.(cheap) (SysCallEvt id) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk)
+  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (SysCallEvt id)
-                  σ'.(cheap) σ'.(cstk) σ'.(cbar) σ'.(cclk) →
+                  σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
@@ -889,7 +889,7 @@ Proof.
 Qed.
 
 Lemma head_step_protectors_mono σ σ' e e' obs efs :
-  head_step e σ obs e' σ' efs → future_protector σ.(cbar) σ'.(cbar).
+  head_step e σ obs e' σ' efs → future_protector σ.(cpro) σ'.(cpro).
 Proof.
   intros HS. inversion HS. simplify_eq.
   inversion InstrStep; simplify_eq; simpl; try done.

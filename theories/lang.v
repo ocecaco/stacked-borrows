@@ -1035,7 +1035,7 @@ Inductive instrumented_step h α β (clk: ptr_id):
 Record state := mkState {
   cheap: mem;
   cstk : stacks;
-  cbar : protectors;
+  cpro : protectors;
   cclk : ptr_id;
 }.
 
@@ -1045,7 +1045,7 @@ Inductive head_step :
   expr → state → list event → expr → state → list expr → Prop :=
   | HeadStep σ e e' efs ev h0 h' α' β' clock'
       (BaseStep : base_step e σ.(cheap) ev e' h0 efs)
-      (InstrStep: instrumented_step h0 σ.(cstk) σ.(cbar) σ.(cclk) ev h' α' β' clock')
+      (InstrStep: instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk) ev h' α' β' clock')
   : head_step e σ [ev] e' (mkState h' α' β' clock') efs .
 
 (** Closed expressions *)

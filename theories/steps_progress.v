@@ -19,93 +19,76 @@ Lemma alloc_head_step σ T :
   let l := (fresh_block σ.(cheap), 0) in
   let t := σ.(cclk) in
   ∃ σ',
-  head_step (Alloc T) σ [AllocEvt l (UniqB t) T] (Place l (UniqB t) T) σ' [].
+  head_step (Alloc T) σ [AllocEvt l (Tagged t) T] (Place l (Tagged t) T) σ' [].
 Proof.
   eexists. econstructor; econstructor.
   intros. by apply (not_elem_of_dom (D:=gset loc)), is_fresh_block.
 Qed.
 
-Definition borrow_in (bor: borrow) (stack: list stack_item) :=
-  match bor with
-  | UniqB t => Uniq t ∈ stack
-  | AliasB _ => Raw ∈ stack
-  end.
-
-Lemma list_find_None_inv {A} (P : A → Prop) `{∀ x, Decision (P x)} l :
-  Forall (λ x, ¬ P x) l → list_find P l = None.
+Lemma dealloc1_progress stk bor β
+  (PR: Forall (λ it, ¬ is_active_protector β it) stk)
+  (BOR: ∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ SharedReadOnly) :
+  is_Some (dealloc1 stk bor β).
 Proof.
-  induction l as [|x l IHl]; [eauto|]. simpl. intros FA.
-  rewrite decide_False; [|apply (Forall_inv FA)]. rewrite IHl; [done|].
-  by eapply Forall_cons_1.
+  rewrite /dealloc1. destruct BOR as [it [IN [Eq NEq]]].
+  destruct (list_find_elem_of (matched_grant AccessWrite bor) stk it IN)
+    as [it1 Eq1]. { split; [|done]. by destruct it.(perm). }
+  rewrite /find_granting Eq1 /find_top_active_protector list_find_None_inv;
+    [by eexists|done].
 Qed.
 
-Lemma dealloc_no_active_barrier_true stack β kind
-  (BAR: Forall (λ si, ¬ is_active_barrier β si) stack) :
-  dealloc_no_active_barrier kind stack β = true.
-Proof.
-  rewrite /dealloc_no_active_barrier. destruct kind; [done..|].
-  rewrite (_: find_top_active_call stack β = None); [done|].
-  by rewrite /find_top_active_call list_find_None_inv.
-Qed.
-
-Lemma access1'_dealloc_progress bor stack β
-  (BAR: Forall (λ si, ¬ is_active_barrier β si) stack)
-  (BOR: borrow_in bor stack) :
-  ∃ stack', access1' stack bor AccessDealloc β = Some stack'.
-Proof.
-  induction stack as [|si stack IH].
-  { exfalso. move : BOR. rewrite /borrow_in.
-    by destruct bor; apply not_elem_of_nil. }
-  destruct (Forall_cons_1 _ _ _ BAR) as [NA BAR'].
-  specialize (IH BAR').
-  destruct si as [t1| |c]; [destruct bor as [t2|ot]|destruct bor|].
-  - cbn -[dealloc_no_active_barrier]. case decide => ?.
-    + subst. rewrite dealloc_no_active_barrier_true; [by eexists|done].
-    + apply IH. by move : BOR => /elem_of_cons [[]|].
-  - apply IH. by move : BOR => /elem_of_cons [|].
-  - apply IH. by move : BOR => /elem_of_cons [|].
-  - cbn -[dealloc_no_active_barrier].
-    rewrite dealloc_no_active_barrier_true; [by eexists|done].
-  - rewrite /= /is_active bool_decide_false; [|done]. apply IH.
-    move : BOR; by destruct bor => /elem_of_cons [|].
-Qed.
-
-Lemma accessN_dealloc_progress α β l bor (n: nat) :
+Lemma for_each_is_Some α l (n: nat) b f :
   (∀ m : Z, 0 ≤ m ∧ m < n → l +ₗ m ∈ dom (gset loc) α) →
-  (∀ (m: nat) stack, (m < n)%nat →
-    α !! (l +ₗ m) = Some stack → borrow_in bor stack.(borrows) ∧ ∀ c,
-      FnBarrier c ∈ stack.(borrows) → β !! c = Some false) →
-  ∃ α', accessN α β l bor n AccessDealloc = Some α'.
+  (∀ (m: nat) stk, (m < n)%nat → α !! (l +ₗ m) = Some stk → is_Some (f stk)) →
+  is_Some (for_each α l n b f).
 Proof.
-  revert α. induction n as [|n IHn]; intros α IN BOR; simpl; [by eexists|].
-  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
+  revert α. induction n as [|n IHn]; intros α IN Hf; [by eexists|]. simpl.
+  assert (is_Some (α !! (l +ₗ n))) as [stk Eq].
   { apply (elem_of_dom (D:=gset loc)), IN. by lia. }
-  rewrite Eq /=.
-  destruct (BOR n stack) as [BM FB]; [lia|done|..].
-  assert (is_Some (access1' stack.(borrows) bor AccessDealloc β)) as [stk' Eq'].
-  { apply access1'_dealloc_progress; [|done].
-    apply Forall_forall. intros [t1| |c]; simpl; naive_solver. }
-  assert (is_Some (access1 β stack bor AccessDealloc)) as [stack' Eq2].
-  { rewrite /access1. case frozen_since as [tf|]; rewrite Eq'; by eexists. }
-  rewrite Eq2 /=. apply IHn.
+  rewrite Eq /=. destruct (Hf n stk) as [stk' Eq']; [lia|done|].
+  rewrite Eq' /=. destruct b; apply IHn.
   - intros. apply elem_of_dom. rewrite lookup_delete_ne.
     + apply (elem_of_dom (D:=gset loc)), IN. lia.
     + move => /shift_loc_inj. lia.
   - intros ???. rewrite lookup_delete_ne.
-    + apply BOR. lia.
+    + apply Hf. lia.
     + move => /shift_loc_inj. lia.
+  - intros. apply elem_of_dom. rewrite lookup_insert_ne.
+    + apply (elem_of_dom (D:=gset loc)), IN. lia.
+    + move => /shift_loc_inj. lia.
+  - intros ???. rewrite lookup_insert_ne.
+    + apply Hf. lia.
+    + move => /shift_loc_inj. lia.
+Qed.
+
+Lemma memory_deallocated_progress α β l bor (n: nat) :
+  (∀ m : Z, 0 ≤ m ∧ m < n → l +ₗ m ∈ dom (gset loc) α) →
+  (∀ (m: nat) stk, (m < n)%nat → α !! (l +ₗ m) = Some stk →
+      (∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ SharedReadOnly) ∧
+      ∀ it, it ∈ stk →
+      match it.(protector) with Some c => β !! c = Some false | _ => True end) →
+  is_Some (memory_deallocated α β l bor n).
+Proof.
+  intros IN IT. apply for_each_is_Some; [done|].
+  intros m stk Lt Eq. destruct (IT _ _ Lt Eq) as [In PR].
+  destruct (dealloc1_progress stk bor β) as [? Eq1];
+    [|done|rewrite Eq1; by eexists].
+  apply Forall_forall. move => it /PR. rewrite /is_active_protector.
+  case protector; naive_solver.
 Qed.
 
 Lemma dealloc_head_step (σ: state) T l bor
   (WF: Wf σ)
   (BLK: ∀ m : Z, l +ₗ m ∈ dom (gset loc) σ.(cheap) ↔ 0 ≤ m ∧ m < tsize T)
-  (BOR: ∀ (n: nat) stack, (n < tsize T)%nat →
-    σ.(cstk) !! (l +ₗ n) = Some stack → borrow_in bor stack.(borrows) ∧
-    ∀ c, FnBarrier c ∈ stack.(borrows) → σ.(cbar) !! c = Some false) :
+  (BOR: ∀ (n: nat) stk, (n < tsize T)%nat →
+    σ.(cstk) !! (l +ₗ n) = Some stk →
+    (∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ SharedReadOnly) ∧
+      ∀ it, it ∈ stk →
+      match it.(protector) with Some c => σ.(cpro) !! c = Some false | _ => True end) :
   ∃ σ',
   head_step (Free (Place l bor T)) σ [DeallocEvt l bor T] #☠ σ' [].
 Proof.
-  destruct (accessN_dealloc_progress σ.(cstk) σ.(cbar) l bor (tsize T))
+  destruct (memory_deallocated_progress σ.(cstk) σ.(cpro) l bor (tsize T))
     as [α' Eq']; [|done|].
   - intros. rewrite -(state_wf_dom _ WF). by apply BLK.
   - eexists. econstructor; econstructor; [|done].
@@ -178,74 +161,84 @@ Proof.
       rewrite IH2; [|lia]. f_equal. rewrite app_length /=. lia.
 Qed.
 
-Fixpoint borrow_read_match (β: barriers) (bor: borrow) (stack: list stack_item)
-  :=
-  match stack with
-  | [] => False
-  | Raw :: stack => True
-  | FnBarrier c :: stack => ¬ is_active β c ∧ borrow_read_match β bor stack
-  | Uniq t :: stack =>
-      bor = UniqB t ∨ bor ≠ UniqB t ∧ borrow_read_match β bor stack
-  end.
-
-Lemma access1'_read_is_Some bor stack β
-  (BOR: borrow_read_match β bor stack) :
-  is_Some (access1' stack bor AccessRead β).
+Lemma rm_incompat_is_Some β stk pm kind :
+  (∀ it, it ∈ stk → ∃ b, compatible_with pm kind it.(perm) = Some b ∧
+      if b then True
+      else match it.(protector) with | Some c => ¬ is_active β c | _ => True end) →
+  is_Some (rm_incompat β stk pm kind).
 Proof.
-  induction stack as [|si stack IH]; [done|].
-  destruct si as [t1| |c]; [destruct bor as [t2|ot]|destruct bor|]; simpl;
-    [| |by eexists|by eexists|].
-  - destruct BOR as [Eq|[NEq BOR]].
-    + inversion Eq. rewrite decide_True; [by eexists|done].
-    + rewrite decide_False; [|naive_solver]. by apply IH.
-  - destruct BOR as [?|[? ?]]; [done|]. by apply IH.
-  - destruct BOR as [NB BOR]. rewrite /is_active bool_decide_false.
-    + by apply IH.
-    + intros ?. apply NB. by rewrite /is_active bool_decide_true.
+  induction stk as [|it stk IH]; [by eexists|]. intros IT. simpl.
+  destruct IH as [stk2 Eq2]. { intros ? IN. apply IT. by right. }
+  rewrite Eq2 /=.
+  destruct (IT it) as [b [Eqb PR]]; [by left|].
+  rewrite Eqb /=. destruct b; [by eexists|]. move : PR.
+  case protector => ?; [|by eexists].
+  move => /negb_prop_intro /Is_true_eq_true /negb_true_iff ->. by eexists.
 Qed.
 
-Lemma access1_read_is_Some β stack bor
-  (BOR: is_Some stack.(frozen_since) ∨ borrow_read_match β bor stack.(borrows)) :
-  is_Some (access1 β stack bor AccessRead).
+Lemma grants_read_all pm: grants pm AccessRead.
+Proof. by case pm. Qed.
+
+Definition access1_read_pre (β: protectors) (stk: stack) (bor: tag) :=
+  ∃ (i: nat) it, stk !! i = Some it ∧ it.(tg) = bor ∧
+  ∀ (j: nat) jt, (j < i)%nat → stk !! j = Some jt →
+    jt.(tg) ≠ bor ∧
+    match it.(perm) with
+    | SharedReadOnly => jt.(perm) = SharedReadOnly
+    | _ => match jt.(perm), jt.(protector) with
+           | Unique, Some c => ¬ is_active β c
+           | _, _ => True
+           end
+    end.
+
+Lemma access1_read_is_Some β stk bor
+  (BOR: access1_read_pre β stk bor) :
+  is_Some (access1 stk AccessRead bor β).
 Proof.
-  rewrite /access1. case frozen_since as [tf|]; [by eexists|].
-  destruct BOR as [?%is_Some_None|[? Eq']%access1'_read_is_Some]; [done|].
-  rewrite Eq'; by eexists.
+  destruct BOR as (i & it & Eqi & Eqit & Lti).
+  rewrite /access1 /find_granting.
+  rewrite (_: list_find (matched_grant AccessRead bor) stk = Some (i, it)); last first.
+  { apply list_find_Some_not_earlier. split; last split; [done|..].
+    - split; [apply grants_read_all|done].
+    - intros ?? Lt Eq GR. apply (Lti _ _ Lt Eq), GR. } simpl.
+  destruct (rm_incompat_is_Some β (take i stk) it.(perm) AccessRead) as [? Eq2];
+    [|rewrite Eq2 /=; by eexists].
+  intros jt [j Eqj]%elem_of_list_lookup_1.
+  have ?: (i ≤ length stk)%nat. { by eapply Nat.lt_le_incl, lookup_lt_Some. }
+  have ?: (j < i)%nat.
+  { rewrite -(take_length_le stk i); [|done]. by eapply lookup_lt_Some. }
+  destruct (Lti j jt) as [? PR]; [done|..].
+  - symmetry. by rewrite -Eqj lookup_take.
+  - move : PR. rewrite /compatible_with.
+    case perm; [..|move => ->; naive_solver];
+    case perm; naive_solver.
 Qed.
 
-Lemma accessN_read_is_Some α β l bor (n: nat) :
+Lemma memory_read_is_Some α β l bor (n: nat) :
   (∀ m, (m < n)%nat → l +ₗ m ∈ dom (gset loc) α) →
-  (∀ (m: nat) stack, (m < n)%nat →
-    α !! (l +ₗ m) = Some stack →
-    is_Some stack.(frozen_since) ∨ borrow_read_match β bor stack.(borrows)) →
-  ∃ α', accessN α β l bor n AccessRead = Some α'.
+  (∀ (m: nat) stk, (m < n)%nat →
+    α !! (l +ₗ m) = Some stk → access1_read_pre β stk bor) →
+  is_Some (memory_read α β l bor n).
 Proof.
-  revert α. induction n as [|n IHn]; intros α IN BOR; simpl; [by eexists|].
-  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
-  { apply (elem_of_dom (D:=gset loc)), IN. by lia. }
-  rewrite Eq /=.
-  destruct (access1_read_is_Some β stack bor) as [stk' Eq2].
-  { by apply (BOR n); [lia|done]. }
-  rewrite Eq2 /=. apply IHn.
-  - intros. apply elem_of_dom. rewrite lookup_insert_ne.
-    + apply (elem_of_dom (D:=gset loc)), IN. lia.
-    + move => /shift_loc_inj. lia.
-  - intros ???. rewrite lookup_insert_ne.
-    + apply BOR. lia.
-    + move => /shift_loc_inj. lia.
+  intros IN STK. apply for_each_is_Some.
+  - intros m []. rewrite -(Z2Nat.id m); [|done]. apply IN.
+    rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; [done..|lia].
+  - intros m stk Lt Eq.
+    specialize (STK _ _ Lt Eq).
+    destruct (access1_read_is_Some _ _ _ STK) as [? Eq2]. rewrite Eq2. by eexists.
 Qed.
 
 Lemma copy_head_step (σ: state) l bor T
   (WF: Wf σ)
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
-  (BOR: ∀ m stack, (m < tsize T)%nat → σ.(cstk) !! (l +ₗ m) = Some stack →
-    is_Some stack.(frozen_since) ∨ borrow_read_match σ.(cbar) bor stack.(borrows)) :
+  (BOR: ∀ m stk, (m < tsize T)%nat → σ.(cstk) !! (l +ₗ m) = Some stk →
+        access1_read_pre σ.(cpro) stk bor) :
   ∃ σ' vl,
   head_step (Copy (Place l bor T)) σ
             [CopyEvt l bor T vl] (of_val (TValV vl)) σ' [].
 Proof.
   destruct (read_mem_is_Some _ _ _ BLK) as [vl RM].
-  destruct (accessN_read_is_Some σ.(cstk) σ.(cbar) l bor (tsize T));[|done|].
+  destruct (memory_read_is_Some σ.(cstk) σ.(cpro) l bor (tsize T));[|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
   do 2 eexists. econstructor; econstructor; [done..|].
   move => l1 bor1 /elem_of_list_lookup [i Eqi].
@@ -254,156 +247,91 @@ Proof.
   rewrite Eq2; [done|]. rewrite -Eq1. by eapply lookup_lt_Some.
 Qed.
 
-Fixpoint borrow_write_match β (bor: borrow) (stack: list stack_item) :=
-  match stack with
-  | [] => False
-  | Raw :: stack => ∃ ot, bor = AliasB ot
-  | FnBarrier c :: stack => ¬ is_active β c ∧ borrow_write_match β bor stack
-  | Uniq t :: stack =>
-      bor = UniqB t ∨ bor ≠ UniqB t ∧ borrow_write_match β bor stack
-  end.
 
-Lemma access1'_write_is_Some β stack bor
-  (BOR: borrow_write_match β bor stack) :
-  is_Some (access1' stack bor AccessWrite β).
+Lemma grants_write_all pm: pm ≠ SharedReadOnly → grants pm AccessWrite.
+Proof. by case pm. Qed.
+
+Definition access1_write_pre (β: protectors) (stk: stack) (bor: tag) :=
+  ∃ (i: nat) it, stk !! i = Some it ∧ it.(perm) ≠ SharedReadOnly ∧ it.(tg) = bor ∧
+  ∀ (j: nat) jt, (j < i)%nat → stk !! j = Some jt →
+    (jt.(perm) = SharedReadOnly ∨ jt.(tg) ≠ bor) ∧
+    match it.(perm) with
+    | Unique => match jt.(protector) with Some c => ¬ is_active β c | _ => True end
+    | SharedReadWrite =>
+        jt.(perm) ≠ SharedReadWrite →
+        match jt.(protector) with Some c => ¬ is_active β c | _ => True end
+    | SharedReadOnly => jt.(perm) = SharedReadOnly ∧
+        match jt.(protector) with Some c => ¬ is_active β c | _ => True end
+    end.
+
+Lemma access1_write_is_Some β stk bor
+  (BOR: access1_write_pre β stk bor) :
+  is_Some (access1 stk AccessWrite bor β).
 Proof.
-  induction stack as [|si stack IH]; [done|].
-  destruct si as [t1| |c]; [destruct bor as [t2|ot]|destruct bor|]; simpl;
-    [| | |by eexists|].
-  - destruct BOR as [Eq|[NEq BOR]].
-    + inversion Eq. rewrite decide_True; [by eexists|done].
-    + rewrite decide_False; [|naive_solver]. by apply IH.
-  - destruct BOR as [?|[? ?]]; [done|]. by apply IH.
-  - by destruct BOR as [??].
-  - destruct BOR as [NB BOR]. rewrite /is_active bool_decide_false.
-    + by apply IH.
-    + intros ?. apply NB. by rewrite /is_active bool_decide_true.
+  destruct BOR as (i & it & NEqi & Eqi & Eqit & Lti).
+  rewrite /access1 /find_granting.
+  rewrite (_: list_find (matched_grant AccessWrite bor) stk = Some (i, it)); last first.
+  { apply list_find_Some_not_earlier. split; last split; [done|..].
+    - split; [by apply grants_write_all|done].
+    - intros ?? Lt Eq. destruct (Lti _ _ Lt Eq) as [[OR|OR] _].
+      + rewrite /matched_grant OR /=. naive_solver.
+      + move => GR. by apply OR, GR. } simpl.
+  destruct (rm_incompat_is_Some β (take i stk) it.(perm) AccessWrite) as [? Eq2];
+    [|rewrite Eq2 /=; by eexists].
+  intros jt [j Eqj]%elem_of_list_lookup_1.
+  have ?: (i ≤ length stk)%nat. { by eapply Nat.lt_le_incl, lookup_lt_Some. }
+  have ?: (j < i)%nat.
+  { rewrite -(take_length_le stk i); [|done]. by eapply lookup_lt_Some. }
+  destruct (Lti j jt) as [? PR]; [done|..].
+  - symmetry. by rewrite -Eqj lookup_take.
+  - move : PR. rewrite /compatible_with.
+    case perm; case perm; naive_solver.
 Qed.
 
-Lemma access1_write_is_Some β stack bor
-  (BOR: borrow_write_match β bor stack.(borrows)) :
-  is_Some (access1 β stack bor AccessWrite).
-Proof.
-  rewrite /access1.
-  destruct (access1'_write_is_Some _ _ _ BOR) as [? Eq']. rewrite Eq'.
-  case frozen_since as [tf|]; by eexists.
-Qed.
-
-Lemma accessN_write_is_Some α β l bor (n: nat) :
+Lemma memory_written_is_Some α β l bor (n: nat) :
   (∀ m, (m < n)%nat → l +ₗ m ∈ dom (gset loc) α) →
-  (∀ (m: nat) stack, (m < n)%nat →
-    α !! (l +ₗ m) = Some stack → borrow_write_match β bor stack.(borrows)) →
-  is_Some (accessN α β l bor n AccessWrite).
+  (∀ (m: nat) stk, (m < n)%nat →
+    α !! (l +ₗ m) = Some stk → access1_write_pre β stk bor) →
+  is_Some (memory_written α β l bor n).
 Proof.
-  revert α. induction n as [|n IHn]; intros α IN BOR; simpl; [by eexists|].
-  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
-  { apply (elem_of_dom (D:=gset loc)), IN. by lia. }
-  rewrite Eq /=.
-  destruct (access1_write_is_Some β stack bor) as [? Eq2].
-  { by apply (BOR n); [lia|done]. }
-  rewrite Eq2 /=. apply IHn.
-  - intros. apply elem_of_dom. rewrite lookup_insert_ne.
-    + apply (elem_of_dom (D:=gset loc)), IN. lia.
-    + move => /shift_loc_inj. lia.
-  - intros ???. rewrite lookup_insert_ne.
-    + apply BOR. lia.
-    + move => /shift_loc_inj. lia.
+  intros IN STK. apply for_each_is_Some.
+  - intros m []. rewrite -(Z2Nat.id m); [|done]. apply IN.
+    rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; [done..|lia].
+  - intros m stk Lt Eq.
+    specialize (STK _ _ Lt Eq).
+    destruct (access1_write_is_Some _ _ _ STK) as [? Eq2]. rewrite Eq2. by eexists.
 Qed.
 
 Lemma write_head_step (σ: state) l bor T el vl
   (WF: Wf σ)
   (LEN: length vl = tsize T)
   (VALUES: to_val (TVal el) = Some (TValV vl))
-  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
   (LOCVAL: vl <<b σ.(cclk))
-  (BOR: ∀ m stack, (m < tsize T)%nat → σ.(cstk) !! (l +ₗ m) = Some stack →
-    borrow_write_match σ.(cbar) bor stack.(borrows)) :
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
+  (BOR: ∀ m stk, (m < tsize T)%nat → σ.(cstk) !! (l +ₗ m) = Some stk →
+        access1_write_pre σ.(cpro) stk bor) :
   ∃ σ',
   head_step (Write (Place l bor T) (TVal el)) σ
             [WriteEvt l bor T vl] #☠ σ' [].
 Proof.
-  destruct (accessN_write_is_Some σ.(cstk) σ.(cbar) l bor (tsize T)); [|done|].
+  destruct (memory_written_is_Some σ.(cstk) σ.(cpro) l bor (tsize T)); [|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
   eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
 Qed.
 
-Lemma match_deref_is_Some stack bor :
-  borrow_in bor stack → is_Some (match_deref stack bor).
-Proof.
-  intros IN. induction stack as [|[t1| |ot] stack IH];
-    [|destruct bor as [t2|ot2]..|]; simpl.
-  - exfalso. revert IN. destruct bor; by apply not_elem_of_nil.
-  - case decide => ?; [subst; by eexists|].
-    apply IH. move : IN => /elem_of_cons [[]|] //.
-  - apply IH. move : IN => /elem_of_cons [|] //.
-  - apply IH. move : IN => /elem_of_cons [|] //.
-  - by eexists.
-  - apply IH. destruct bor; move : IN => /elem_of_cons [|] //.
-Qed.
 
-Lemma match_deref_is_Some_inv stack bor :
-  is_Some (match_deref stack bor) → borrow_in bor stack.
-Proof.
-  intros IN. induction stack as [|[t1| |ot] stack IH];
-    [|destruct bor as [t2|ot2]..|]; simpl.
-  - exfalso. revert IN. by apply is_Some_None.
-  - move : IN => /=. case decide => ?.
-    + subst. by left.
-    + right. by apply IH.
-  - right. by apply IH.
-  - right. by apply IH.
-  - by left.
-  - move : IN => /IH ?. destruct bor; by right.
-Qed.
+Lemma newcall_head_step σ :
+  let c := fresh (dom (gset call_id) σ.(cpro)) in
+  ∃ σ', head_step NewCall σ [NewCallEvt c] (Lit $ LitInt c) σ' [].
+Proof. eexists. econstructor; econstructor. Qed.
 
-Definition deref1_pre stack bor kind :=
-  match bor with
-  | UniqB t => Uniq t ∈ stack.(borrows)
-  | AliasB None =>
-      (is_Some stack.(frozen_since) ∨ Raw ∈ stack.(borrows))
-  | AliasB (Some t) =>
-      kind ≠ UniqueRef ∧
-      ((∃ tf, stack.(frozen_since) = Some tf ∧ (tf ≤ t)%nat) ∨
-        (stack.(frozen_since) = None ∧ Raw ∈ stack.(borrows)))
-  end.
 
-Lemma deref1_is_Some stack bor kind
-  (BOR: deref1_pre stack bor kind):
-  is_Some (deref1 stack bor kind).
-Proof.
-  rewrite /deref1.
-  destruct bor as [t|[t|]].
-  - destruct (match_deref_is_Some stack.(borrows) (UniqB t)) as [? Eq2]; [done|].
-    rewrite Eq2 /=. by eexists.
-  - destruct BOR as [? BOR].
-    destruct stack.(frozen_since) eqn:Eqf.
-    + destruct BOR as [[? []]|[]]; [|done]. simplify_eq.
-      destruct kind; [done|..]; (rewrite decide_True; [by eexists|lia]).
-    + destruct BOR as [[? []]|[]]; [done|].
-      destruct kind; [done|..];
-      (destruct (match_deref_is_Some stack.(borrows) (AliasB (Some t)))
-        as [? Eq2]; [done|]); rewrite Eq2; by eexists.
-  - destruct stack.(frozen_since) eqn:Eqf; [by eexists|].
-    destruct BOR as [[]|]; [by simplify_eq|].
-    destruct (match_deref_is_Some stack.(borrows) (AliasB None)) as [? Eq2]; [done|].
-    rewrite Eq2. by eexists.
-Qed.
+Lemma endcall_head_step σ c (NZ: 0 ≤ c)
+  (BAR: σ.(cpro) !! (Z.to_nat c) = Some true) :
+  ∃ σ',
+  head_step (EndCall #c) σ [EndCallEvt (Z.to_nat c)] #☠ σ' [].
+Proof. eexists. econstructor; econstructor. lia. done. Qed.
 
-Lemma derefN_is_Some α l n bor kind
-  (BLK : ∀ i, (i < n)%nat → l +ₗ i ∈ dom (gset loc) α)
-  (UNI : ∀ i stack, (i < n)%nat → α !! (l +ₗ i) = Some stack →
-            deref1_pre stack bor kind) :
-  is_Some (derefN α l bor n kind).
-Proof.
-  induction n as [|n IH]; [by eexists|]. simpl.
-  assert (is_Some (α !! (l +ₗ n))) as [stack Eq].
-  { apply (elem_of_dom (D:=gset loc)), BLK. lia. }
-  rewrite Eq /=.
-  destruct (deref1_is_Some stack bor kind) as [? Eqs]. { eapply UNI; eauto. }
-  rewrite Eqs /=. apply IH.
-  - intros. apply BLK. lia.
-  - intros ???. apply UNI. lia.
-Qed.
 
 Lemma unsafe_action_is_Some_weak {A} (GI: A → nat → Prop)
   (f: A → _ → nat → _ → _) a l last cur_dist n
@@ -636,69 +564,6 @@ Proof.
   intros a1 i j b Le _. destruct (HF a1 i j b Le). by eexists.
 Qed.
 
-Definition ptr_deref_pre (h: mem) (α: bstacks) l bor T mut : Prop :=
-  match mut with
-  | None => True
-  | Some mut =>
-      match bor with
-      | UniqB t => mut = Mutable ∧
-          (∀ (m: nat) stack, (m < tsize T)%nat → α !! (l +ₗ m) = Some stack →
-            Uniq t ∈ stack.(borrows))
-      | AliasB None =>
-          (∀ (m: nat) stack, (m < tsize T)%nat → α !! (l +ₗ m) = Some stack →
-            is_Some stack.(frozen_since) ∨ Raw ∈ stack.(borrows))
-      | AliasB (Some t) => mut = Immutable ∧
-          (∀ (m: nat) stack, (m < tsize T)%nat → α !! (l +ₗ m) = Some stack →
-            (∃ tf, stack.(frozen_since) = Some tf ∧ (tf ≤ t)%nat) ∨
-            (stack.(frozen_since) = None ∧ Raw ∈ stack.(borrows))) ∧
-          (∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
-            h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts)
-      end
-  end.
-
-Lemma ptr_deref_progress h α l bor T mut
-  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α) :
-  ptr_deref_pre h α l bor T mut →
-  ptr_deref h α l bor T mut.
-Proof.
-  destruct mut as [mut|], bor as [|[t|]]; [| | |done..].
-  - intros []. by apply derefN_is_Some.
-  - intros [? [IN ?]]. subst mut. simpl. split; [done|].
-    apply visit_freeze_sensitive_is_Some; [|done].
-    intros _ i j b [Le1 Le2]. apply derefN_is_Some.
-    + intros i' Lt. rewrite shift_loc_assoc -Nat2Z.inj_add. apply BLK.
-      move : Lt. rewrite -Nat2Z.inj_sub // Nat2Z.id. lia.
-    + intros i' stk Lt. rewrite shift_loc_assoc -Nat2Z.inj_add.
-      intros Eq. split; [by destruct b|]. move : Eq. apply IN.
-      move : Lt. rewrite -Nat2Z.inj_sub // Nat2Z.id. lia.
-  - simpl. intros PRE. by apply derefN_is_Some.
-Qed.
-
-Lemma deref_head_step (σ: state) l bor T mut
-  (WF: Wf σ)
-  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
-  (MUT: ptr_deref_pre σ.(cheap) σ.(cstk) l bor T mut) :
-  ∃ σ',
-  head_step (Deref (Lit (LitLoc l bor)) T mut) σ
-            [DerefEvt l bor T mut] (Place l bor T) σ' [].
-Proof.
-  eexists. econstructor; econstructor; [done|].
-  apply ptr_deref_progress; [|done].
-  move => ? /BLK. by rewrite (state_wf_dom _ WF).
-Qed.
-
-Lemma newcall_head_step σ :
-  let c := fresh (dom (gset call_id) σ.(cbar)) in
-  ∃ σ', head_step NewCall σ [NewCallEvt c] (Lit $ LitInt c) σ' [].
-Proof. eexists. econstructor; econstructor. Qed.
-
-
-Lemma endcall_head_step σ c (NZ: 0 ≤ c)
-  (BAR: σ.(cbar) !! (Z.to_nat c) = Some true) :
-  ∃ σ',
-  head_step (EndCall #c) σ [EndCallEvt (Z.to_nat c)] #☠ σ' [].
-Proof. eexists. econstructor; econstructor. lia. done. Qed.
-
 Definition is_loc_val (v: immediate) :=
   match v with
   | LitV (LitLoc _ _) => True
@@ -867,32 +732,6 @@ Proof.
   rewrite /access1. case_match.
   - destruct kind; [done|..]; (case access1' => ?; [|done]); simpl; naive_solver.
   - case access1' => ? ; [|done]. simpl. naive_solver.
-Qed.
-
-Lemma deref1_Some_None stk bor kind :
-  deref1 stk bor kind = Some None →
-  is_aliasing bor = true ∧ is_Some stk.(frozen_since).
-Proof.
-  rewrite /deref1.
-  destruct bor as [t|[t|]]; simpl; [by case match_deref|..];
-  case frozen_since.
-  - naive_solver.
-  - destruct kind; [done|..]; by case match_deref.
-  - naive_solver.
-  - by case match_deref.
-Qed.
-
-Lemma deref1_Some_Some stk bor kind i :
-  deref1 stk bor kind = Some (Some i) → borrow_in bor stk.(borrows).
-Proof.
-  rewrite /deref1. destruct bor as [t|[t|]]; simpl.
-  - case match_deref eqn:Eq => //= ?.
-    apply (match_deref_is_Some_inv _ (UniqB t)). by eexists.
-  - case_match; case_match; [done|by case_decide..|done| |];
-      case match_deref eqn:Eq => //= ?;
-      apply (match_deref_is_Some_inv _ (AliasB (Some t))); by eexists.
-  - case_match; [done|]. case match_deref eqn:Eq => //= ?.
-    apply (match_deref_is_Some_inv _ (AliasB None)); by eexists.
 Qed.
 
 Lemma create_borrow_is_Some_2 β stk bor kind stk' bor'
@@ -1263,127 +1102,6 @@ Proof.
     + destruct bor as [|[]]; [apply IN|done..].
 Qed.
 
-Lemma create_borrow_deref1_is_freeze stk stk' bor' kind :
-  create_borrow stk bor' kind = Some stk' → deref1_pre stk' bor' FrozenRef.
-Proof.
-  rewrite /create_borrow. destruct kind; destruct bor' as [t|ot].
-  - case frozen_since => ?; [done|simplify_eq]. simpl. by left.
-  - case frozen_since => ?; [done|simplify_eq]. simpl.
-    destruct ot; simpl; destruct stk.(borrows) as [|[] ?]; set_solver.
-  - done.
-  - destruct ot; [|done]. simpl. case frozen_since eqn:Eqs.
-    + case decide => ?; [|done]. intros ?. simplify_eq. simpl. set_solver.
-    + intros ?. simplify_eq. simpl. set_solver.
-  - case frozen_since => ?; [done|simplify_eq]. simpl. by left.
-  - case frozen_since => ?; [done|simplify_eq]. simpl.
-    destruct ot; simpl; destruct stk.(borrows) as [|[] ?]; set_solver.
-Qed.
-
-Lemma deref1_pre_is_freeze stk bor kind :
-  is_Some (deref1 stk bor kind) → deref1_pre stk bor FrozenRef.
-Proof.
-  rewrite /deref1_pre.
-  destruct bor as [t|[t|]].
-  - move => /= IS. apply (match_deref_is_Some_inv _ (UniqB t)).
-    move : IS. case match_deref; [naive_solver|by intros []].
-  - simpl.
-    case stk.(frozen_since) as [ts|] eqn:Eqs;
-      (destruct kind; [by intros []|..]).
-    + case decide => ?; [|by intros []]; split; [done|left];
-      exists ts; split; [done|lia].
-    + case decide => ?; [|by intros []]; split; [done|left];
-      exists ts; split; [done|lia].
-    + move => IS. split; [done|]. right. split; [done|].
-      apply (match_deref_is_Some_inv _ (AliasB (Some t))).
-      move : IS. case match_deref; [naive_solver|by intros []].
-    + move => IS. split; [done|]. right. split; [done|].
-      apply (match_deref_is_Some_inv _ (AliasB (Some t))).
-      move : IS. case match_deref; [naive_solver|by intros []].
-  - simpl. case stk.(frozen_since) as [ts|] eqn:Eqs; [naive_solver|].
-    move => IS. right. apply (match_deref_is_Some_inv _ (AliasB None)).
-    move : IS. case match_deref; [naive_solver|by intros []].
-Qed.
-
-Lemma reborrow1_deref1_is_freeze stk stk' bor bor' kind β bar :
-  reborrow1 stk bor bor' kind β bar = Some stk' →
-  deref1_pre stk' bor' FrozenRef.
-Proof.
-  rewrite /reborrow1.
-  case (deref1 stk bor kind) as [[i|]|] eqn:Eq1; simpl; [..|done];
-    destruct bar as [c|]; simpl.
-  - case access1 as [stk1|] eqn: Eq2; [|done].
-    by apply create_borrow_deref1_is_freeze.
-  - case (deref1 stk bor' kind) as [[i'|]|] eqn:Eq2.
-    + case decide => ?.
-      * case is_aliasing eqn:Eqa; [|done]. intros ?. simplify_eq.
-        eapply deref1_pre_is_freeze. by eexists.
-      * case access1 as [stk1|] eqn: Eq3; [|done].
-        by apply create_borrow_deref1_is_freeze.
-    + case is_aliasing eqn:Eqa; [|done]. intros ?. simplify_eq.
-      eapply deref1_pre_is_freeze. by eexists.
-    + case access1 as [stk1|] eqn: Eq3; [|done].
-      by apply create_borrow_deref1_is_freeze.
-  - case access1 as [stk1|] eqn: Eq2; [|done].
-    by apply create_borrow_deref1_is_freeze.
-  - case (deref1 stk bor' kind) as [[i'|]|] eqn:Eq2.
-    + case access1 as [stk1|] eqn: Eq3; [|done].
-      by apply create_borrow_deref1_is_freeze.
-    + case is_aliasing eqn:Eqa; [|done]. intros ?. simplify_eq.
-      eapply deref1_pre_is_freeze. by eexists.
-    + case access1 as [stk1|] eqn: Eq3; [|done].
-      by apply create_borrow_deref1_is_freeze.
-Qed.
-
-Lemma reborrowBlock_deref1_is_freeze α β l n bor bor' kind bar α' :
-  reborrowBlock α β l n bor bor' kind bar = Some α' →
-  ∀ m stk, (m < n)%nat → α' !! (l +ₗ m) = Some stk →
-  deref1_pre stk bor' FrozenRef.
-Proof.
-  rewrite /reborrowBlock. case xorb; [done|].
-  revert α.
-  induction n as [|n IH]; intros α; simpl; [intros _ ??; lia|].
-  case lookup as [stk|] eqn:Eqs; [simpl|done].
-  case reborrow1 as [stk'|] eqn:Eq1; [simpl|done].
-  intros Eq2 m stk1 Lt EqL.
-  case (decide (m = n)) => [?|NEq].
-  - subst. destruct (reborrowN_lookup _ _ _ _ _ _ _ _ _ Eq2) as [HL _].
-    move : EqL. rewrite HL // lookup_insert. intros ?. simplify_eq.
-    by eapply reborrow1_deref1_is_freeze.
-  - apply (IH (<[l +ₗ n:=stk']> α) Eq2 m stk1); [lia|done].
-Qed.
-
-Lemma reborrow_deref1_is_freeze h α β l bor T bar bor' α'
-  (FRZ: is_freeze T)
-  (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
-          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
-  reborrow h α β l bor T bar bor' = Some α' →
-  ∀ m stk, (m < tsize T)%nat → α' !! (l +ₗ m) = Some stk →
-  deref1_pre stk bor' FrozenRef.
-Proof.
-  rewrite /reborrow. destruct bor' as [|[]].
-  - by apply reborrowBlock_deref1_is_freeze.
-  - rewrite visit_freeze_sensitive_is_freeze; [|done..].
-    by apply reborrowBlock_deref1_is_freeze.
-  - by apply reborrowBlock_deref1_is_freeze.
-Qed.
-
-Lemma create_borrow_read_access_is_freeze β stk stk' bor' kind :
-  create_borrow stk bor' kind = Some stk' →
-  is_Some stk'.(frozen_since) ∨ borrow_read_match β bor' stk'.(borrows).
-Proof.
-  rewrite /create_borrow.
-  destruct kind; destruct bor' as [t|ot]; [| |done| | |].
-  - case frozen_since => ?; [done|simplify_eq]. naive_solver.
-  - case frozen_since => ?; [done|simplify_eq].
-    destruct ot; simpl; destruct stk.(borrows) as [|[]]; naive_solver.
-  - destruct ot; [|done]. case frozen_since eqn:Eqs.
-    + case decide => ?; [|done]. intros. simplify_eq. rewrite Eqs. naive_solver.
-    + intros ?. simplify_eq. naive_solver.
-  - case frozen_since => ?; [done|simplify_eq]. naive_solver.
-  - case frozen_since => ?; [done|simplify_eq].
-    destruct ot; simpl; destruct stk.(borrows) as [|[] ?]; naive_solver.
-Qed.
-
 (*
 Lemma access1'_is_Some_read β stk bor kind stk' :
   access1' stk bor kind β = Some stk' → borrow_read_match β bor stk'.
@@ -1408,110 +1126,6 @@ Proof.
     (case access1' as [stk1|] eqn:Eqa; [|done]); simpl; intros; simplify_eq; right;
     move : Eqa; apply access1'_is_Some_read.
 Qed. *)
-
-Lemma match_deref_lookup stk bor i :
-  match_deref stk bor = Some i →
-  i < length stk ∧
-  stk !! (length stk - S i)%nat =
-    Some (match bor with | UniqB t => Uniq t | _ => Raw end).
-Proof.
-  revert i. induction stk as [|[t| |c] stk IH]; intros i; [done|..]; simpl.
-  - destruct bor; [case decide => ?; [subst|]|].
-    + intros ?. simplify_eq. split; [lia|]. by rewrite Nat.sub_diag.
-    + move => /IH [Lt Eq]. split; [lia|].
-      rewrite -Eq (lookup_app_r [Uniq t]); [|simpl; lia].
-      f_equal. simpl. lia.
-    + move => /IH [Lt Eq]. split; [lia|].
-      rewrite -Eq (lookup_app_r [Uniq _]); [|simpl; lia].
-      f_equal. simpl. lia.
-  - destruct bor; [|intros ?; simplify_eq].
-    + move => /IH [Lt Eq]. split; [lia|].
-      rewrite -Eq (lookup_app_r [Raw]); [|simpl; lia].
-      f_equal. simpl. lia.
-    + split; [lia|by rewrite Nat.sub_diag].
-  - move => /IH [Lt Eq]. split; [lia|].
-    rewrite -Eq (lookup_app_r [FnBarrier _]); [|simpl; lia].
-    f_equal. simpl. lia.
-Qed.
-
-Lemma match_deref_borrow_read_match β stk bor bor' oi oi' 
-  (BOR : borrow_read_match β bor stk)
-  (IS1 : match_deref stk bor ≫= Some ∘ Some = Some oi)
-  (IS2 : match_deref stk bor' ≫= Some ∘ Some = Some oi')
-  (Le : oi ⊑ oi') (AL: is_aliasing bor') :
-  borrow_read_match β bor' stk.
-Proof.
-  induction stk as [|[t| |c] stk' IH]; [done| |done|].
-  - simpl. right. split; [by destruct bor'|].
-    have IS2':  match_deref stk' bor' ≫= Some ∘ Some = Some oi'
-      by destruct bor'. clear IS2.
-    move : BOR IS1 => /= [?|[NE BOR]].
-    + subst bor. rewrite decide_True; [|done]. simpl. intros. simplify_eq.
-      destruct oi' as [i'|]; [|done].
-      destruct (match_deref_lookup stk' bor' i') as [Lt _].
-      * move : IS2'. case match_deref; [naive_solver|done].
-      * exfalso. apply Nat2Z.inj_lt in Lt. move : Le Lt. cbn.
-        rewrite /sqsubseteq /nat_sqsubseteq /=. lia.
-    + destruct bor.
-      * rewrite decide_False; [|by intros ?; subst].
-        intros ?. by apply IH.
-      * intros ?. by apply IH.
-  - move : BOR => /= [INA BOR]. split; [done|].
-    by apply IH.
-Qed.
-
-Lemma deref1_read_access β stk bor bor' kind
-  (BOR: match bor' with
-        | UniqB _ =>
-            match bor with
-            | UniqB _ | AliasB None => borrow_write_match β bor stk.(borrows)
-            | _ => False
-            end
-        | AliasB (Some _) =>
-            match bor with
-            | UniqB _ => borrow_read_match β bor stk.(borrows)
-            | AliasB None =>
-                is_Some stk.(frozen_since) ∨ borrow_read_match β bor stk.(borrows)
-            | AliasB (Some _) =>
-                if stk.(frozen_since) then True else
-                  borrow_read_match β bor stk.(borrows)
-            end
-        | AliasB None =>
-            match bor with
-            | UniqB _ | AliasB None => borrow_read_match β bor stk.(borrows)
-            | _ => False
-            end
-        end)
-  (AL: is_aliasing bor') oi oi':
-  deref1 stk bor kind = Some oi →
-  deref1 stk bor' kind = Some oi' →
-  oi ⊑ oi' →
-  is_Some stk.(frozen_since) ∨ borrow_read_match β bor' stk.(borrows).
-Proof.
-  rewrite /deref1.
-  destruct bor' as [|[t'|]]; [done|..];
-    (case stk.(frozen_since) eqn:Eqf; [left; by eexists|intros IS1 IS2 Le; right]);
-    destruct bor as [t|[t|]].
-  - have IS2':
-      match_deref (borrows stk) (AliasB (Some t')) ≫= Some ∘ Some = Some oi'.
-    { by destruct kind. } clear Eqf AL IS2.
-    eapply match_deref_borrow_read_match; eauto.
-  - have IS1':
-      match_deref (borrows stk) (AliasB (Some t)) ≫= Some ∘ Some = Some oi.
-    { by destruct kind. }
-    have IS2':
-      match_deref (borrows stk) (AliasB (Some t')) ≫= Some ∘ Some = Some oi'.
-    { by destruct kind. } clear Eqf AL IS1 IS2.
-    eapply match_deref_borrow_read_match; eauto.
-  - destruct BOR as [[]|BOR]; [done|].
-    have IS2':
-      match_deref (borrows stk) (AliasB (Some t')) ≫= Some ∘ Some = Some oi'.
-    { by destruct kind. } clear Eqf AL IS2.
-    eapply match_deref_borrow_read_match; eauto.
-  - clear Eqf AL. eapply match_deref_borrow_read_match; eauto.
-  - done.
-  - clear Eqf AL. eapply match_deref_borrow_read_match; eauto.
-Qed.
 
 Lemma reborrow1_read_access_is_freeze stk stk' bor bor' kind β bar
   (BOR: match bor' with
@@ -1853,7 +1467,7 @@ Abort.
 
 Lemma retag_head_step σ x xbor T kind (call: Z) (Gt0: 0 ≤ call)
   (BAR: match kind with
-        | FnEntry _ => σ.(cbar) !! (Z.to_nat call) = Some true
+        | FnEntry _ => σ.(cpro) !! (Z.to_nat call) = Some true
         | _ => True
         end) :
   ∃ σ' kind',
