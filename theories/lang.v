@@ -727,7 +727,7 @@ Definition reborrow1
     | (idx', stk') =>
         if decide (idx' = derived_from_idx) (* this must always be true *)
         then (* insert `new` to top of the stack *)
-          Some (item_insert_dedup stk new O)
+          Some (item_insert_dedup stk' new O)
         else (* UNREACHABLE *) None
     end.
 

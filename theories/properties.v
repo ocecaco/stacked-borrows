@@ -4,7 +4,7 @@ From stbor Require Export lang notation.
 Class Wellformed A := Wf : A → Prop.
 Existing Class Wf.
 
-Definition wf_mem_bor (h: mem) (clk: ptr_id) :=
+Definition wf_mem_tag (h: mem) (clk: ptr_id) :=
   ∀ l l' bor, h !! l = Some (LitV (LitLoc l' bor)) → bor <b clk.
 
 Definition stack_item_included (stk: stack) (β: protectors) (clk: ptr_id) :=
@@ -19,16 +19,19 @@ Definition stack_item_included (stk: stack) (β: protectors) (clk: ptr_id) :=
 Definition wf_stack_item (α: stacks) (β: protectors) (clk: ptr_id) :=
   ∀ l stk, α !! l = Some stk → stack_item_included stk β clk.
 Definition wf_non_empty (α: stacks) :=
-   ∀ l stk, α !! l = Some stk → stk ≠ [].
+  ∀ l stk, α !! l = Some stk → stk ≠ [].
+Definition wf_no_dup (α: stacks) :=
+  ∀ l stk, α !! l = Some stk → NoDup stk.
 
 Definition borrow_barrier_Some (β: protectors) kind : Prop :=
   match kind with FnEntry c => is_Some (β !! c) | _ => True end.
 
 Record state_wf' σ := {
   state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
-  state_wf_mem_bor : wf_mem_bor σ.(cheap) σ.(cclk);
+  state_wf_mem_tag : wf_mem_tag σ.(cheap) σ.(cclk);
   state_wf_stack_item : wf_stack_item σ.(cstk) σ.(cpro) σ.(cclk);
   state_wf_non_empty : wf_non_empty σ.(cstk);
+  (* state_wf_no_dup : wf_no_dup σ.(cstk); *)
 }.
 
 Instance state_wf : Wellformed state :=  state_wf'.
