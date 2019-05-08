@@ -438,14 +438,12 @@ Lemma item_insert_dedup_subseteq stk new n :
 Proof.
   intros. destruct n; simpl.
   - destruct stk; [done|case decide => [<-|_]]; set_solver.
-  - case lookup => [?|]; case lookup => [?|].
-    + case decide => ?; [set_solver|]. case decide => ?; [set_solver|].
-      rewrite -{3}(take_drop n stk). set_solver.
-    + case decide => ?; [set_solver|].
-      rewrite -{3}(take_drop n stk). set_solver.
-    + case decide => ?; [set_solver|].
-      rewrite -{3}(take_drop n stk). set_solver.
-    + rewrite -{3}(take_drop n stk). set_solver.
+  - have ?: take (S n) stk ++ new :: drop (S n) stk ⊆ new :: stk.
+    { intros x.
+      rewrite elem_of_app elem_of_cons -or_assoc (or_comm _ (x = new))
+              or_assoc -elem_of_app take_drop. set_solver. }
+    by case lookup => [?|]; case lookup => [?|];
+      [case decide => ?; [set_solver|]..|]; [case decide => ?; [set_solver|]|..].
 Qed.
 
 Lemma reborrow1_non_empty stk bor weak new β stk':

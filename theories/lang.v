@@ -683,54 +683,6 @@ Definition dealloc1 (stk: stack) (bor: tag) β : option unit :=
   (* Step 2: Check that there are no active protectors left. *)
   if find_top_active_protector β stk then None else Some ().
 
-(* Insert `it` into `stk` at `idx` unless `it` is equal to its neighbors. *)
-Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) :=
-  match idx with
-  | O =>
-    match stk with
-    | [] => [new]
-    | it' :: stk' => if decide (new = it') then stk else new :: stk
-    end
-  | S idx' =>
-    match stk !! idx', stk !! idx with
-    | None, None => take idx' stk ++ [new] ++ drop idx' stk
-    | Some it_l, Some it_r =>
-        if decide (new = it_l) then stk
-        else if decide (new = it_r) then stk
-             else take idx' stk ++ [new] ++ drop idx' stk
-    | Some it, None | None, Some it =>
-        if decide (new = it) then stk
-        else take idx' stk ++ [new] ++ drop idx' stk
-    end
-  end.
-
-(* Insert a `new` tag derived from a parent tag `derived_from`.
-   `weak` controls whether this is a weak reborrow: weak reborrows do not act as
-   accesses, and they add the new item directly on top of the one it is derived
-   from instead of all the way at the top of the stack. *)
-Definition reborrow1
-  (stk: stack) (derived_from: tag) (weak: bool) (new: item) β : option stack :=
-  (* Figure out which access `new` allows *)
-  let access := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
-  (* Figure out which item grants our parent (`derived_from`) this kind of access *)
-  g_idx_p ← find_granting stk access derived_from;
-  let derived_from_idx := g_idx_p.1 in
-  if weak then
-    if decide (new.(perm) = SharedReadOnly)
-    then None (* NO weak SharedReadOnly reborrows *)
-    else (* place `new` right above `derived_from` *)
-      Some (item_insert_dedup stk new derived_from_idx)
-  else
-    (* an actual access, let's check! *)
-    nstk' ← access1 stk access derived_from β;
-    match nstk' with
-    | (idx', stk') =>
-        if decide (idx' = derived_from_idx) (* this must always be true *)
-        then (* insert `new` to top of the stack *)
-          Some (item_insert_dedup stk' new O)
-        else (* UNREACHABLE *) None
-    end.
-
 (* Initialize [l, l + n) with singleton stacks of `tg` *)
 Fixpoint init_stacks α (l:loc) (n:nat) (tg: tag) : stacks :=
   match n with
@@ -870,6 +822,55 @@ Definition visit_freeze_sensitive {A: Type}
       f a' (l +ₗ last') cur_dist' true
   | _ => None
   end.
+
+
+(* Insert `it` into `stk` at `idx` unless `it` is equal to its neighbors. *)
+Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) :=
+  match idx with
+  | O =>
+    match stk with
+    | [] => [new]
+    | it' :: stk' => if decide (new = it') then stk else new :: stk
+    end
+  | S idx' =>
+    match stk !! idx', stk !! idx with
+    | None, None => take (S idx') stk ++ [new] ++ drop (S idx') stk
+    | Some it_l, Some it_r =>
+        if decide (new = it_l) then stk
+        else if decide (new = it_r) then stk
+             else take (S idx') stk ++ [new] ++ drop (S idx') stk
+    | Some it, None | None, Some it =>
+        if decide (new = it) then stk
+        else take (S idx') stk ++ [new] ++ drop (S idx') stk
+    end
+  end.
+
+(* Insert a `new` tag derived from a parent tag `derived_from`.
+   `weak` controls whether this is a weak reborrow: weak reborrows do not act as
+   accesses, and they add the new item directly on top of the one it is derived
+   from instead of all the way at the top of the stack. *)
+Definition reborrow1
+  (stk: stack) (derived_from: tag) (weak: bool) (new: item) β : option stack :=
+  (* Figure out which access `new` allows *)
+  let access := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
+  (* Figure out which item grants our parent (`derived_from`) this kind of access *)
+  g_idx_p ← find_granting stk access derived_from;
+  let derived_from_idx := g_idx_p.1 in
+  if weak then
+    if decide (new.(perm) = SharedReadOnly)
+    then None (* NO weak SharedReadOnly reborrows *)
+    else (* place `new` right above `derived_from` *)
+      Some (item_insert_dedup stk new derived_from_idx)
+  else
+    (* an actual access, let's check! *)
+    nstk' ← access1 stk access derived_from β;
+    match nstk' with
+    | (idx', stk') =>
+        if decide (idx' = derived_from_idx) (* this must always be true *)
+        then (* insert `new` to top of the stack *)
+          Some (item_insert_dedup stk' new O)
+        else (* UNREACHABLE *) None
+    end.
 
 Definition reborrowN α β l n old_tag new_tag perm
   (force_weak: bool) (protector: option call_id) :=
