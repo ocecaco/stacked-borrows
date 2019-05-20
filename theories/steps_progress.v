@@ -26,11 +26,11 @@ Proof.
 Qed.
 
 Lemma find_granting_is_Some stk kind bor
-  (BOR: ∃ it, it ∈ stk ∧ it.(tg) = bor ∧
+  (BOR: ∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ Disabled ∧
               (kind = AccessWrite → it.(perm) ≠ SharedReadOnly)) :
   is_Some (find_granting stk kind bor).
 Proof.
-  destruct BOR as [it [IN [Eq KD]]].
+  destruct BOR as [it [IN [Eq [ND KD]]]].
   destruct (list_find_elem_of (matched_grant kind bor) stk it IN)
     as [it1 Eq1].
   - split; [|done]. destruct it.(perm), kind; try done. naive_solver.
@@ -39,7 +39,8 @@ Qed.
 
 Lemma dealloc1_progress stk bor β
   (PR: Forall (λ it, ¬ is_active_protector β it) stk)
-  (BOR: ∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ SharedReadOnly) :
+  (BOR: ∃ it, it ∈ stk ∧ it.(tg) = bor ∧
+        it.(perm) ≠ Disabled ∧ it.(perm) ≠ SharedReadOnly) :
   is_Some (dealloc1 stk bor β).
 Proof.
   rewrite /dealloc1.
@@ -75,7 +76,8 @@ Qed.
 Lemma memory_deallocated_progress α β l bor (n: nat) :
   (∀ m : Z, 0 ≤ m ∧ m < n → l +ₗ m ∈ dom (gset loc) α) →
   (∀ (m: nat) stk, (m < n)%nat → α !! (l +ₗ m) = Some stk →
-      (∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ SharedReadOnly) ∧
+      (∃ it, it ∈ stk ∧ it.(tg) = bor ∧
+        it.(perm) ≠ Disabled ∧ it.(perm) ≠ SharedReadOnly) ∧
       ∀ it, it ∈ stk →
       match it.(protector) with Some c => β !! c = Some false | _ => True end) →
   is_Some (memory_deallocated α β l bor n).
@@ -93,7 +95,8 @@ Lemma dealloc_head_step (σ: state) T l bor
   (BLK: ∀ m : Z, l +ₗ m ∈ dom (gset loc) σ.(cheap) ↔ 0 ≤ m ∧ m < tsize T)
   (BOR: ∀ (n: nat) stk, (n < tsize T)%nat →
     σ.(cstk) !! (l +ₗ n) = Some stk →
-    (∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ SharedReadOnly) ∧
+    (∃ it, it ∈ stk ∧ it.(tg) = bor ∧
+      it.(perm) ≠ Disabled ∧ it.(perm) ≠ SharedReadOnly) ∧
       ∀ it, it ∈ stk →
       match it.(protector) with Some c => σ.(cpro) !! c = Some false | _ => True end) :
   ∃ σ',
@@ -172,35 +175,38 @@ Proof.
       rewrite IH2; [|lia]. f_equal. rewrite app_length /=. lia.
 Qed.
 
-Lemma rm_incompat_is_Some β stk pm kind :
-  (∀ it, it ∈ stk → ∃ b, compatible_with pm kind it.(perm) = Some b ∧
-      if b then True
-      else match it.(protector) with | Some c => ¬ is_active β c | _ => True end) →
-  is_Some (rm_incompat β stk pm kind).
-Proof.
-  induction stk as [|it stk IH]; [by eexists|]. intros IT. simpl.
-  destruct IH as [stk2 Eq2]. { intros ? IN. apply IT. by right. }
-  rewrite Eq2 /=.
-  destruct (IT it) as [b [Eqb PR]]; [by left|].
-  rewrite Eqb /=. destruct b; [by eexists|]. move : PR.
-  case protector => ?; [|by eexists].
-  move => /negb_prop_intro /Is_true_eq_true /negb_true_iff ->. by eexists.
-Qed.
-
-Lemma grants_read_all pm: grants pm AccessRead.
-Proof. by case pm. Qed.
-Lemma grants_write_all pm: pm ≠ SharedReadOnly → grants pm AccessWrite.
-Proof. by case pm. Qed.
-
 Definition item_inactive_protector β (it: item) :=
   match it.(protector) with Some c => ¬ is_active β c | _ => True end.
+
+Lemma replace_check'_is_Some β acc stk :
+  (∀ it, it ∈ stk → it.(perm) = Unique → item_inactive_protector β it) →
+  is_Some (replace_check' β acc stk).
+Proof.
+  revert acc. induction stk as [|si stk IH]; intros acc PR; simpl; [by eexists|].
+  case decide => EqU; last by (apply IH; set_solver).
+  rewrite (_: check_protector β si = true); first by (apply IH; set_solver).
+  have IN: si ∈ si :: stk by set_solver. apply PR in IN; [|done].
+  move : IN. rewrite /check_protector /item_inactive_protector.
+  case si.(protector) => [? /negb_prop_intro|//]. by case is_active.
+Qed.
+
+Lemma replace_check_is_Some β stk :
+  (∀ it, it ∈ stk → it.(perm) = Unique → item_inactive_protector β it) →
+  is_Some (replace_check β stk).
+Proof. move => /replace_check'_is_Some IS. by apply IS. Qed.
+
+Lemma grants_read_all pm: pm ≠ Disabled → grants pm AccessRead.
+Proof. by case pm. Qed.
+Lemma grants_write_all pm:
+  pm ≠ Disabled → pm ≠ SharedReadOnly → grants pm AccessWrite.
+Proof. by case pm. Qed.
 
 Definition is_write (access: access_kind) :=
   match access with AccessWrite => true | _ => false end.
 
 Definition access1_pre
   (β: protectors) (stk: stack) (kind: access_kind) (bor: tag) :=
-  ∃ (i: nat) it, stk !! i = Some it ∧ it.(tg) = bor ∧
+  ∃ (i: nat) it, stk !! i = Some it ∧ it.(tg) = bor ∧ it.(perm) ≠ Disabled ∧
     (is_write kind → it.(perm) ≠ SharedReadOnly) ∧
   ∀ (j: nat) jt, (j < i)%nat → stk !! j = Some jt →
     (if is_write kind then jt.(perm) = SharedReadOnly ∨ jt.(tg) ≠ bor
@@ -213,14 +219,16 @@ Definition access1_pre
     | SharedReadWrite =>
         (is_write kind ∧ jt.(perm) ≠ SharedReadWrite ∨ jt.(perm) = Unique) →
         item_inactive_protector β jt
+    | Disabled => False
     end.
 
 Definition access1_read_pre (β: protectors) (stk: stack) (bor: tag) :=
-  ∃ (i: nat) it, stk !! i = Some it ∧ it.(tg) = bor ∧
+  ∃ (i: nat) it, stk !! i = Some it ∧ it.(tg) = bor ∧ it.(perm) ≠ Disabled ∧
   ∀ (j: nat) jt, (j < i)%nat → stk !! j = Some jt →
     jt.(tg) ≠ bor ∧
     match it.(perm) with
     | SharedReadOnly => jt.(perm) = SharedReadOnly
+    | Disabled => False
     | _ => match jt.(perm), jt.(protector) with
            | Unique, Some c => ¬ is_active β c
            | _, _ => True
@@ -228,7 +236,8 @@ Definition access1_read_pre (β: protectors) (stk: stack) (bor: tag) :=
     end.
 
 Definition access1_write_pre (β: protectors) (stk: stack) (bor: tag) :=
-  ∃ (i: nat) it, stk !! i = Some it ∧ it.(perm) ≠ SharedReadOnly ∧ it.(tg) = bor ∧
+  ∃ (i: nat) it, stk !! i = Some it ∧ it.(perm) ≠ Disabled ∧
+  it.(perm) ≠ SharedReadOnly ∧ it.(tg) = bor ∧
   ∀ (j: nat) jt, (j < i)%nat → stk !! j = Some jt →
     (jt.(perm) = SharedReadOnly ∨ jt.(tg) ≠ bor) ∧
     match it.(perm) with
@@ -236,25 +245,31 @@ Definition access1_write_pre (β: protectors) (stk: stack) (bor: tag) :=
     | SharedReadWrite =>
         jt.(perm) ≠ SharedReadWrite →
         match jt.(protector) with Some c => ¬ is_active β c | _ => True end
-    | SharedReadOnly => jt.(perm) = SharedReadOnly ∧
-        match jt.(protector) with Some c => ¬ is_active β c | _ => True end
+    | SharedReadOnly | Disabled => False
     end.
 
 Lemma access1_is_Some β stk kind bor
   (BOR: access1_pre β stk kind bor) :
   is_Some (access1 stk kind bor β).
 Proof.
-  destruct BOR as (i & it & Eqi & Eqit & IW & Lti).
+  destruct BOR as (i & it & Eqi & Eqit & ND & IW & Lti).
   rewrite /access1 /find_granting.
   rewrite (_: list_find (matched_grant kind bor) stk = Some (i, it)); last first.
   { apply list_find_Some_not_earlier. split; last split; [done|..].
     - split; [|done].
-      destruct kind; [apply grants_read_all|by apply grants_write_all, IW].
+      destruct kind; [by apply grants_read_all|by apply grants_write_all, IW].
     - intros ?? Lt Eq GR. destruct (Lti _ _ Lt Eq) as [NEq1 NEq2].
       destruct kind; [by apply NEq1, GR|]. destruct NEq1 as [OR|OR].
       + move : GR. rewrite /matched_grant OR /=. naive_solver.
       + by apply OR, GR. } simpl.
-  destruct (rm_incompat_is_Some β (take i stk) it.(perm) kind) as [? Eq2];
+  destruct kind.
+  - destruct (replace_check_is_Some β (take i stk)) as [? Eq2];
+      [|rewrite Eq2 /=; by eexists].
+    intros jt [j Eqj]%elem_of_list_lookup_1 IU.
+    have ?: (i ≤ length stk)%nat. { by eapply Nat.lt_le_incl, lookup_lt_Some. }
+    have ?: (j < i)%nat.
+    { rewrite -(take_length_le stk i); [|done]. by eapply lookup_lt_Some. }
+  (* destruct (rm_incompat_is_Some β (take i stk) it.(perm) kind) as [? Eq2];
     [|rewrite Eq2 /=; by eexists].
   intros jt [j Eqj]%elem_of_list_lookup_1.
   have ?: (i ≤ length stk)%nat. { by eapply Nat.lt_le_incl, lookup_lt_Some. }
@@ -263,15 +278,15 @@ Proof.
   destruct (Lti j jt) as [Eq1 PR]; [done|..].
   - symmetry. by rewrite -Eqj lookup_take.
   - move : PR. rewrite /compatible_with.
-    case it.(perm); case jt.(perm); destruct kind; naive_solver.
-Qed.
+    case it.(perm); case jt.(perm); destruct kind; naive_solver. *)
+Admitted.
 
 Lemma access1_read_is_Some β stk bor
   (BOR: access1_read_pre β stk bor) :
   is_Some (access1 stk AccessRead bor β).
 Proof.
-  destruct BOR as (i & it & Eqi & Eqit & Lti).
-  apply access1_is_Some. exists i, it. do 3 (split; [done|]).
+  destruct BOR as (i & it & Eqi & Eqit & ND &  Lti).
+  apply access1_is_Some. exists i, it. do 4 (split; [done|]).
   intros j jt Lt Eq. destruct (Lti _ _ Lt Eq) as [? PR]. split; [done|].
   move : PR. case perm; [..|naive_solver]; case perm; naive_solver.
 Qed.
@@ -313,8 +328,8 @@ Lemma access1_write_is_Some β stk bor
   (BOR: access1_write_pre β stk bor) :
   is_Some (access1 stk AccessWrite bor β).
 Proof.
-  destruct BOR as (i & it & Eqi & Neqi & Eqit & Lti).
-  apply access1_is_Some. exists i, it. do 3 (split; [done|]).
+  destruct BOR as (i & it & Eqi & ND & Neqi & Eqit & Lti).
+  apply access1_is_Some. exists i, it. do 4 (split; [done|]).
   intros j jt Lt Eq. destruct (Lti _ _ Lt Eq) as [? PR]. split; [done|].
   move : PR. case perm; [..|naive_solver]; case perm; naive_solver.
 Qed.
@@ -587,21 +602,23 @@ Lemma access1_find_granting_agree stk kind bor β i1 i2 pm1 stk2:
   i1 = i2.
 Proof.
   intros FI. rewrite /access1 FI /=.
-  case rm_incompat => [? /= ?|//]. by simplify_eq.
+  destruct kind.
+  - case replace_check => [? /= ?|//]. by simplify_eq.
+  - case find_first_write_incompatible => [? /=|//].
+    case remove_check => [? /= ?|//]. by simplify_eq.
 Qed.
 
-Lemma reborrow1_is_Some stk old weak new β
-  (WEAK: if weak : bool then new.(perm) ≠ SharedReadOnly else True) :
+Lemma grant_is_Some stk old new β :
   let access :=
     if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
   access1_pre β stk access old →
-  is_Some (reborrow1 stk old weak new β).
+  is_Some (grant stk old new β).
 Proof.
-  intros access ACC. rewrite /reborrow1.
+  intros access ACC. rewrite /grant.
   destruct (find_granting_is_Some stk access old) as [[i pi] Eqi].
-  { destruct ACC as (i & it & Eqi & Eqt & NEq & Lt).
+  { destruct ACC as (i & it & Eqi & Eqt & ND & NEq & Lt).
     exists it. split; [by eapply elem_of_list_lookup_2|].
-    split; [done|]. intros Eqa. apply NEq. by rewrite Eqa. }
+    do 2 (split; [done|]). intros Eqa. apply NEq. by rewrite Eqa. }
   rewrite Eqi. cbn -[item_insert_dedup].
   destruct weak; [rewrite decide_False //; by eexists|].
   destruct (access1_is_Some _ _ _ _ ACC) as [[i' stk'] Eq].
@@ -621,7 +638,7 @@ Proof.
   rewrite /reborrowN. apply for_each_is_Some.
   - intros m []. rewrite -(Z2Nat.id m); [|done]. apply BLK.
     rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; [done..|lia].
-  - intros m stk Lt Eq. apply reborrow1_is_Some; [|by apply (STK _ _ Lt Eq)].
+  - intros m stk Lt Eq. apply grant_is_Some; [|by apply (STK _ _ Lt Eq)].
     simpl. case (decide (pm = SharedReadWrite)) => [Eqp|NEqp].
     + by rewrite bool_decide_true // orb_true_r Eqp.
     + by rewrite bool_decide_false // orb_false_r.
@@ -634,12 +651,12 @@ Lemma reborrowN_lookup (α1 α2 : stacks) β l n old new pm fweak protector
     ∃ stk', α2 !! (l +ₗ m) = Some stk' ∧
     let weak := bool_decide (pm = SharedReadWrite) in
     let item := mkItem pm new protector in
-    reborrow1 stk old (fweak || weak) item β = Some stk') ∧
+    grant stk old (fweak || weak) item β = Some stk') ∧
   (∀ m stk', (m < n)%nat → α2 !! (l +ₗ m) = Some stk' →
     ∃ stk, α1 !! (l +ₗ m) = Some stk ∧
     let weak := bool_decide (pm = SharedReadWrite) in
     let item := mkItem pm new protector in
-    reborrow1 stk old (fweak || weak) item β = Some stk').
+    grant stk old (fweak || weak) item β = Some stk').
 Proof.
   destruct (for_each_lookup _ _ _ _ _ EQB) as [HL1 [HL2 HL3]]. split; last split.
   - intros m Ge. apply HL3. intros i Lt Eq%shift_loc_inj. subst. lia.
@@ -730,7 +747,7 @@ Lemma reborrow_is_freeze_lookup h α β l old T kind new fweak prot α'
                         end in
   let weak := bool_decide (pm = SharedReadWrite) in
   let item := mkItem pm new prot in
-  reborrow1 stk old (fweak || weak) item β = Some stk'.
+  grant stk old (fweak || weak) item β = Some stk'.
 Proof.
   rewrite /reborrow. destruct kind as [| |[]]; intros EQB m stk' Lt Eq'.
   - apply reborrowN_lookup in EQB as [_ [_ HL]]. by apply HL.
@@ -774,13 +791,13 @@ Proof.
 Qed.
 
 
-Lemma reborrow1_weak_Some stk old new β stk' :
-  reborrow1 stk old true new β = Some stk' → ∃ i it,
+Lemma grant_weak_Some stk old new β stk' :
+  grant stk old true new β = Some stk' → ∃ i it,
   stk' = item_insert_dedup stk new i ∧
   let access := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
   list_find (matched_grant access old) stk = Some (i, it).
 Proof.
-  rewrite /reborrow1. case find_granting as [[i pi]|] eqn:Eqi; [|done].
+  rewrite /grant. case find_granting as [[i pi]|] eqn:Eqi; [|done].
   cbn -[item_insert_dedup]. case decide; [done|].
   apply fmap_Some in Eqi as [[i' it'] [HF ?]]. intros. simplify_eq.
   by exists i', it'.
@@ -839,7 +856,7 @@ Proof.
     set it := mkItem Unique new prot. move => RB'.
     rewrite -Eqs in STK.
     destruct (STK _ _ Lt Eq') as (io & ito & Eqo & Eqto & PMO & LtO). clear STK.
-    destruct (reborrow1_weak_Some _ _ _ _ _ RB') as (io' & ito' & Eqstk1 & HFo').
+    destruct (grant_weak_Some _ _ _ _ _ RB') as (io' & ito' & Eqstk1 & HFo').
     simpl in HFo'. apply list_find_Some_not_earlier in HFo' as [Eqo' [MGo' LtO']].
     have ?: io' = io.
     { case (decide (io' ≤ io)%nat) => [/le_lt_or_eq [Lto|//]|/Nat.nle_gt Gto];
