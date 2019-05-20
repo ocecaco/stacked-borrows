@@ -142,34 +142,87 @@ Proof.
   symmetry. apply dom_map_insert_is_Some. by eexists.
 Qed.
 
-Lemma rm_incompat_sublist β stk pm kind stk':
-  rm_incompat β stk pm kind = Some stk' → stk' `sublist_of` stk.
+Definition tagged_sublist (stk1 stk2: stack) :=
+  ∀ it1, it1 ∈ stk1 → ∃ it2,
+  it2 ∈ stk2 ∧ it1.(tg) = it2.(tg) ∧ it1.(protector) = it2.(protector).
+Instance tagged_sublist_preorder : PreOrder tagged_sublist.
 Proof.
-  revert stk'.
-  induction stk as [|it stk IH]; intros stk'; simpl; [intros; by simplify_eq|].
-  case compatible_with as [[]|]; [..|done]; simpl.
-  - case rm_incompat eqn:Eq; [|done]. simpl.
-    intros. simplify_eq. constructor. by apply IH.
-  - case protector => [?|]; [case is_active; [done|]|]; move => /IH ?; by constructor.
+  constructor.
+  - intros ??. naive_solver.
+  - move => ??? H1 H2 ? /H1 [? [/H2 ? [-> ->]]]. naive_solver.
 Qed.
 
-Lemma access1_sublist_of stk kind bor β n stk' :
-  access1 stk bor kind β = Some (n, stk') → stk' `sublist_of` stk.
+Instance tagged_sublist_proper stk : Proper ((⊆) ==> impl) (tagged_sublist stk).
+Proof. move => ?? SUB H1 ? /H1 [? [/SUB ? ?]]. naive_solver. Qed.
+
+Lemma tagged_sublist_app l1 l2 k1 k2 :
+  tagged_sublist l1 l2 → tagged_sublist k1 k2 →
+  tagged_sublist (l1 ++ k1) (l2 ++ k2).
+Proof.
+  move => H1 H2 it. setoid_rewrite elem_of_app.
+  move => [/H1|/H2]; naive_solver.
+Qed.
+
+Lemma remove_check_tagged_sublist β stk stk' idx:
+  remove_check β stk idx = Some stk' → tagged_sublist stk' stk.
+Proof.
+  revert stk' idx.
+  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  { destruct idx; [|done]. intros. by simplify_eq. }
+  destruct idx as [|idx]; [intros; by simplify_eq|].
+  case check_protector eqn:Eq; [|done].
+  move => /IH. apply tagged_sublist_proper. set_solver.
+Qed.
+
+Lemma replace_check'_tagged_sublist β acc stk stk':
+  replace_check' β acc stk = Some stk' → tagged_sublist stk' (acc ++ stk).
+Proof.
+  revert acc stk'.
+  induction stk as [|it stk IH]; intros acc stk'; simpl.
+  { intros. simplify_eq. by rewrite app_nil_r. }
+  case decide => ?; [case check_protector; [|done]|];
+    move => /IH; [|by rewrite -app_assoc].
+  move => H1 it1 /H1 [it2 [IN2 [Eq1 Eq2]]].
+  setoid_rewrite elem_of_app. setoid_rewrite elem_of_cons.
+  move : IN2 => /elem_of_app [/elem_of_app [?|/elem_of_list_singleton Eq]|?];
+    [naive_solver| |naive_solver].
+  subst it2. exists it. naive_solver.
+Qed.
+
+Lemma replace_check_tagged_sublist β stk stk':
+  replace_check β stk = Some stk' → tagged_sublist stk' stk.
+Proof. move => /replace_check'_tagged_sublist. by rewrite app_nil_l. Qed.
+
+Lemma access1_tagged_sublist stk kind bor β n stk' :
+  access1 stk kind bor β = Some (n, stk') → tagged_sublist stk' stk.
 Proof.
   rewrite /access1. case find_granting as [gip|]; [|done]. simpl.
-  case rm_incompat as [stk1|] eqn:Eq; [|done]. simpl. intros. simplify_eq.
-  rewrite -{2}(take_drop gip.1 stk). apply sublist_app; [|done].
-  move : Eq. by apply rm_incompat_sublist.
+  destruct kind.
+  - case replace_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros. simplify_eq.
+    rewrite -{2}(take_drop gip.1 stk). apply tagged_sublist_app; [|done].
+    move : Eq. by apply replace_check_tagged_sublist.
+  - case find_first_write_incompatible as [idx|]; [|done]. simpl.
+    case remove_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros. simplify_eq.
+    rewrite -{2}(take_drop gip.1 stk). apply tagged_sublist_app; [|done].
+    move : Eq. by apply remove_check_tagged_sublist.
 Qed.
 
 Lemma access1_non_empty stk kind bor β n stk' :
-  access1 stk bor kind β = Some (n, stk') → stk' ≠ [].
+  access1 stk kind bor β = Some (n, stk') → stk' ≠ [].
 Proof.
   rewrite /access1. case find_granting as [gip|] eqn:Eq1; [|done].
-  apply fmap_Some in Eq1 as [[i it] [[IN ?]%list_find_Some EQ]]. subst gip; simpl.
-  case rm_incompat as [stk1|] eqn:Eq2; [|done]. simpl. intros ?. simplify_eq.
-  have HL: drop n stk !! O = Some it by rewrite lookup_drop Nat.add_0_r IN.
-  move => /app_eq_nil [_ Eq]. by rewrite Eq in HL.
+  apply fmap_Some in Eq1 as [[i it] [[IN ?]%list_find_Some EQ]].
+  subst gip; simpl.
+  have ?: drop i stk ≠ [].
+  { move => ND. move : IN. by rewrite -(Nat.add_0_r i) -(lookup_drop) ND /=. }
+  destruct kind.
+  - case replace_check as [stk1|]; [|done].
+    simpl. intros ?. simplify_eq => /app_nil [_ ?]. by subst.
+  - case find_first_write_incompatible as [?|]; [|done]. simpl.
+    case remove_check as [?|]; [|done].
+    simpl. intros ?. simplify_eq => /app_nil [_ ?]. by subst.
 Qed.
 
 Lemma for_each_lookup α l n f α' :
@@ -225,7 +278,7 @@ Lemma for_each_access1 α β l n tg kind α' :
   for_each α l n false
           (λ stk, nstk' ← access1 stk kind tg β; Some nstk'.2) = Some α' →
   ∀ (l: loc) stk', α' !! l = Some stk' → ∃ stk, α !! l = Some stk ∧
-    stk' `sublist_of` stk ∧ (stk ≠ [] → stk' ≠ []).
+    tagged_sublist stk' stk ∧ (stk ≠ [] → stk' ≠ []).
 Proof.
   intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
   intros l1 stk1 Eq1.
@@ -238,7 +291,7 @@ Proof.
       as [stk [Eq [[n1 stk'] [Eq' Eq0]]%bind_Some]];
       [rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia|by rewrite -Eql2|].
     exists stk. split; [by rewrite Eql2|]. simplify_eq.
-    split; [by eapply access1_sublist_of|intros; by eapply access1_non_empty].
+    split; [by eapply access1_tagged_sublist|intros; by eapply access1_non_empty].
   - exists stk1. split; [|done]. rewrite -EQ3; [done|].
     intros i Lt Eq. apply NIN. rewrite Eq /=. lia.
   - exists stk1. split; [|done]. rewrite -EQ3; [done|].
@@ -261,8 +314,7 @@ Proof.
   intros ACC WF l' stk'.
   move => /for_each_access1 EQ.
   destruct (EQ _ _ _ _ _ _ ACC) as [stk [Eq [SUB ?]]].
-  intros it Ini. apply (WF _ _ Eq).
-  move : Ini. by apply elem_of_list_sublist_proper.
+  move => ? /SUB [? [IN [-> ->]]]. by apply (WF _ _ Eq _ IN).
 Qed.
 
 Lemma copy_step_wf σ σ' e e' efs h0 l bor T vl :
@@ -394,30 +446,23 @@ Proof.
   by destruct tg; simpl; intros ?; [lia..|done].
 Qed.
 
-Lemma retag_ref_clk_mono h α β clk l bor T kind bar is_2p bor' α' clk' :
-  retag_ref h α β clk l bor T kind bar is_2p = Some (bor', α', clk') →
+Lemma retag_ref_clk_mono h α β clk l bor T kind bar bor' α' clk' :
+  retag_ref h α β clk l bor T kind bar = Some (bor', α', clk') →
   (clk ≤ clk')%nat.
 Proof.
   rewrite /retag_ref.
   case tsize => ?; [by intros; simplify_eq|].
-  case reborrow eqn:Eqb; [simpl|done].
-  case is_2p; [|intros; simplify_eq; by lia].
-  destruct kind; [|done..].
-  case visit_freeze_sensitive => ?; [|done]. simpl. intros. simplify_eq. by lia.
+  case reborrow eqn:Eqb; [simpl|done]. intros. simplify_eq. lia.
 Qed.
 
-Lemma retag_ref_clk_bor_mono h α β clk l bor T kind bar is_2p bor' α' clk' :
-  retag_ref h α β clk l bor T kind bar is_2p = Some (bor', α', clk') →
+Lemma retag_ref_clk_bor_mono h α β clk l bor T kind bar bor' α' clk' :
+  retag_ref h α β clk l bor T kind bar = Some (bor', α', clk') →
   bor <b clk → bor' <b clk'.
 Proof.
   rewrite /retag_ref.
   case tsize => ?; [by intros; simplify_eq|].
-  case reborrow eqn:Eqb; [simpl|done].
-  case is_2p; last first.
-  { intros; simplify_eq. destruct kind; simpl; [lia..|done]. }
-  destruct kind; [|done..].
-  case visit_freeze_sensitive => ?; [|done]. simpl. intros. simplify_eq.
-  simpl. by lia.
+  case reborrow eqn:Eqb; [simpl|done]. intros. simplify_eq.
+  destruct kind; simpl; [lia..|done].
 Qed.
 
 Lemma item_insert_dedup_non_empty stk new n :
@@ -446,51 +491,68 @@ Proof.
       [case decide => ?; [set_solver|]..|]; [case decide => ?; [set_solver|]|..].
 Qed.
 
-Lemma reborrow1_non_empty stk bor weak new β stk':
-  reborrow1 stk bor weak new β = Some stk' →
+Lemma grant_non_empty stk bor new β stk':
+  grant stk bor new β = Some stk' →
   stk ≠ [] → stk' ≠ [].
 Proof.
-  rewrite /reborrow1.
-  case find_granting as [[n pm]|]; [|done].
-  destruct weak.
-  - case decide => ?; [done|]. simpl. intros ??. simplify_eq.
-    destruct stk. done. simpl. by apply item_insert_dedup_non_empty.
-  - cbn -[item_insert_dedup]. case access1 as [[n1 stk1]|] eqn:Eqa; [|done].
-    cbn -[item_insert_dedup]. case decide; [|done].
-    intros. simplify_eq. apply access1_non_empty in Eqa.
-    destruct stk1; [done|by case decide].
+  rewrite /grant. case find_granting as [[n pm]|]; [|done].
+  cbn -[item_insert_dedup].
+  destruct new.(perm). (* TODO: duplicated proofs *)
+  - case access1 as [[n1 stk1]|]; [|done].
+    simpl. intros ? _. simplify_eq. destruct stk1; [done|by case decide].
+  - case find_first_write_incompatible as [n1|]; [|done].
+    simpl. intros. simplify_eq. by apply item_insert_dedup_non_empty.
+  - case access1 as [[n1 stk1]|]; [|done].
+    simpl. intros ? _. simplify_eq. destruct stk1; [done|by case decide].
+  - case access1 as [[n1 stk1]|]; [|done].
+    simpl. intros ? _. simplify_eq. destruct stk1; [done|by case decide].
 Qed.
 
-Lemma sublist_stack_item_included stk stk' β clk  :
-  stk' `sublist_of` stk →
+Lemma tagged_sublist_stack_item_included stk stk' β clk  :
+  tagged_sublist stk' stk →
   stack_item_included stk β clk → stack_item_included stk' β clk.
-Proof. by move => SF HI si /(elem_of_list_sublist_proper _ _ _ SF) /HI. Qed.
+Proof. by move => SF HI si /SF [? [/HI ? [-> ->]]]. Qed.
 
 Lemma subseteq_stack_item_included stk stk' β clk  :
   stk' ⊆ stk →
   stack_item_included stk β clk → stack_item_included stk' β clk.
 Proof. by move => SF HI si /SF /HI. Qed.
 
-Lemma reborrow1_subseteq stk bor weak new β stk':
-  reborrow1 stk bor weak new β = Some stk' → stk' ⊆ new :: stk.
+Lemma subseteq_tagged_sublist stk stk' :
+  stk' ⊆ stk → tagged_sublist stk' stk.
+Proof. move => SUB ? /SUB. naive_solver. Qed.
+
+Lemma tagged_sublist_cons stk new:
+  tagged_sublist stk (new :: stk).
+Proof. intros ??. setoid_rewrite elem_of_cons. naive_solver. Qed.
+
+Lemma grant_tagged_sublist stk bor new β stk':
+  grant stk bor new β = Some stk' → tagged_sublist stk' (new :: stk).
 Proof.
-  rewrite /reborrow1.
+  rewrite /grant.
   case find_granting as [[n pm]|]; [|done].
-  destruct weak.
-  - case decide => ?; [done|]. simpl. intros. simplify_eq.
-    by apply item_insert_dedup_subseteq.
-  - cbn -[item_insert_dedup]. case access1 as [[n1 stk1]|] eqn:Eqa; [|done].
-    cbn -[item_insert_dedup]. case decide; [|done]. move => _ Eq.
-    rewrite (_: stk' = item_insert_dedup stk1 new 0); [|by inversion Eq].
-    etrans; [by apply item_insert_dedup_subseteq|].
-    apply access1_sublist_of, (sublist_skip new) in Eqa.
-    intros ?. by apply elem_of_list_sublist_proper.
+  cbn -[item_insert_dedup]. destruct new.(perm). (* TODO: duplicated proofs *)
+  - case access1 as [[n1 stk1]|] eqn:Eq1; [|done]. cbn -[item_insert_dedup].
+    intros. simplify_eq. apply access1_tagged_sublist in Eq1. etrans.
+    + apply subseteq_tagged_sublist, item_insert_dedup_subseteq.
+    + by apply (tagged_sublist_app [new] [new]).
+  - case find_first_write_incompatible as [n1|]; [|done].
+    simpl. intros. simplify_eq.
+    by apply subseteq_tagged_sublist, item_insert_dedup_subseteq.
+  - case access1 as [[n1 stk1]|] eqn:Eq1; [|done]. cbn -[item_insert_dedup].
+    intros. simplify_eq. apply access1_tagged_sublist in Eq1. etrans.
+    + apply subseteq_tagged_sublist, item_insert_dedup_subseteq.
+    + by apply (tagged_sublist_app [new] [new]).
+  - case access1 as [[n1 stk1]|] eqn:Eq1; [|done]. cbn -[item_insert_dedup].
+    intros. simplify_eq. apply access1_tagged_sublist in Eq1. etrans.
+    + apply subseteq_tagged_sublist, item_insert_dedup_subseteq.
+    + by apply (tagged_sublist_app [new] [new]).
 Qed.
 
-Lemma for_each_reborrow1 α β l n tg weak new α' :
-  for_each α l n false (λ stk, reborrow1 stk tg weak new β) = Some α' →
+Lemma for_each_grant α β l n tg new α' :
+  for_each α l n false (λ stk, grant stk tg new β) = Some α' →
   ∀ (l: loc) stk', α' !! l = Some stk' → ∃ stk, α !! l = Some stk ∧
-    stk' ⊆ new :: stk ∧ (stk ≠ [] → stk' ≠ []).
+    tagged_sublist stk' (new :: stk) ∧ (stk ≠ [] → stk' ≠ []).
 Proof.
   intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
   intros l1 stk1 Eq1.
@@ -503,44 +565,45 @@ Proof.
       as [stk [Eq Eq0]];
       [rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia|by rewrite -Eql2|].
     exists stk. split; [by rewrite Eql2|]. simplify_eq.
-    split; [by eapply reborrow1_subseteq|by eapply reborrow1_non_empty].
-  - exists stk1. split; [|set_solver]. rewrite -EQ3; [done|].
-    intros i Lt Eq. apply NIN. rewrite Eq /=. lia.
-  - exists stk1. split; [|set_solver]. rewrite -EQ3; [done|].
-    intros i Lt Eq. apply NEql. by rewrite Eq.
+    split; [by eapply grant_tagged_sublist|by eapply grant_non_empty].
+  - exists stk1. split; last split; [..|by apply tagged_sublist_cons|done].
+    rewrite -EQ3; [done|]. intros i Lt Eq. apply NIN. rewrite Eq /=. lia.
+  - exists stk1. split; last split; [..|by apply tagged_sublist_cons|done].
+    rewrite -EQ3; [done|]. intros i Lt Eq. apply NEql. by rewrite Eq.
 Qed.
 
-Lemma for_each_reborrow1_non_empty α β l n tg weak new α' :
-  for_each α l n false (λ stk, reborrow1 stk tg weak new β) = Some α' →
+Lemma for_each_grant_non_empty α β l n tg new α' :
+  for_each α l n false (λ stk, grant stk tg new β) = Some α' →
   wf_non_empty α → wf_non_empty α'.
 Proof.
-  move => /for_each_reborrow1 EQ1 WF ?? /EQ1 [? [? [? NE]]]. by eapply NE, WF.
+  move => /for_each_grant EQ1 WF ?? /EQ1 [? [? [? NE]]]. by eapply NE, WF.
 Qed.
 
-Lemma for_each_reborrow1_stack_item α β clk l n bor weak new α'
+Lemma for_each_grant_stack_item α β clk l n bor new α'
   (PR: match new.(protector) with Some c => is_Some (β !! c) | _ => True end)
   (TG: new.(tg) <b clk) :
-  for_each α l n false (λ stk, reborrow1 stk bor weak new β) = Some α' →
+  for_each α l n false (λ stk, grant stk bor new β) = Some α' →
   wf_stack_item α β clk → wf_stack_item α' β clk.
 Proof.
   intros ACC WF l' stk'.
-  move => /for_each_reborrow1 EQ.
-  destruct (EQ _ _ _ _ _ _ _ ACC) as [stk [Eq [SUB ?]]].
-  move => it /SUB /elem_of_cons [-> //|]. by apply (WF _ _ Eq).
+  move => /for_each_grant EQ.
+  destruct (EQ _ _ _ _ _ _ ACC) as [stk [Eq [SUB ?]]].
+  eapply tagged_sublist_stack_item_included; [eauto|].
+  move => it /elem_of_cons [-> //|]. by apply (WF _ _ Eq).
 Qed.
 
-Lemma reborrowN_wf_stack α β clk l n old new pm weak bar α'
+Lemma reborrowN_wf_stack α β clk l n old new pm bar α'
   (PR: match bar with Some c => is_Some (β !! c) | _ => True end)
   (TG: new <b clk) :
-  reborrowN α β l n old new pm weak bar = Some α' →
+  reborrowN α β l n old new pm bar = Some α' →
   wf_stack_item α β clk ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
   wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
   intros RB [WF1 WF2]. split; last split.
   - eapply for_each_dom; eauto.
-  - move : WF1. eapply for_each_reborrow1_stack_item; [..|eauto]; done.
-  - move : WF2. eapply for_each_reborrow1_non_empty; [..|eauto]; done.
+  - move : WF1. eapply for_each_grant_stack_item; [..|eauto]; done.
+  - move : WF2. eapply for_each_grant_non_empty; [..|eauto]; done.
 Qed.
 
 Lemma unsafe_action_wf_stack
@@ -630,15 +693,16 @@ Proof.
   by eapply Hf; eauto.
 Qed.
 
-Lemma reborrow_wf_stack h α β clk l old T kind new weak bar α'
+Lemma reborrow_wf_stack h α β clk l old T kind new bar α'
   (INCL: new <b clk)
   (BAR : match bar with Some c => is_Some (β !! c) | _ => True end) :
-  reborrow h α β l old T kind new weak bar = Some α' →
+  reborrow h α β l old T kind new bar = Some α' →
   wf_stack_item α β clk ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
   wf_stack_item α' β clk ∧ wf_non_empty α'.
 Proof.
-  rewrite /reborrow. destruct kind.
+  rewrite /reborrow. destruct kind as [[]| |].
+  - by eapply reborrowN_wf_stack; eauto.
   - by eapply reborrowN_wf_stack; eauto.
   - apply visit_freeze_sensitive_wf_stack.
     intros ???????. by eapply reborrowN_wf_stack.
@@ -648,10 +712,10 @@ Proof.
       intros ?????. by eapply reborrowN_wf_stack.
 Qed.
 
-Lemma retag_ref_wf_stack h α β clk x l old T kind bar is_2p bor' α' clk'
+Lemma retag_ref_wf_stack h α β clk x l old T kind bar bor' α' clk'
   (BAR : match bar with Some c => is_Some (β !! c) | _ => True end)
   (Eqx: h !! x = Some $ LitV (LitLoc l old)) :
-  retag_ref h α β clk l old T kind bar is_2p = Some (bor', α', clk') →
+  retag_ref h α β clk l old T kind bar = Some (bor', α', clk') →
   wf_mem_tag h clk →
   wf_stack_item α β clk → wf_non_empty α →
   dom (gset loc) h ≡ dom (gset loc) (<[x:=LitV (LitLoc l bor')]> h) ∧
@@ -670,21 +734,10 @@ Proof.
   move : RE WF2 WF3.
   rewrite /retag_ref. case tsize eqn:Eq; [by intros; simplify_eq|].
   case reborrow as [α1|] eqn:Eq1; [simpl|done].
-  destruct is_2p; [destruct kind|]; [|done..|].
-  - case visit_freeze_sensitive as [α2|] eqn:Eq2; [simpl|done].
-    intros ?. simplify_eq. intros ??.
-    move : Eq2 => /visit_freeze_sensitive_wf_stack WF.
-    have BOR: (Tagged clk) <b (S clk) by (simpl; lia).
-    edestruct (reborrow_wf_stack h α β ((S clk)) _ _ _ _ _ _ _ α1 BOR BAR Eq1)
-    as [EqD WF'].
-    + split; [|done]. eapply wf_stack_item_mono; [|eauto]. by lia.
-    + rewrite EqD. apply WF; [|done].
-      intros ?????. apply reborrowN_wf_stack; [simpl; by lia|].
-      eapply (tag_value_included_trans _ clk); [lia|]. by eapply WF1.
-  - intros ?. simplify_eq. intros WF2 WF3.
-    eapply reborrow_wf_stack; eauto.
-    + destruct kind; simpl; [lia..|done].
-    + split; [|done]. eapply wf_stack_item_mono; [|exact WF2]. by lia.
+  intros ?. simplify_eq. intros WF2 WF3.
+  eapply reborrow_wf_stack; eauto.
+  - destruct kind; simpl; [lia..|done].
+  - split; [|done]. eapply wf_stack_item_mono; [|exact WF2]. by lia.
 Qed.
 
 Lemma retag_wf_stack h α clk β l kind T h' α' clk' :

@@ -653,19 +653,19 @@ Fixpoint remove_check β (stk: stack) (idx: nat) : option stack :=
 
 (* Replace any Unique permission with Disabled, starting from the top of the
   stack. Check that replaced item do not have active protectors *)
+Fixpoint replace_check' β (acc stk : stack) : option stack :=
+  match stk with
+  | [] => Some acc
+  | it :: stk =>
+      if decide (it.(perm) = Unique) then
+        if check_protector β it
+        then let new := mkItem Disabled it.(tg) it.(protector) in
+             replace_check' β (acc ++ [new]) stk
+        else None
+      else replace_check' β (acc ++ [it]) stk
+  end.
 Definition replace_check β (stk: stack) : option stack :=
-  let fix go (acc: stack) stk : option stack :=
-    match stk with
-    | [] => Some acc
-    | it :: stk =>
-        if decide (it.(perm) = Unique) then
-          if check_protector β it
-          then let new := mkItem Disabled it.(tg) it.(protector) in
-               go (acc ++ [new]) stk
-          else None
-        else go (acc ++ [it]) stk
-    end
-  in go [] stk.
+  replace_check' β [] stk.
 
 (* Test if a memory `access` using pointer tagged `tg` is granted.
    If yes, return the index (in the old stack) of the item that granted it,
