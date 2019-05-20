@@ -46,7 +46,7 @@ Proof.
               end) _); by intros [].
 Qed.
 
-Inductive permission := Unique | SharedReadWrite | SharedReadOnly.
+Inductive permission := Unique | SharedReadWrite | SharedReadOnly | Disabled.
 Instance permission_eq_dec : EqDecision permission.
 Proof. solve_decision. Defined.
 Instance permission_countable : Countable permission.
@@ -54,11 +54,12 @@ Proof.
   refine (inj_countable
     (λ p,
       match p with
-      | Unique => 0 | SharedReadWrite => 1 | SharedReadOnly => 2
+      | Unique => 0 | SharedReadWrite => 1 | SharedReadOnly => 2 | Disabled => 3
       end)
     (λ s,
       match s with
-      | 0 => Some Unique | 1 => Some SharedReadWrite | _ => Some SharedReadOnly
+      | 0 => Some Unique | 1 => Some SharedReadWrite | 2 => Some SharedReadOnly
+      | _ => Some Disabled
       end) _); by intros [].
 Qed.
 
@@ -577,79 +578,14 @@ Inductive base_step :
 (** CORE SEMANTICS *)
 
 Inductive access_kind := AccessRead | AccessWrite.
-Definition to_access_kind (kind : ref_kind): access_kind :=
-  match kind with
-  | UniqueRef => AccessWrite
-  | _ => AccessRead
-  end.
 
 Definition grants (perm: permission) (access: access_kind) : bool :=
   match perm, access with
-  (* permission can be used for any access *)
-  | Unique, _ | SharedReadWrite, _ => true
-  (* SharedReadOnly can only read *)
-  | SharedReadOnly, AccessRead => true
+  | Disabled, _ => false
+  (* All items grant read access.
+    All items except SharedReadOnly grant write access. *)
   | SharedReadOnly, AccessWrite => false
-  end.
-
-(* Check if the `high` permission (which is higher above in the stack) is NOT
-  invalidated by the `matched` permission. *)
-Definition compatible_with
-  (matched: permission) (access: access_kind) (high: permission) : option bool :=
-  match matched, access, high with
-  | SharedReadOnly, _, SharedReadWrite
-  | SharedReadOnly, _, Unique =>
-      (* bug! SharedReadWrite/Unique can't be above SharedReadOnly. *)
-      None
-  | _, AccessWrite, SharedReadOnly =>
-      (* A write access invalidates all unmatched read-only pointers. *)
-      Some false
-  | _, _, Unique =>
-      (* All unmatched Unique pointers are invalidated. *)
-      Some false
-  | Unique, AccessWrite, _ =>
-      (* A Unique write invalidates everything *)
-      Some false
-  | SharedReadWrite, _, SharedReadWrite =>
-      (* A SharedReadWrite doesn't invalidate other SharedReadWrite's *)
-      Some true
-  | _, AccessRead, SharedReadWrite
-  | _, AccessRead, SharedReadOnly =>
-      (* A read access doesn't invalidate other shared permissions *)
-      Some true
-  end.
-
-Definition is_active β (c: call_id) : bool :=
-  bool_decide (β !! c = Some true).
-Definition is_active_protector β (it: item) :=
-  match it.(protector) with
-  | Some c => β !! c = Some true
-  | _ => False
-  end.
-Instance is_active_protector_dec β : Decision (is_active_protector β it).
-Proof. intros it. rewrite /is_active_protector. case_match; solve_decision. Qed.
-(* Find the top active protector *)
-Definition find_top_active_protector β (stk: stack) :=
-  list_find (is_active_protector β) stk.
-
-(* Remove from `stk` the items that are incompatiable with `matched` & `access` *)
-Fixpoint rm_incompat β (stk: stack) (matched: permission) (access: access_kind)
-  : option stack :=
-  match stk with
-  | [] => Some []
-  | it :: stk =>
-      compatible ← compatible_with matched access it.(perm) ;
-      if compatible : bool then
-        (* compatible, keep it *)
-        stk' ← rm_incompat β stk matched access; Some (it :: stk')
-      else
-        (* incompatiable,
-           remove but check that we are not removing an active protector *)
-        match it.(protector) with
-        | None => rm_incompat β stk matched access
-        | Some c =>
-          if is_active β c then None else rm_incompat β stk matched access
-        end
+  | _, _ => true
   end.
 
 Definition matched_grant (access: access_kind) (bor: tag) (it: item) :=
@@ -664,17 +600,20 @@ Definition find_granting (stk: stack) (access: access_kind) (bor: tag) :
   option (nat * permission) :=
   (λ nit, (nit.1, nit.2.(perm))) <$> (list_find (matched_grant access bor) stk).
 
-(* Test if a memory `access` using pointer tagged `bor` is granted.
-   If yes, return the index (in the old stack) of the item that granted it,
-   as well as the new stack. *)
-Definition access1 (stk: stack) (access: access_kind) (bor: tag) β
-  : option (nat * stack) :=
-  (* Step 1: Find granting item. *)
-  g_idx_p ← find_granting stk access bor;
-  (* Step 2: Remove incompatiable items. *)
-  stk' ← rm_incompat β (take g_idx_p.1 stk) g_idx_p.2 access;
-  Some (g_idx_p.1, stk' ++ drop g_idx_p.1 stk).
 
+Definition is_active β (c: call_id) : bool :=
+  bool_decide (β !! c = Some true).
+Definition is_active_protector β (it: item) :=
+  match it.(protector) with
+  | Some c => β !! c = Some true
+  | _ => False
+  end.
+Instance is_active_protector_dec β : Decision (is_active_protector β it).
+Proof. intros it. rewrite /is_active_protector. case_match; solve_decision. Qed.
+
+(* Find the top active protector *)
+Definition find_top_active_protector β (stk: stack) :=
+  list_find (is_active_protector β) stk.
 (* Checks to deallocate a location: Like a write access, but also there must be
   no active protectors at all. *)
 Definition dealloc1 (stk: stack) (bor: tag) β : option unit :=
@@ -682,6 +621,71 @@ Definition dealloc1 (stk: stack) (bor: tag) β : option unit :=
   found ← find_granting stk AccessWrite bor;
   (* Step 2: Check that there are no active protectors left. *)
   if find_top_active_protector β stk then None else Some ().
+
+(* Find the index RIGHT BEFORE the first incompatiable item *)
+Definition find_first_write_incompatible
+  (stk: stack) (pm: permission) : option nat :=
+  match pm with
+  | SharedReadOnly | Disabled => None
+  | Unique => Some (length stk)
+  | SharedReadWrite =>
+      idx ← list_find (λ it, it.(perm) ≠ SharedReadWrite) (reverse stk);
+      Some ((length stk) - idx.1)%nat
+  end.
+
+Definition check_protector β (it: item) : bool :=
+  match it.(protector) with
+  | None => true
+  | Some c => if is_active β c then false else true
+  end.
+
+(* Remove from `stk` the items before `idx`.
+  Check that removed items do not have active protectors.
+  The check is run from the top to before the `idx`. *)
+Fixpoint remove_check β (stk: stack) (idx: nat) : option stack :=
+  match idx, stk with
+  (* Assumption: idx ≤ length stk *)
+  | S _, [] => None
+  | O, stk => Some stk
+  | S idx, it :: stk =>
+      if check_protector β it then remove_check β stk idx else None
+  end.
+
+(* Replace any Unique permission with Disabled, starting from the top of the
+  stack. Check that replaced item do not have active protectors *)
+Definition replace_check β (stk: stack) : option stack :=
+  let fix go (acc: stack) stk : option stack :=
+    match stk with
+    | [] => Some acc
+    | it :: stk =>
+        if decide (it.(perm) = Unique) then
+          if check_protector β it
+          then let new := mkItem Disabled it.(tg) it.(protector) in
+               go (acc ++ [new]) stk
+          else None
+        else go (acc ++ [it]) stk
+    end
+  in go [] stk.
+
+(* Test if a memory `access` using pointer tagged `tg` is granted.
+   If yes, return the index (in the old stack) of the item that granted it,
+   as well as the new stack. *)
+Definition access1 (stk: stack) (access: access_kind) (tg: tag) β
+  : option (nat * stack) :=
+  (* Step 1: Find granting item. *)
+  idx_p ← find_granting stk access tg;
+  (* Step 2: Remove incompatiable items. *)
+  match access with
+  | AccessWrite =>
+      (* Remove everything above the write-compatible items, like a proper stack. *)
+      incompat_idx ← find_first_write_incompatible (take idx_p.1 stk) idx_p.2;
+      stk' ← remove_check β (take idx_p.1 stk) incompat_idx;
+      Some (idx_p.1, stk' ++ drop idx_p.1 stk)
+  | AccessRead =>
+      (* On a read, *disable* all `Unique` above the granting item. *)
+      stk' ← replace_check β (take idx_p.1 stk);
+      Some (idx_p.1, stk' ++ drop idx_p.1 stk)
+  end.
 
 (* Initialize [l, l + n) with singleton stacks of `tg` *)
 Fixpoint init_stacks α (l:loc) (n:nat) (tg: tag) : stacks :=
@@ -825,7 +829,7 @@ Definition visit_freeze_sensitive {A: Type}
 
 
 (* Insert `it` into `stk` at `idx` unless `it` is equal to its neighbors. *)
-Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) :=
+Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) : stack :=
   match idx with
   | O =>
     match stk with
@@ -845,44 +849,32 @@ Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) :=
     end
   end.
 
-(* Insert a `new` tag derived from a parent tag `derived_from`.
-   `weak` controls whether this is a weak reborrow: weak reborrows do not act as
-   accesses, and they add the new item directly on top of the one it is derived
-   from instead of all the way at the top of the stack. *)
-Definition reborrow1
-  (stk: stack) (derived_from: tag) (weak: bool) (new: item) β : option stack :=
+(* Insert a `new` tag derived from a parent tag `derived_from`. *)
+Definition grant
+  (stk: stack) (derived_from: tag) (new: item) β : option stack :=
   (* Figure out which access `new` allows *)
   let access := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
   (* Figure out which item grants our parent (`derived_from`) this kind of access *)
-  g_idx_p ← find_granting stk access derived_from;
-  let derived_from_idx := g_idx_p.1 in
-  if weak then
-    if decide (new.(perm) = SharedReadOnly)
-    then None (* NO weak SharedReadOnly reborrows *)
-    else (* place `new` right above `derived_from` *)
-      Some (item_insert_dedup stk new derived_from_idx)
-  else
-    (* an actual access, let's check! *)
+  idx_p ← find_granting stk access derived_from;
+  match new.(perm) with
+  | SharedReadWrite =>
+    (* access is AccessWrite *)
+    new_idx ← find_first_write_incompatible (take idx_p.1 stk) idx_p.2;
+    Some (item_insert_dedup stk new new_idx)
+  | _ =>
+    (* an actual access check! *)
     nstk' ← access1 stk access derived_from β;
-    match nstk' with
-    | (idx', stk') =>
-        if decide (idx' = derived_from_idx) (* this must always be true *)
-        then (* insert `new` to top of the stack *)
-          Some (item_insert_dedup stk' new O)
-        else (* UNREACHABLE *) None
-    end.
+    Some (item_insert_dedup nstk'.2 new O)
+  end.
 
-Definition reborrowN α β l n old_tag new_tag perm
-  (force_weak: bool) (protector: option call_id) :=
-  (* mutable raw pointer/shared refs are weak borrows. *)
-  let weak := bool_decide (perm = SharedReadWrite) in
-  let item := mkItem perm new_tag protector in
-  for_each α l n false (λ stk, reborrow1 stk old_tag (force_weak || weak) item β).
+Definition reborrowN α β l n old_tag new_tag pm prot :=
+  let it := mkItem pm new_tag prot in
+  for_each α l n false (λ stk, grant stk old_tag it β).
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
 Definition reborrow h α β l (old_tag: tag) T (kind: ref_kind)
-  (new_tag: tag) (force_weak: bool) (protector: option call_id) :=
+  (new_tag: tag) (protector: option call_id) :=
   match kind with
   | SharedRef | RawRef false =>
       (* for shared refs and const raw pointer, treat Unsafe as SharedReadWrite
@@ -891,19 +883,19 @@ Definition reborrow h α β l (old_tag: tag) T (kind: ref_kind)
         (λ α' l' sz frozen,
           (* If is in Unsafe, use SharedReadWrite, otherwise SharedReadOnly *)
           let perm := if frozen then SharedReadOnly else SharedReadWrite in
-          reborrowN α' β l' sz old_tag new_tag perm force_weak protector) α
-  | UniqueRef =>
+          reborrowN α' β l' sz old_tag new_tag perm protector) α
+  | UniqueRef false =>
       (* mutable refs or Box use Unique *)
-      reborrowN α β l (tsize T) old_tag new_tag Unique force_weak protector
-  | RawRef true =>
+      reborrowN α β l (tsize T) old_tag new_tag Unique protector
+  | UniqueRef true | RawRef true =>
       (* mutable raw pointer uses SharedReadWrite *)
-      reborrowN α β l (tsize T) old_tag new_tag SharedReadWrite force_weak protector
+      reborrowN α β l (tsize T) old_tag new_tag SharedReadWrite protector
   end.
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
 Definition retag_ref h α β (clk: ptr_id) l (old_tag: tag) T
-  (kind: ref_kind) (protector: option call_id) (two_phase: bool)
+  (kind: ref_kind) (protector: option call_id)
   : option (tag * stacks * ptr_id) :=
   match tsize T with
   | O => (* Nothing to do for zero-sized types *)
@@ -914,17 +906,8 @@ Definition retag_ref h α β (clk: ptr_id) l (old_tag: tag) T
                      | _ => Tagged clk
                      end in
       (* reborrow old_tag with new_tag *)
-      α' ← reborrow h α β l old_tag T kind new_tag
-                    (* force_weak : *) two_phase protector;
-      if two_phase
-      then match kind with
-          | UniqueRef => (* two-phase only for mut borrow *)
-              (* second reborrow, no protector *)
-              α'' ← reborrow h α' β l new_tag T SharedRef old_tag false None ;
-              Some (new_tag, α'', S clk)
-          | _ => None
-          end
-      else Some (new_tag, α', S clk)
+      α' ← reborrow h α β l old_tag T kind new_tag protector;
+      Some (new_tag, α', S clk)
   end.
 
 (* This implements EvalContextExt::retag *)
@@ -938,19 +921,20 @@ Equations retag h α (clk: ptr_id) β (x: loc) (kind: retag_kind) T :
         let qualify : option (ref_kind * option call_id) :=
           match pk, kind with
           (* Mutable reference *)
-          | RefPtr Mutable, _ => Some (UniqueRef, adding_protector kind)
+          | RefPtr Mutable, _ =>
+              Some (UniqueRef (is_two_phase kind), adding_protector kind)
           (* Immutable reference *)
           | RefPtr Immutable, _ => Some (SharedRef, adding_protector kind)
           (* If is both raw ptr and Raw retagging, no protector *)
           | RawPtr mut, RawRt => Some (RawRef (bool_decide (mut = Mutable)), None)
           (* Box pointer, no protector *)
-          | BoxPtr, _ => Some (UniqueRef, None)
+          | BoxPtr, _ => Some (UniqueRef false, None)
           (* Ignore Raw pointer otherwise *)
           | RawPtr _, _ => None
           end in
         match qualify with
         | Some (rkind, protector) =>
-            bac ← retag_ref h α β clk l otag Tr rkind protector (is_two_phase kind) ;
+            bac ← retag_ref h α β clk l otag Tr rkind protector ;
             Some (<[x := LitV (LitLoc l bac.1.1)]>h, bac.1.2, bac.2)
         | None => Some (h, α, clk)
         end ;

@@ -8,13 +8,12 @@ Set Default Proof Using "Type".
 
 Inductive mutability := Mutable | Immutable.
 Inductive ref_kind :=
-  | UniqueRef (* `&mut` and `Box` *)
+  | UniqueRef (two_phase: bool) (* `&mut` and `Box` *)
   | SharedRef (* `&`, with or without interior mutability *)
   | RawRef (mutable: bool) (* `*mut`/`*const`, raw pointers *)
   .
-Definition is_unique_ref (kind: ref_kind) : bool :=
-  match kind with UniqueRef => true | _ => false end.
-Inductive pointer_kind := RefPtr (mut: mutability) | RawPtr (mut: mutability)  | BoxPtr.
+Inductive pointer_kind :=
+  RefPtr (mut: mutability) | RawPtr (mut: mutability) | BoxPtr.
 
 Inductive type :=
   | Scalar (sz: nat)
