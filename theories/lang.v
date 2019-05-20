@@ -626,11 +626,13 @@ Definition dealloc1 (stk: stack) (bor: tag) β : option unit :=
 Definition find_first_write_incompatible
   (stk: stack) (pm: permission) : option nat :=
   match pm with
-  | SharedReadOnly | Disabled => None
   | Unique => Some (length stk)
   | SharedReadWrite =>
-      idx ← list_find (λ it, it.(perm) ≠ SharedReadWrite) (reverse stk);
-      Some ((length stk) - idx.1)%nat
+      match (list_find (λ it, it.(perm) ≠ SharedReadWrite) (reverse stk)) with
+      | Some (idx, _) => Some ((length stk) - idx)%nat
+      | _ => Some O
+      end
+  | SharedReadOnly | Disabled => None
   end.
 
 Definition check_protector β (it: item) : bool :=

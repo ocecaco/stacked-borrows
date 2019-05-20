@@ -184,7 +184,7 @@ Lemma replace_check'_is_Some β acc stk :
 Proof.
   revert acc. induction stk as [|si stk IH]; intros acc PR; simpl; [by eexists|].
   case decide => EqU; last by (apply IH; set_solver).
-  rewrite (_: check_protector β si = true); first by (apply IH; set_solver).
+  rewrite (Is_true_eq_true (check_protector β si)); first by (apply IH; set_solver).
   have IN: si ∈ si :: stk by set_solver. apply PR in IN; [|done].
   move : IN. rewrite /check_protector /item_inactive_protector.
   case si.(protector) => [? /negb_prop_intro|//]. by case is_active.
@@ -194,6 +194,38 @@ Lemma replace_check_is_Some β stk :
   (∀ it, it ∈ stk → it.(perm) = Unique → item_inactive_protector β it) →
   is_Some (replace_check β stk).
 Proof. move => /replace_check'_is_Some IS. by apply IS. Qed.
+
+Lemma find_first_write_incompatible_is_Some stk pm:
+  pm ≠ Disabled → pm ≠ SharedReadOnly →
+  is_Some (find_first_write_incompatible stk pm).
+Proof.
+  intros. rewrite /find_first_write_incompatible.
+  destruct pm; [by eexists| |done..].
+  case list_find as [[]|]; by eexists.
+Qed.
+
+Lemma find_first_write_incompatible_length stk pm idx :
+  find_first_write_incompatible stk pm = Some idx → (idx ≤ length stk)%nat.
+Proof.
+  rewrite /find_first_write_incompatible.
+  destruct pm; [by intros; simplify_eq| |done..].
+  case list_find as [[]|]; intros; simplify_eq; lia.
+Qed.
+
+Lemma remove_check_is_Some β stk idx :
+  (idx ≤ length stk)%nat →
+  (∀ i it, (i < idx)%nat → stk !! i = Some it → item_inactive_protector β it) →
+  is_Some (remove_check β stk idx).
+Proof.
+  revert idx. induction stk as [|si stk IH]; simpl; intros idx Le PR.
+  { apply le_n_0_eq in Le. subst idx. by eexists. }
+  destruct idx as [|idx]; [by eexists|].
+  have IA: item_inactive_protector β si by (apply (PR O); [lia|done]).
+  rewrite (Is_true_eq_true (check_protector β si)).
+  - apply IH; [lia|]. intros i ??. apply (PR (S i)). lia.
+  - move : IA. rewrite /check_protector /item_inactive_protector.
+    case si.(protector) => [? /negb_prop_intro|//]. by case is_active.
+Qed.
 
 Lemma grants_read_all pm: pm ≠ Disabled → grants pm AccessRead.
 Proof. by case pm. Qed.
@@ -262,23 +294,30 @@ Proof.
       destruct kind; [by apply NEq1, GR|]. destruct NEq1 as [OR|OR].
       + move : GR. rewrite /matched_grant OR /=. naive_solver.
       + by apply OR, GR. } simpl.
+  have ?: (i ≤ length stk)%nat. { by eapply Nat.lt_le_incl, lookup_lt_Some. }
   destruct kind.
   - destruct (replace_check_is_Some β (take i stk)) as [? Eq2];
       [|rewrite Eq2 /=; by eexists].
     intros jt [j Eqj]%elem_of_list_lookup_1 IU.
-    have ?: (i ≤ length stk)%nat. { by eapply Nat.lt_le_incl, lookup_lt_Some. }
     have ?: (j < i)%nat.
     { rewrite -(take_length_le stk i); [|done]. by eapply lookup_lt_Some. }
-  (* destruct (rm_incompat_is_Some β (take i stk) it.(perm) kind) as [? Eq2];
-    [|rewrite Eq2 /=; by eexists].
-  intros jt [j Eqj]%elem_of_list_lookup_1.
-  have ?: (i ≤ length stk)%nat. { by eapply Nat.lt_le_incl, lookup_lt_Some. }
-  have ?: (j < i)%nat.
-  { rewrite -(take_length_le stk i); [|done]. by eapply lookup_lt_Some. }
-  destruct (Lti j jt) as [Eq1 PR]; [done|..].
-  - symmetry. by rewrite -Eqj lookup_take.
-  - move : PR. rewrite /compatible_with.
-    case it.(perm); case jt.(perm); destruct kind; naive_solver. *)
+    destruct (Lti j jt) as [Eq1 PR]; [done|..].
+    + symmetry. by rewrite -Eqj lookup_take.
+    + move : PR. case it.(perm); [..|rewrite IU|done]; naive_solver.
+  - destruct (find_first_write_incompatible_is_Some (take i stk) it.(perm))
+      as [idx Eqx]; [done|by apply IW|].
+    rewrite Eqx /=.
+    destruct (remove_check_is_Some β (take i stk) idx) as [stk' Eq'];
+      [..|rewrite Eq'; by eexists].
+    + move : Eqx. apply find_first_write_incompatible_length.
+    + intros j jt Lt Eqj.
+      have ?: (j < i)%nat.
+      { rewrite -(take_length_le stk i); [|done]. by eapply lookup_lt_Some. }
+      destruct (Lti j jt) as [Eq1 PR]; [done|..].
+      * symmetry. by rewrite -Eqj lookup_take.
+      * move : PR. case it.(perm); [naive_solver| | |done].
+        { simpl in Eq1. admit. }
+        { simpl in Eq1. admit. }
 Admitted.
 
 Lemma access1_read_is_Some β stk bor
