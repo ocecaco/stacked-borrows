@@ -36,25 +36,44 @@ Record state_wf' σ := {
 
 Instance state_wf : Wellformed state :=  state_wf'.
 
-Implicit Type (ρ: cfg bor_lang).
-
-(* TODO: this may need strengthening *)
-Definition cfg_wf' ρ : Prop := Wf ρ.2.
-Instance cfg_wf : Wellformed (cfg bor_lang) :=  cfg_wf'.
-
 (** Terminal states *)
 Class Terminal A := terminal : A → Prop.
 Existing Class terminal.
 
-Definition epxr_terminal' (e: expr) : Prop := is_Some (to_val e).
-Instance expr_terminal : Terminal expr := epxr_terminal'.
-Definition threads_terminal' (el: list expr) := ∀ e, e ∈ el → terminal e.
-Instance threads_terminal : Terminal (list expr) := threads_terminal'.
-Definition cfg_terminal' ρ : Prop := terminal ρ.1.
-Instance cfg_terminal : Terminal (cfg bor_lang) := cfg_terminal'.
+Definition expr_terminal' (e: expr) : Prop := is_Some (to_val e).
+Instance expr_terminal : Terminal expr := expr_terminal'.
+
+Instance expr_terminal_dec (e: expr): Decision (terminal e).
+Proof.
+  rewrite /terminal /expr_terminal /expr_terminal'.
+  destruct (to_val e); solve_decision.
+Qed.
+
+Lemma expr_terminal_True (e: expr) : terminal e ↔ is_Some (to_val e).
+Proof. done. Qed.
+
+Lemma expr_terminal_False (e: expr) : ¬ terminal e ↔ to_val e = None.
+Proof.
+  split.
+  - destruct (to_val e) eqn:Eqv; [|done].
+    intros TERM. exfalso. apply TERM. by eexists.
+  - intros Eq1 [? Eq2]. by rewrite Eq1 in Eq2.
+Qed.
 
 (** Thread steps *)
 Inductive thread_step (eσ1 eσ2 : expr * state) : Prop :=
 | ThreadStep ev efs
     (PRIM: prim_step eσ1.1 eσ1.2 ev eσ2.1 eσ2.2 efs)
 .
+
+(*=================================== UNUSED =================================*)
+Implicit Type (ρ: cfg bor_lang).
+
+(* TODO: this may need strengthening *)
+Definition cfg_wf' ρ : Prop := Wf ρ.2.
+Instance cfg_wf : Wellformed (cfg bor_lang) :=  cfg_wf'.
+
+Definition threads_terminal' (el: list expr) := ∀ e, e ∈ el → terminal e.
+Instance threads_terminal : Terminal (list expr) := threads_terminal'.
+Definition cfg_terminal' ρ : Prop := terminal ρ.1.
+Instance cfg_terminal : Terminal (cfg bor_lang) := cfg_terminal'.

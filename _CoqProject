@@ -10,3 +10,4 @@ theories/steps_wf.v
 theories/steps_progress.v
 theories/examples.v
 theories/simulation.v
+theories/adequacy.v
