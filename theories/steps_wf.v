@@ -837,7 +837,7 @@ Proof.
 Qed.
 
 (** SysCall step *)
-Lemma syscall_step_wf σ σ' e e' id efs h0 :
+(* Lemma syscall_step_wf σ σ' e e' id efs h0 :
   base_step e σ.(cheap) (SysCallEvt id) e' h0 efs →
   instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (SysCallEvt id)
@@ -848,7 +848,7 @@ Proof.
   intros BS IS WF.
   inversion BS; clear BS; simplify_eq;
   inversion IS; clear IS; simplify_eq; apply WF.
-Qed.
+Qed. *)
 
 Lemma head_step_wf σ σ' e e' obs efs :
   head_step e σ obs e' σ' efs → Wf σ → Wf σ'.
@@ -861,7 +861,7 @@ Proof.
   - eapply newcall_step_wf; eauto.
   - eapply endcall_step_wf; eauto.
   - eapply retag_step_wf; eauto.
-  - eapply syscall_step_wf; eauto.
+  (* - eapply syscall_step_wf; eauto. *)
   - eapply silent_step_wf; eauto.
 Qed.
 

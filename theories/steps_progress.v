@@ -1186,10 +1186,10 @@ Proof.
   done.
 Qed.
 
-Lemma syscall_head_step σ id :
+(* Lemma syscall_head_step σ id :
   head_step (SysCall id) σ [SysCallEvt id] #☠ σ [].
 Proof.
   have EE: ∃ σ', head_step (SysCall id) σ [SysCallEvt id] #☠ σ' [] ∧ σ' = σ.
   { eexists. split. econstructor; econstructor. by destruct σ. }
   destruct EE as [? [? ?]]. by subst.
-Qed.
+Qed. *)

@@ -164,9 +164,9 @@ Inductive expr :=
 (* case *)
 | Case (e : expr) (el: list expr)
 (* concurrency *)
-| Fork (e : expr)
+(* | Fork (e : expr) *)
 (* observable behavior *)
-| SysCall (id: nat)
+(* | SysCall (id: nat) *)
 .
 
 Bind Scope expr_scope with expr.
@@ -189,12 +189,12 @@ Arguments AtomWrite _%E _%E.
 Arguments AtomRead _%E.
 Arguments Retag _%E _ _%E.
 Arguments Case _%E _%E.
-Arguments Fork _%E.
+(* Arguments Fork _%E. *)
 
 (** Closedness *)
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
-  | Lit _ | Place _ _ _ | Alloc _ | NewCall | SysCall _ => true
+  | Lit _ | Place _ _ _ | Alloc _ | NewCall (* | SysCall _ *) => true
   | Var x => bool_decide (x ∈ X)
   | Rec f xl e => is_closed (f :b: xl +b+ X) e
   | BinOp _ e1 e2 | AtomWrite e1 e2 | Write e1 e2 | Retag e1 _ e2
@@ -202,7 +202,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | TVal el => forallb (is_closed X) el
   | App e el | Case e el => is_closed X e && forallb (is_closed X) el
   | AtomRead e | Copy e | Deref e _ | Ref e | Field e _
-    | Free e | EndCall e | Fork e => is_closed X e
+    | Free e | EndCall e (* | Fork e *) => is_closed X e
   | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2
   end.
 
@@ -283,8 +283,8 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | EndCall e => EndCall (subst x es e)
   | Retag e kind call => Retag (subst x es e) kind (subst x es call)
   | Case e el => Case (subst x es e) (map (subst x es) el)
-  | Fork e => Fork (subst x es e)
-  | SysCall id => SysCall id
+  (* | Fork e => Fork (subst x es e) *)
+  (* | SysCall id => SysCall id *)
   end.
 
 (* formal argument list substitution *)
@@ -448,7 +448,7 @@ Inductive event :=
 | NewCallEvt (call: call_id)
 | EndCallEvt (call: call_id)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
-| SysCallEvt (id: nat)
+(* | SysCallEvt (id: nat) *)
 | SilentEvt
 .
 
@@ -567,11 +567,11 @@ Inductive base_step :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
     base_step (Case (Lit $ LitInt i) el) h SilentEvt e h []
-| ForkBS e h:
-    base_step (Fork e) h SilentEvt (Lit LitPoison) h [e]
+(* | ForkBS e h:
+    base_step (Fork e) h SilentEvt (Lit LitPoison) h [e] *)
 (* observable behavior *)
-| SysCallBS id h:
-    base_step (SysCall id) h (SysCallEvt id) (Lit LitPoison) h [].
+(* | SysCallBS id h:
+    base_step (SysCall id) h (SysCallEvt id) (Lit LitPoison) h [] *).
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
@@ -979,8 +979,8 @@ Inductive instrumented_step h α β (clk: ptr_id):
   event → mem → stacks → protectors → ptr_id → Prop :=
 | SilentIS :
     instrumented_step h α β clk SilentEvt h α β clk
-| SysCallIS id :
-    instrumented_step h α β clk (SysCallEvt id) h α β clk
+(* | SysCallIS id :
+    instrumented_step h α β clk (SysCallEvt id) h α β clk *)
 (* This implements EvalContextExt::new_allocation. *)
 | AllocIS x T :
     (* Tagged clk is the first borrow of the variable x,
@@ -1234,18 +1234,18 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
   | Field e path, Field e' path' => expr_beq e e' && bool_decide (path = path')
   | CAS e0 e1 e2, CAS e0' e1' e2' =>
       expr_beq e0 e0' && expr_beq e1 e1' && expr_beq e2 e2'
-  | Fork e, Fork e' => expr_beq e e'
+  (* | Fork e, Fork e' => expr_beq e e' *)
   | Alloc T, Alloc T' => bool_decide (T = T')
   | Free e, Free e' => expr_beq e e'
-  | SysCall id, SysCall id' => bool_decide (id = id')
+  (* | SysCall id, SysCall id' => bool_decide (id = id') *)
   | _, _ => false
   end.
 
 Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
 Proof.
   revert e1 e2; fix FIX 1;
-    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | | | | | |? el1| |],
-             e2 as [| |? el2| |el2| | | | | | | | | | | | | | | | | |? el2| |];
+    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | | | | | |? el1(* | | *)],
+             e2 as [| |? el2| |el2| | | | | | | | | | | | | | | | | |? el2(* | | *)];
     simpl; try done;
     rewrite ?andb_True ?bool_decide_spec ?FIX;
     try (split; intro; [destruct_and?|split_and?]; congruence).
@@ -1293,13 +1293,13 @@ Proof.
       | AtomRead e => GenNode 15 [go e]
       | Deref e T => GenNode 16 [GenLeaf $ inr $ inl $ inl $ inr T; go e]
       | Ref e => GenNode 17 [go e]
-      | Field e path => GenNode 18 [GenLeaf $ inr $ inl $ inr $ inl path; go e]
+      | Field e path => GenNode 18 [GenLeaf $ inr $ inl $ inr (* $ inl *) path; go e]
       | NewCall => GenNode 19 []
       | EndCall e => GenNode 20 [go e]
-      | Retag e kind call => GenNode 21 [GenLeaf $ inr $ inl $ inr $ inr kind; go e; go call]
+      | Retag e kind call => GenNode 21 [GenLeaf $ inr (* $ inl $ inr *) $ inr kind; go e; go call]
       | Case e el => GenNode 22 (go e :: (go <$> el))
-      | Fork e => GenNode 23 [go e]
-      | SysCall id => GenNode 24 [GenLeaf $ inr $ inr id]
+      (* | Fork e => GenNode 23 [go e]
+      | SysCall id => GenNode 24 [GenLeaf $ inr $ inr id] *)
      end)
     (fix go s := match s with
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
@@ -1323,14 +1323,14 @@ Proof.
      | GenNode 15 [e] => AtomRead (go e)
      | GenNode 16 [GenLeaf (inr (inl (inl (inr T)))); e] => Deref (go e) T
      | GenNode 17 [e] => Ref (go e)
-     | GenNode 18 [GenLeaf (inr (inl (inr (inl path)))); e] => Field (go e) path
+     | GenNode 18 [GenLeaf (inr (inl (inr (*  (inl *) path(* ) *)))); e] => Field (go e) path
      | GenNode 19 [] => NewCall
      | GenNode 20 [e] => EndCall (go e)
-     | GenNode 21 [GenLeaf (inr (inl (inr (inr kind)))); e; call] =>
+     | GenNode 21 [GenLeaf (inr (* (inl (inr *) (inr kind)(* )) *)); e; call] =>
         Retag (go e) kind (go call)
      | GenNode 22 (e :: el) => Case (go e) (go <$> el)
-     | GenNode 23 [e] => Fork (go e)
-     | GenNode 24 [GenLeaf (inr (inr id))] => SysCall id
+     (* | GenNode 23 [e] => Fork (go e)
+     | GenNode 24 [GenLeaf (inr (inr id))] => SysCall id *)
      | _ => Lit LitPoison
      end) _).
   fix FIX 1. intros []; f_equal=>//; revert el; clear -FIX.
