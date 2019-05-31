@@ -25,28 +25,24 @@ Qed.
 
 Lemma sim_thread_adequacy (cfg_src cfg_tgt: expr * state)
   (WFS: Wf cfg_src.2) (WFT: Wf cfg_tgt.2)
-  (STATE: sim_state cfg_src.2 cfg_tgt.2)
-  (SIM: sim_thread sim_val_expr cfg_src.1 cfg_src.2 cfg_tgt.1 cfg_tgt.2) :
+  (SIM: sim_thread (sim_terminal (λ _ _, True)) cfg_src cfg_tgt) :
   ∀ v, behaviors thread_step cfg_tgt v → behaviors thread_step cfg_src v.
 Proof.
-  intros v BEH. revert cfg_src WFS WFT STATE SIM.
+  intros v BEH. revert cfg_src WFS WFT SIM.
   induction BEH as [cfg_tgt|cfg_tgt cfg_tgt' v STEP BEH IH];
-    intros cfg_src WFS WFT STATE SIM.
+    intros cfg_src WFS WFT SIM.
   - punfold SIM.
-    destruct (SIM WFS WFT STATE) as [TERM ?].
-    destruct (TERM TERMINAL) as (e2 & σ2 & TS & STATE' & TERM' & VAL).
-    eapply (rtc_step_behavior _ _ (e2, σ2)).
+    destruct (SIM WFS WFT) as [TERM ?].
+    destruct (TERM TERMINAL) as (eσ2 & TS & TERM' & VAL).
+    eapply (rtc_step_behavior _ _ eσ2).
     + by destruct cfg_src.
-    + constructor; [done|simpl]. etrans; eauto.
+    + constructor; [done|simpl]. etrans; eauto. by inversion VAL.
   - punfold SIM.
-    destruct (SIM WFS WFT STATE) as [? SS].
-    destruct cfg_src as [e σ]. destruct cfg_tgt' as [e' σ'].
-    destruct (SS e' σ') as (e2 & σ2 & TS & STATE' & SS').
-    { clear -STEP. by destruct cfg_tgt. }
-    simpl in TS. eapply rtc_step_behavior; first by apply TS.
+    destruct (SIM WFS WFT) as [? SS].
+    destruct (SS cfg_tgt' STEP) as (eσ & TS & SS').
+    eapply rtc_step_behavior; first by apply TS.
     apply IH; simpl.
     + by apply (rtc_thread_step_wf _ _ TS).
     + by apply (thread_step_wf _ _ STEP).
-    + done.
     + by inversion SS'.
 Qed.
