@@ -304,26 +304,93 @@ Proof.
   - by rewrite Eq' -fill_comp -(of_to_val _ _ Eqv1) /=.
 Qed.
 
+Lemma fill_bin_op_decompose K e op e1 e2:
+  fill K e = BinOp op e1 e2 →
+  K = [] ∧ e = BinOp op e1 e2 ∨
+  (∃ K', K = K' ++ [BinOpLCtx op e2] ∧ fill K' e = e1) ∨
+  (∃ v1 K', K = K' ++ [BinOpRCtx op v1] ∧ fill K' e = e2 ∧ to_val e1 = Some v1).
+Proof.
+  revert e e1 e2.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e1 e2 EqK. right.
+  destruct (IH _ _ _ EqK) as [[? _]|[[K0 [? Eq0]]|[v1 [K' [? Eq']]]]].
+  - subst. simpl in *. destruct Ki; try done.
+    + simpl in EqK. simplify_eq. left. exists []. naive_solver.
+    + right. simpl in EqK. inversion EqK; subst.
+      exists v1, []. naive_solver eauto using to_of_val.
+  - subst K. left. by exists (Ki :: K0).
+  - subst K. right. by exists v1, (Ki :: K').
+Qed.
+
+Lemma thread_step_bin_op_terminal op e1 e2 e' σ σ'
+  (STEP: (BinOp op e1 e2, σ) ~t~> (e', σ'))
+  (TM1: terminal e1) (TM2: terminal e2):
+  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(cheap) op l1 l2 l ∧ e' = (TVal [Lit l]).
+Proof.
+  inversion_clear STEP; simpl in PRIM.
+  inversion_clear PRIM as [??? Eq1 ? HS]. subst.
+  symmetry in Eq1.
+  destruct (fill_bin_op_decompose _ _ _ _ _ Eq1)
+    as [[]|[[K' [? Eq']]|[v1 [K' [? [Eq' VAL]]]]]]; subst.
+  - clear Eq1. simpl in HS. inv_head_step.
+    inversion BaseStep; subst. inversion InstrStep; subst.
+    split; [by destruct σ|]. simpl. naive_solver.
+  - apply fill_val in TM1. apply val_head_stuck in HS.
+    rewrite /= HS in TM1. by destruct TM1.
+  - apply fill_val in TM2. apply val_head_stuck in HS.
+    rewrite /= HS in TM2. by destruct TM2.
+Qed.
 
 Require Import Coq.Program.Equality.
-Lemma thread_step_bin_op_red_r e1 σ1 e1' σ1' e2 e2' σ2' op:
+Lemma thread_step_bin_op_red_r e1 σ1 e2 e2' σ2 op:
+  terminal e1 →
+  (e2, σ1) ~t~>* (e2', σ2) →
+  (BinOp op e1 e2, σ1) ~t~>* (BinOp op e1 e2', σ2).
+Proof.
+  intros T1 S2.
+  dependent induction S2 generalizing e2 σ1; first by constructor.
+  destruct y as [e0 σ0].
+  etrans; last apply IHS2; [|eauto..]. apply rtc_once.
+  clear -H T1.
+  move : T1 => /expr_terminal_True [v1 Eqv1].
+  rewrite (_: BinOp op e1 e2 = ectx_language.fill [BinOpRCtx op v1] e2);
+    last by rewrite /= -(of_to_val _ _ Eqv1).
+  rewrite (_: BinOp op e1 e0 = ectx_language.fill [BinOpRCtx op v1] e0);
+    last by rewrite /= -(of_to_val _ _ Eqv1).
+  inversion_clear H; simpl in PRIM.
+  inversion_clear PRIM. subst.
+  rewrite 2!fill_comp.
+  econstructor. econstructor; eauto.
+Qed.
+
+Lemma thread_step_bin_op_red_l e1 σ1 e1' σ1' e2 op:
+  (e1, σ1) ~t~>* (e1', σ1') →
+  (BinOp op e1 e2, σ1) ~t~>* (BinOp op e1' e2, σ1').
+Proof.
+  intros S1.
+  dependent induction S1 generalizing e1 σ1 e2; first by constructor.
+  destruct y as [e0 σ0].
+  etrans; last apply IHS1; [|eauto..]. apply rtc_once.
+  clear -H.
+  rewrite (_: BinOp op e1 e2 = ectx_language.fill [BinOpLCtx op e2] e1);
+    last done.
+  rewrite (_: BinOp op e0 e2 = ectx_language.fill [BinOpLCtx op e2] e0);
+    last done.
+  inversion_clear H; simpl in PRIM.
+  inversion_clear PRIM. subst.
+  rewrite 2!fill_comp.
+  econstructor. econstructor; eauto.
+Qed.
+
+Lemma thread_step_bin_op_red e1 σ1 e1' σ1' e2 e2' σ2' op:
   (e1, σ1) ~t~>* (e1', σ1') → terminal e1' →
   (e2, σ1') ~t~>* (e2', σ2') →
   (BinOp op e1 e2, σ1) ~t~>* (BinOp op e1' e2', σ2').
 Proof.
-  intros S1 T1 S2.
-  etrans. instantiate (1:= (BinOp op e1' e2, σ1')).
-  - clear S2 T1.
-    dependent induction S1 generalizing e1 σ1 e2; first by constructor.
-    destruct y as [e0 σ0].
-    etrans; last apply IHS1; [|eauto..]. apply rtc_once.
-    clear -H. admit.
-  - clear S1.
-    dependent induction S2 generalizing e2 σ1'; first by constructor.
-    destruct y as [e0 σ0].
-    etrans; last apply IHS2; [|eauto..]. apply rtc_once.
-    clear -H. admit.
-Admitted.
+  intros S1 T1 S2. etrans.
+  - clear S2 T1. by eapply thread_step_bin_op_red_l.
+  - clear S1. by eapply thread_step_bin_op_red_r.
+Qed.
 
 Lemma sim_val_expr_terminal e_src e_tgt :
   sim_val_expr e_src e_tgt → terminal e_tgt → terminal e_src.
@@ -370,23 +437,23 @@ Proof.
                   WF2) as [TT2 ST2].
       case (decide (terminal e2_tgt)) as [Te2|NTe2].
       * destruct (TT2 Te2) as ([e2'_src σ2'_src] & RS2 & Te2' & ST2').
-        eexists (_, σ2'_src). split.
+        destruct (thread_step_bin_op_terminal _ _ _ _ _ _ STEP Te1 Te2)
+          as (? & l1 & l2 & l' & BO & Eql').
+        subst eo_tgt σo_tgt. eexists (_, σ2'_src). split.
         { admit. }
-        { apply rclo3_step, CtxTerm. inversion ST2'; subst. constructor.
-          - admit.
-          - admit.
-          - (* σo_tgt - σ1_tgt *) admit. }
+        { apply rclo3_step, CtxTerm. inversion ST2'; subst.
+          constructor; [by eexists|..|done]. admit. }
       * destruct (thread_step_bin_op_right_non_terminal _ _ _ _ _ _ STEP Te1 NTe2)
           as [e2'_tgt [STEP' Eq']]. rewrite Eq'.
         destruct (ST2 _ STEP') as ([e2'_src σ2'_src] & TS' & HR).
         exists (BinOp op e1'_src e2'_src, σ2'_src). split.
-        { eapply thread_step_bin_op_red_r; eauto. }
+        { eapply thread_step_bin_op_red; eauto. }
         { apply rclo3_step, CtxBinOpR; auto. by apply rclo3_incl. }
     + destruct (thread_step_bin_op_left_non_terminal _ _ _ _ _ _ STEP NTe1)
         as [e1'_tgt [STEP' Eq']]. rewrite Eq'.
       destruct (ST _ STEP') as ([e1'_src σ1'_src] & RS & HR).
       exists (BinOp op e1'_src e2_src, σ1'_src). split.
-      * admit.
+      * eapply thread_step_bin_op_red_l; eauto.
       * eapply rclo3_step, CtxBinOp.
         { by apply rclo3_incl. }
         { eapply sim_expr_mono; [by apply rclo3_incl|].
@@ -395,18 +462,17 @@ Proof.
     destruct (GF _ _ _ SIM1 WF1 WF2) as [TT ST].
     case (decide (terminal e2_tgt)) as [Te2|NTe2].
     + destruct (TT Te2) as ([e2'_src σ2'_src] & RS2 & Te2' & ST2').
-      eexists (_, σ2'_src). split.
+      destruct (thread_step_bin_op_terminal _ _ _ _ _ _ STEP TERM2 Te2)
+          as (? & l1 & l2 & l' & BO & Eql').
+      subst eo_tgt σo_tgt. eexists (_, σ2'_src). split.
       { admit. }
       { apply rclo3_step, CtxTerm. inversion ST2'; subst.
-        constructor.
-        - admit.
-        - admit.
-        - (* σo_tgt - σ1_tgt *) admit. }
+        constructor; [by eexists|..|done]. admit. }
     + destruct (thread_step_bin_op_right_non_terminal _ _ _ _ _ _ STEP TERM2 NTe2)
         as [e2'_tgt [STEP' Eq']]. rewrite Eq'.
       destruct (ST _ STEP') as ([e2'_src σ2'_src] & TS' & HR).
       exists (BinOp op e1_src e2'_src, σ2'_src). split.
-      { admit. }
+      { eapply thread_step_bin_op_red_r; eauto. }
       { apply rclo3_step, CtxBinOpR; auto. by apply rclo3_incl. }
 Abort.
 

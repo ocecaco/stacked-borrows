@@ -1411,6 +1411,28 @@ Proof.
   eapply to_immediates_elem_Some; eauto. set_solver.
 Qed.
 
+Lemma to_immediates_elem_None vl el e:
+  to_val e = None → e ∈ el → to_immediates vl el = None.
+Proof.
+  revert vl. induction el as [|e' ? IH]; intros vl; [by intros _ ?%elem_of_nil|].
+  rewrite to_immediates_cons.
+  destruct (to_immediate e') as [v'|] eqn:Eq'; [|done].
+  move => /= EqN /elem_of_cons [?|IN].
+  - subst. exfalso.
+    move : Eq' EqN. rewrite /to_immediate /to_val.
+    destruct e'; simplify_eq; try done. rewrite /to_immediate /=.
+    case decide; try done.
+  - by apply IH.
+Qed.
+
+Lemma fill_item_no_val Ki e :
+  to_val e = None → to_val (fill_item Ki e) = None.
+Proof.
+  intros EqN. destruct Ki; simplify_option_eq; eauto.
+  rewrite (to_immediates_elem_None _ _ e EqN) // elem_of_app.
+  by right; left.
+Qed.
+
 Lemma list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2 :
   to_val e1 = None → to_val e2 = None →
   map of_val vl1 ++ e1 :: el1 = map of_val vl2 ++ e2 :: el2 →
