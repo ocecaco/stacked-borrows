@@ -122,7 +122,6 @@ Proof.
   by apply thread_step_wf.
 Qed.
 
-
 Notation SIM_STATE := (relation state)%type.
 
 Inductive sim_terminal (sim_state : SIM_STATE) : SIM_CONFIG :=
@@ -140,6 +139,18 @@ Definition sim_expr (sim_thread: SIM_THREAD)
 Lemma sim_expr_mono st1 st2 : st1 <3= st2 → sim_expr st1 <4= sim_expr st2.
 Proof. intros ST ???? PR ???. by apply ST, PR. Qed.
 
+Lemma sim_thread_state_mono (st1 st2: SIM_STATE) :
+  st1 <2= st2 → sim_thread (sim_terminal st1) <2= sim_thread (sim_terminal st2).
+Proof.
+  intros ST. pcofix CIH. intros eσ1 eσ2 SIM. punfold SIM. pfold.
+  intros WF1 WF2. destruct (SIM WF1 WF2) as [TERM STEP].
+  split.
+  - move => /TERM [? [? [? TE]]]. eexists. repeat split; eauto.
+    inversion TE; subst. constructor; eauto.
+  - move => ? /STEP [? [? HP]]. eexists. repeat split; eauto.
+    inversion HP; [|done]. eauto.
+Qed.
+
 Inductive ctx (sim_thread : SIM_THREAD) : SIM_THREAD :=
 | CtxIncl (sim_post : SIM_CONFIG) eσ_src eσ_tgt
     (SIM: sim_thread sim_post eσ_src eσ_tgt) :
@@ -150,12 +161,14 @@ Inductive ctx (sim_thread : SIM_THREAD) : SIM_THREAD :=
 | CtxBinOp (sim1 sim2 : SIM_STATE)
     op e1_src e1_tgt σ1_src σ1_tgt e2_src e2_tgt
     (SIM1: sim_thread (sim_terminal sim1) (e1_src, σ1_src) (e1_tgt, σ1_tgt))
+    (* TODO: sim2 cannot be arbitrary: the state can be picked as equal in memory *)
     (SIM2: sim_expr sim_thread sim1 e2_src e2_tgt sim2) :
     ctx sim_thread (sim_terminal sim2) (BinOp op e1_src e2_src, σ1_src)
                                         (BinOp op e1_tgt e2_tgt, σ1_tgt)
 | CtxBinOpR (sim : SIM_STATE)
     op e1_src e1_tgt σ_src σ_tgt e2_src e2_tgt
     (TERM1: terminal e1_src) (TERM2: terminal e1_tgt)
+    (* TODO: sim cannot be arbitrary: the state can be picked as equal in memory *)
     (SIM1: sim_thread (sim_terminal sim) (e2_src, σ_src) (e2_tgt, σ_tgt)) :
     ctx sim_thread (sim_terminal sim)
                    (BinOp op e1_src e2_src, σ_src)
