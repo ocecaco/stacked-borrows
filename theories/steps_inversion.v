@@ -10,6 +10,15 @@ Ltac inv_head_step :=
      try (is_var e; fail 1); (* inversion yields many goals if [e] is a variable
      and can thus better be avoided. *)
      inversion H ; subst; clear H
+  | H : base_step _ _ _ _ _ _ |- _ =>
+      inversion H ; subst; clear H
+  end.
+
+Ltac inv_thread_step :=
+  repeat match goal with
+  | H : thread_step _ _ |- _ => inversion_clear H
+  | H : prim_step _ _ _ _ _ _ |- _ =>
+      simpl in H; inversion_clear H as [??? Eq ? HS]; subst
   end.
 
 (** BinOp *)
@@ -37,14 +46,13 @@ Lemma thread_step_bin_op_left_non_terminal op e1 e2 e' σ σ'
   (NT: ¬ terminal e1):
   ∃ e1', (e1, σ) ~t~> (e1', σ') ∧ e' = BinOp op e1' e2.
 Proof.
-  inversion_clear STEP; simpl in PRIM.
-  inversion_clear PRIM as [??? Eq1 ? HS]. subst.
-  have Eq: BinOp op e1 e2 = ectx_language.fill [BinOpLCtx op e2] e1 by done.
-  rewrite Eq in Eq1.
+  inv_thread_step.
+  have Eq1: BinOp op e1 e2 = ectx_language.fill [BinOpLCtx op e2] e1 by done.
+  rewrite Eq1 in Eq.
   apply expr_terminal_False in NT.
-  destruct (step_by_val _ _ _ _ _ _ _ _ _ Eq1 NT HS) as [K'' Eq'].
-  rewrite Eq' -fill_comp in Eq1.
-  have Eq'' := fill_inj _ _ _ Eq1.
+  destruct (step_by_val _ _ _ _ _ _ _ _ _ Eq NT HS) as [K'' Eq'].
+  rewrite Eq' -fill_comp in Eq.
+  have Eq'' := fill_inj _ _ _ Eq.
   eexists. split.
   - econstructor. econstructor; [exact Eq''|..|exact HS]. eauto.
   - by rewrite Eq' -fill_comp.
@@ -55,16 +63,15 @@ Lemma thread_step_bin_op_right_non_terminal op e1 e2 e' σ σ'
   (TM: terminal e1) (NT: ¬ terminal e2):
   ∃ e2', (e2, σ) ~t~> (e2', σ') ∧ e' = BinOp op e1 e2'.
 Proof.
-  inversion_clear STEP; simpl in PRIM.
-  inversion_clear PRIM as [??? Eq1 ? HS]. subst.
+  inv_thread_step.
   move : TM => /expr_terminal_True [v1 Eqv1].
-  have Eq: BinOp op e1 e2 = ectx_language.fill [BinOpRCtx op v1] e2.
+  have Eq1: BinOp op e1 e2 = ectx_language.fill [BinOpRCtx op v1] e2.
   { by rewrite /= -(of_to_val _ _ Eqv1). }
-  rewrite Eq in Eq1.
+  rewrite Eq1 in Eq.
   apply expr_terminal_False in NT.
-  destruct (step_by_val _ _ _ _ _ _ _ _ _ Eq1 NT HS) as [K'' Eq'].
-  rewrite Eq' -fill_comp in Eq1.
-  have Eq'' := fill_inj _ _ _ Eq1.
+  destruct (step_by_val _ _ _ _ _ _ _ _ _ Eq NT HS) as [K'' Eq'].
+  rewrite Eq' -fill_comp in Eq.
+  have Eq'' := fill_inj _ _ _ Eq.
   eexists. split.
   - econstructor. econstructor; [exact Eq''|..|exact HS]. eauto.
   - by rewrite Eq' -fill_comp -(of_to_val _ _ Eqv1) /=.
@@ -75,13 +82,11 @@ Lemma thread_step_bin_op_terminal op e1 e2 e' σ σ'
   (TM1: terminal e1) (TM2: terminal e2):
   σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(cheap) op l1 l2 l ∧ e' = (TVal [Lit l]).
 Proof.
-  inversion_clear STEP; simpl in PRIM.
-  inversion_clear PRIM as [??? Eq1 ? HS]. subst.
-  symmetry in Eq1.
-  destruct (fill_bin_op_decompose _ _ _ _ _ Eq1)
+  inv_thread_step. symmetry in Eq.
+  destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
     as [[]|[[K' [? Eq']]|[v1 [K' [? [Eq' VAL]]]]]]; subst.
-  - clear Eq1. simpl in HS. inv_head_step.
-    inversion BaseStep; subst. inversion InstrStep; subst.
+  - clear Eq. simpl in HS. inv_head_step.
+    inversion InstrStep; subst.
     split; [by destruct σ|]. simpl. naive_solver.
   - apply fill_val in TM1. apply val_head_stuck in HS.
     rewrite /= HS in TM1. by destruct TM1.
@@ -137,4 +142,50 @@ Proof.
   intros S1 T1 S2. etrans.
   - clear S2 T1. by eapply thread_step_bin_op_red_l.
   - clear S1. by eapply thread_step_bin_op_red_r.
+Qed.
+
+(** Copy *)
+
+Lemma fill_copy_decompose K e e':
+  fill K e = Copy e' →
+  K = [] ∧ e = Copy e' ∨ (∃ K', K = K' ++ [CopyCtx] ∧ fill K' e = e').
+Proof.
+  revert e e'.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e' EqK. right.
+  destruct (IH _ _ EqK) as [[? _]|[K0 [? Eq0]]].
+  - subst. simpl in *. destruct Ki; try done.
+    simpl in EqK. simplify_eq. exists []. naive_solver.
+  - subst K. by exists (Ki :: K0).
+Qed.
+
+Lemma thread_step_copy_terminal e e' σ σ'
+  (STEP: (Copy e, σ) ~t~> (e', σ')) (TM: terminal e) :
+  ∃ l ltag T vl , e = Place l ltag T ∧ e' = of_val (TValV vl) ∧
+    read_mem l (tsize T) σ.(cheap) = Some vl
+    (* not true: the stacked borrows may change, ∧ σ' = σ *).
+Proof.
+  inv_thread_step. symmetry in Eq.
+  destruct (fill_copy_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
+  - clear Eq. simpl in HS. inv_head_step.
+    (* inversion InstrStep; subst. *)
+    by exists l, lbor, T, vl.
+    (* TODO: about the state *)
+  - apply fill_val in TM. apply val_head_stuck in HS.
+    rewrite /= HS in TM. by destruct TM.
+Qed.
+
+Lemma thread_step_copy_non_terminal e e' σ σ'
+  (STEP: (Copy e, σ) ~t~> (e', σ')) (NT: ¬ terminal e):
+  ∃ e1, (e, σ) ~t~> (e1, σ') ∧ e' = Copy e1.
+Proof.
+  inv_thread_step.
+  rewrite (_: Copy e = ectx_language.fill [CopyCtx] e) in Eq; [|done].
+  apply expr_terminal_False in NT.
+  destruct (step_by_val _ _ _ _ _ _ _ _ _ Eq NT HS) as [K'' Eq'].
+  rewrite Eq' -fill_comp in Eq.
+  have Eq'' := fill_inj _ _ _ Eq.
+  eexists. split.
+  - econstructor. econstructor; [exact Eq''|..|exact HS]. eauto.
+  - by rewrite Eq' -fill_comp.
 Qed.

@@ -152,7 +152,7 @@ Inductive ctx (sim_thread : SIM_THREAD) : SIM_THREAD :=
     (* TODO: sim2 cannot be arbitrary: the state can be picked as equal in memory *)
     (SIM2: sim_expr sim_thread sim1 e2_src e2_tgt sim2) :
     ctx sim_thread (sim_terminal sim2) (BinOp op e1_src e2_src, σ1_src)
-                                        (BinOp op e1_tgt e2_tgt, σ1_tgt)
+                                       (BinOp op e1_tgt e2_tgt, σ1_tgt)
 | CtxBinOpR (sim : SIM_STATE)
     op e1_src e1_tgt σ_src σ_tgt e2_src e2_tgt
     (TERM1: terminal e1_src) (TERM2: terminal e1_tgt)
@@ -160,7 +160,13 @@ Inductive ctx (sim_thread : SIM_THREAD) : SIM_THREAD :=
     (SIM1: sim_thread (sim_terminal sim) (e2_src, σ_src) (e2_tgt, σ_tgt)) :
     ctx sim_thread (sim_terminal sim)
                    (BinOp op e1_src e2_src, σ_src)
-                   (BinOp op e1_tgt e2_tgt, σ_tgt).
+                   (BinOp op e1_tgt e2_tgt, σ_tgt)
+| CtxCopy (sim : SIM_STATE)
+    e_src e_tgt σ_src σ_tgt
+    (* TODO: arbitrary sim won't work *)
+    (SIM: sim_thread (sim_terminal sim) (e_src, σ_src) (e_tgt, σ_tgt)) :
+    ctx sim_thread (sim_terminal sim) (Copy e_src, σ_src)
+                                      (Copy e_tgt, σ_tgt).
 
 (* | CtxApp (simλ : SIM_STATE)
     e_src e_tgt σ_src σ_tgt el_src el_tgt
@@ -186,11 +192,6 @@ Inductive ctx (sim_thread : SIM_THREAD) : SIM_THREAD :=
     (SIM2: sim_expr sim_thread sim1 e2_src e2_tgt sim2) :
     ctx sim_thread sim2 (Conc e1_src e2_src) σ_src
                         (Conc e1_tgt e2_tgt) σ_tgt
-| CtxCopy (sim_post : SIM_STATE)
-    e_src e_tgt σ_src σ_tgt
-    (SIM: sim_thread sim_post e_src σ_src e_tgt σ_tgt) :
-    ctx sim_thread sim_post (Copy e_src) σ_src
-                                (Copy e_tgt) σ_tgt
 | CtxWrite (sim1 sim2 : SIM_STATE)
     e1_src e1_tgt σ_src σ_tgt e2_src e2_tgt
     (SIM1: sim_thread sim1 e1_src σ_src e1_tgt σ_tgt)
@@ -243,6 +244,7 @@ Proof.
   - econstructor 2; auto.
   - econstructor 3. by eapply TS. by eapply sim_expr_mono.
   - econstructor 4; auto.
+  - econstructor 5; auto.
 (*   - econstructor 3. by eapply TS. by eapply sim_expr_mono.
   - econstructor 4. by eapply TS. by eapply sim_expr_mono.
   - econstructor 5; auto.
@@ -354,6 +356,21 @@ Proof.
       exists (BinOp op e1_src e2'_src, σ2'_src). split.
       { eapply thread_step_bin_op_red_r; eauto. }
       { apply rclo3_step, CtxBinOpR; auto. by apply rclo3_incl. }
+  - (* Copy *)
+    destruct (GF _ _ _ SIM WF1 WF2) as [TT [SU ST]]. simpl in *.
+    case (decide (terminal e_tgt)) as [Te|NTe]; split.
+    + (* stuck Copy *) admit.
+    + (* step Copy *)
+      intros [eo_tgt σo_tgt] STEP.
+      destruct (TT Te) as ([e2_src σ2_src] & RS2 & Te2 & ST2).
+      destruct (thread_step_copy_terminal _ _ _ _ STEP Te)
+        as (lc & ltag & T & vl & Eqe & Eqe' & RM). subst e_tgt eo_tgt.
+      (* Need heap related for lc *)
+      eexists. split.
+      * admit.
+      * apply rclo3_step, CtxTerm. inversion ST2; subst.
+        constructor; [eexists; by rewrite to_of_val|..].
+        admit. admit.
 Abort.
 
 (* Lemma ctx_respectful: respectful5 _sim_thread ctx.

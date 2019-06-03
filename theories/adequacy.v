@@ -5,19 +5,19 @@ From Paco Require Import paco.
 
 Inductive behaviors
   (step: expr * state → expr * state → Prop)
-  (cfg: expr * state) : val → Prop :=
+  (cfg: expr * state) : option val → Prop :=
 | behaviors_term v
     (TERMINAL: terminal cfg.1)
     (EQV: sim_val_expr cfg.1 (of_val v)) :
-    behaviors step cfg v
-| behaviors_stuck v
+    behaviors step cfg (Some v)
+| behaviors_stuck
     (NT: ¬ terminal cfg.1)
     (NS: ∀ cfg', ¬ step cfg cfg') :
-    behaviors step cfg v
-| behaviors_step cfg' v
+    behaviors step cfg None
+| behaviors_step cfg' ov
     (STEP: step cfg cfg')
-    (NEXT: behaviors step cfg' v):
-    behaviors step cfg v
+    (NEXT: behaviors step cfg' ov):
+    behaviors step cfg ov
 .
 
 (* If c1 ->* c2 -b-> v then c1 -b-> v *)
@@ -32,10 +32,10 @@ Qed.
 Lemma sim_thread_adequacy (cfg_src cfg_tgt: expr * state)
   (WFS: Wf cfg_src.2) (WFT: Wf cfg_tgt.2)
   (SIM: sim_thread (sim_terminal (λ _ _, True)) cfg_src cfg_tgt) :
-  ∀ v, behaviors thread_step cfg_tgt v → behaviors thread_step cfg_src v.
+  ∀ ov, behaviors thread_step cfg_tgt ov → behaviors thread_step cfg_src ov.
 Proof.
-  intros v BEH. revert cfg_src WFS WFT SIM.
-  induction BEH as [cfg_tgt|cfg_tgt v|cfg_tgt cfg_tgt' v STEP BEH IH];
+  intros ov BEH. revert cfg_src WFS WFT SIM.
+  induction BEH as [cfg_tgt|cfg_tgt v|cfg_tgt cfg_tgt' ov STEP BEH IH];
     intros cfg_src WFS WFT SIM.
   - punfold SIM.
     destruct (SIM WFS WFT) as [TERM ?].
