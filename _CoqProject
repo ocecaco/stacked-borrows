@@ -8,6 +8,7 @@ theories/tactics.v
 theories/properties.v
 theories/steps_wf.v
 theories/steps_progress.v
+theories/steps_inversion.v
 theories/examples.v
 theories/simulation.v
 theories/adequacy.v

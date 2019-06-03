@@ -865,6 +865,16 @@ Proof.
   - eapply silent_step_wf; eauto.
 Qed.
 
+Lemma thread_step_wf eσ1 eσ2 :
+  eσ1 ~t~> eσ2 → Wf eσ1.2 → Wf eσ2.2.
+Proof. inversion 1. inversion PRIM. by eapply head_step_wf. Qed.
+Lemma rtc_thread_step_wf eσ1 eσ2 :
+  eσ1 ~t~>* eσ2 → Wf eσ1.2 → Wf eσ2.2.
+Proof.
+  intros SS. induction SS; [done|]. intros WF1. apply IHSS. revert WF1.
+  by apply thread_step_wf.
+Qed.
+
 Lemma retag_clk_mono h α clk β l kind T h' α' clk' :
   retag h α clk β l kind T = Some (h', α', clk') →
   (clk ≤ clk')%nat.

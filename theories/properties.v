@@ -66,6 +66,9 @@ Inductive thread_step (eσ1 eσ2 : expr * state) : Prop :=
     (PRIM: prim_step eσ1.1 eσ1.2 ev eσ2.1 eσ2.2 efs)
 .
 
+Infix "~t~>" := thread_step (at level 70).
+Infix "~t~>*" := (rtc thread_step) (at level 70).
+
 (*=================================== UNUSED =================================*)
 Implicit Type (ρ: cfg bor_lang).
 
