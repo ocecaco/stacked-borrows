@@ -4,21 +4,22 @@ From stbor Require Export properties steps_wf steps_inversion.
 (** State simulation *)
 
 (* Simulated memory values: ignore tags of locations *)
-Definition sim_immediate (v1 v2: immediate) :=
+Definition sim_lit (v1 v2: lit) :=
   match v1, v2 with
-  | RecV _ _ _, RecV _ _ _ => v1 = v2
-  | LitV LitPoison, LitV LitPoison => True
-  | LitV (LitInt n1), LitV (LitInt n2) => n1 = n2
-  | LitV (LitLoc l1 bor1), LitV (LitLoc l2 bor2) => l1 = l2
+  | LitPoison, LitPoison => True
+  | LitInt n1, LitInt n2 => n1 = n2
+  | LitLoc l1 bor1, LitLoc l2 bor2 => l1 = l2
+  | LitCall c1, LitCall c2 => c1 = c2
+  | LitFnPtr n1, LitFnPtr n2 => (* FIXME *) True
   | _,_ => False
   end.
 
 Definition sim_val (v1 v2: val) :=
   match v1, v2 with
-  | ImmV v1, ImmV v2 => sim_immediate v1 v2
+  | LitV v1, LitV v2 => sim_lit v1 v2
   | TValV vs1, TValV vs2 =>
     length vs1 = length vs2 ∧
-    ∀ i v1 v2, vs1 !! i = Some v1 → vs2 !! i = Some v2 → sim_immediate v1 v2
+    ∀ i v1 v2, vs1 !! i = Some v1 → vs2 !! i = Some v2 → sim_lit v1 v2
   | PlaceV l1 tg1 T1, PlaceV l2 tg2 T2 => l1 = l2
   | _, _ => False
   end.
@@ -37,13 +38,13 @@ Record sim_state (σ_src σ_tgt: state) := {
   sim_state_stack_dom : dom (gset loc) σ_src.(cstk) ≡ dom (gset loc) σ_tgt.(cstk);
   sim_state_protectors : σ_src.(cpro) = σ_tgt.(cpro);
   sim_state_mem : ∀ l v2,
-    σ_tgt.(cheap) !! l = Some v2 → ∃ v1, σ_src.(cheap) !! l = Some v1 ∧ sim_immediate v1 v2;
+    σ_tgt.(cheap) !! l = Some v2 → ∃ v1, σ_src.(cheap) !! l = Some v1 ∧ sim_lit v1 v2;
 }.
 
-Instance sim_immediate_po : PreOrder sim_immediate.
+Instance sim_lit_po : PreOrder sim_lit.
 Proof.
-  constructor; first by intros [[]|].
-  intros [[]|] [[]|] [[]|]; simpl; try done; move => -> -> //.
+  constructor; first by intros [].
+  intros [] [] []; simpl; try done; move => -> -> //.
 Qed.
 
 Instance sim_val_po : PreOrder sim_val.

@@ -251,7 +251,7 @@ Inductive expr_step (FNs: fn_env):
     subst_l xl el e = Some e' →
     expr_step FNs (Call (#(LitFnPtr name)) el) h
                   (NewCallEvt name call)
-                  (let ret := e' in EndCall #(LitCall call) ;; ret) h []
+                  (let: "r" := e' in EndCall #(LitCall call) ;; "r") h []
 | EndCallBS (call: call_id) h:
     expr_step FNs (EndCall #(LitCall call)) h (EndCallEvt call) #☠ h []
 (* TODO: add more operations for tempvalue lists *)
@@ -316,7 +316,7 @@ Inductive expr_step (FNs: fn_env):
 | LetBS x e1 e2 h e' :
     is_Some (to_val e1) →
     subst x e2 e1 = e' →
-    expr_step FNs (let x := e1 in e2) h SilentEvt e' h []
+    expr_step FNs (let: x := e1 in e2) h SilentEvt e' h []
 | CaseBS i el e h :
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →

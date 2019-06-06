@@ -10,7 +10,7 @@ Ltac inv_head_step :=
      try (is_var e; fail 1); (* inversion yields many goals if [e] is a variable
      and can thus better be avoided. *)
      inversion H ; subst; clear H
-  | H : base_step _ _ _ _ _ _ |- _ =>
+  | H : expr_step _ _ _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
   end.
 

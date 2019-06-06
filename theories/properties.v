@@ -5,7 +5,7 @@ Class Wellformed A := Wf : A → Prop.
 Existing Class Wf.
 
 Definition wf_mem_tag (h: mem) (clk: ptr_id) :=
-  ∀ l l' bor, h !! l = Some (LitV (LitLoc l' bor)) → bor <b clk.
+  ∀ l l' bor, h !! l = Some (LitLoc l' bor) → bor <b clk.
 
 Definition stack_item_included (stk: stack) (β: protectors) (clk: ptr_id) :=
   ∀ si, si ∈ stk → match si.(tg) with

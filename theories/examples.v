@@ -1,19 +1,15 @@
-From stbor Require Import notation tactics.
+From stbor Require Import lang.
 
-(* These two are supposed to be inlined, so they don't contribute to creating
-  call ids or retagging. *)
-Definition new_ref_int (i: Z) : val :=
-  λ: [<>], let: "i" := Alloc int in "i" <- #i ;; &"i".
-Definition new_pointer T : val :=
-  λ: ["v"], let: "x" := Alloc T in "x" <- "v" ;; "x".
+(* Allocate a place of type [T] and initialize it with a value [v] *)
+Definition new_place T (v: expr) : expr :=
+   let: "x" := Alloc T in "x" <- v ;; "x".
 
 (* UB *)
 (* from https://www.ralfj.de/blog/2018/11/16/stacked-borrows-implementation.html *)
-Definition demo0 : val :=
-  λ: [<>],
+Definition demo0 : expr :=
   (* let x = &mut 1u8; *)
-  let: "i" := new_ref_int 1 [ #☠ ] in
-  let: "x" := new_pointer (&mut int) [ "i" ] in
+  let: "i" := new_place int #1 in
+  let: "x" := new_place (&mut int) &"i" in
   (* stack of i   : [Uniq(?)], not frozen *)
   (* stack of x   : [Uniq(x)], not frozen *)
   (* x uses Alias(None) for i *)
@@ -25,7 +21,7 @@ Definition demo0 : val :=
 
   (* let y = &mut *x; *)
   (* mut reference y created by dereferencing mut reference x *)
-  let: "y" := new_pointer (&mut int) [ & *{int} (Copy1 "x") ] in
+  let: "y" := new_place (&mut int) & *{int} (Copy1 "x") in
   (* Check read  x   with Uniq(x): OK! *)
   (* Check deref int with Uniq(0): OK! *)
   (* stack of y  : [Uniq(y)], not frozen *)
@@ -62,11 +58,10 @@ Definition demo0 : val :=
   .
 
 (* DB *)
-Definition demo1 : val :=
-  λ: [<>],
+Definition demo1 : expr :=
   (* let x = &mut 1u8; *)
-  let: "i" := new_ref_int 1 [ #☠ ] in
-  let: "x" := new_pointer (&mut int) [ "i" ] in
+  let: "i" := new_place int #1 in
+  let: "x" := new_place (&mut int) &"i" in
   (* stack of i : [Uniq(?)], not frozen *)
   (* stack of x : [Uniq(x)], not frozen *)
   (* x uses Alias(None) for i *)
@@ -78,7 +73,7 @@ Definition demo1 : val :=
 
   (* let y1 = & *x; *)
   (* immut reference y1 created by dereferencing mut reference x *)
-  let: "y1" := new_pointer (& int) [ & *{int} (Copy1 "x") ] in
+  let: "y1" := new_place (& int) & *{int} (Copy1 "x") in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y1 : [Uniq(y1)], not frozen *)
@@ -97,7 +92,7 @@ Definition demo1 : val :=
 
   (* immut reference y2 created by dereferencing mut reference x *)
   (* let y2 = & *x; *)
-  let: "y2" := new_pointer (& int) [ & *{int} (Copy1 "x") ] in
+  let: "y2" := new_place (& int) & *{int} (Copy1 "x") in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y2 : [Uniq(y2)], not frozen *)
@@ -126,11 +121,10 @@ Definition demo1 : val :=
   .
 
 (* UB *)
-Definition demo2 : val :=
-  λ: [<>],
+Definition demo2 : expr :=
   (* let x = &mut 1u8; *)
-  let: "i" := new_ref_int 1 [ #☠ ] in
-  let: "x" := new_pointer (&mut int) [ "i" ] in
+  let: "i" := new_place int #1 in
+  let: "x" := new_place (&mut int) &"i" in
   (* stack of i : [Uniq(?)], not frozen *)
   (* stack of x : [Uniq(x)], not frozen *)
   (* x uses Alias(None) for the int *)
@@ -142,7 +136,7 @@ Definition demo2 : val :=
 
   (* immut reference y created by dereferencing mut reference x *)
   (* let y = & *x; *)
-  let: "y" := new_pointer (& int) [ & *{int} (Copy1 "x") ] in
+  let: "y" := new_place (& int) & *{int} (Copy1 "x") in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y : [Uniq(y)], not frozen *)
@@ -155,7 +149,7 @@ Definition demo2 : val :=
   (* raw pointer z created by dereferencing x as raw pointer immutably then
      mutably. *)
   (* let z = x as *const u8 as *mut u8; *)
-  let: "z" := new_pointer ( *mut int ) [ & *{int} & *{int} (Copy1 "x") ] in
+  let: "z" := new_place ( *mut int ) & *{int} & *{int} (Copy1 "x") in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! because Uniq(0) is on the stack and
                                        raw derefs are not checked. *)
@@ -188,11 +182,10 @@ Definition demo2 : val :=
   .
 
 (* UB *)
-Definition demo4 : val :=
-  λ: [<>],
+Definition demo4 : expr :=
   (*  let x = &mut 1u8; *)
-  let: "i" := new_ref_int 1 [ #☠ ] in
-  let: "x" := new_pointer (&mut int) [ "i" ] in
+  let: "i" := new_place int #1 in
+  let: "x" := new_place (&mut int) &"i" in
   (* stack of i : [Uniq(?)], not frozen *)
   (* stack of x : [Uniq(x)], not frozen *)
   (* x uses Alias(None) for i *)
@@ -204,7 +197,7 @@ Definition demo4 : val :=
 
   (* raw pointer y1 created from x *)
   (*  let y1 = x as *mut u8; *)
-  let: "y1" := new_pointer ( *mut int) [& *{int} (Copy1 "x")] in
+  let: "y1" := new_place ( *mut int) & *{int} (Copy1 "x") in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y1 : [Uniq(y1)], not frozen *)
@@ -216,7 +209,7 @@ Definition demo4 : val :=
 
   (* raw pointer y2 created from y1. *)
   (*  let y2 = y1; *)
-  let: "y2" := new_pointer ( *mut int) [ & *{int} (Copy1 "y1") ] in
+  let: "y2" := new_place ( *mut int) & *{int} (Copy1 "y1") in
   (* Check read  y1 with Uniq(y1)   : OK! *)
   (* Check deref i  with Alias(None): OK! because Raw is on the stack. *)
   (* stack of y2  : [Uniq(y2)], not frozen *)

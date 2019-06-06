@@ -2,6 +2,7 @@ From Coq Require Export ssreflect.
 From stdpp Require Export countable binders gmap.
 
 Global Open Scope general_if_scope.
+Ltac done := stdpp.tactics.done.
 
 From stbor Require Export type.
 Set Default Proof Using "Type".

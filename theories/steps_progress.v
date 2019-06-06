@@ -149,7 +149,7 @@ Proof.
   - intros ??? IH vl1 Eq.
     destruct (IH [] vl1) as [IH1 IH2]; [done..|simpl;intros;lia|].
     split; [done|]. intros i.
-     rewrite -{2}(Nat.add_0_l i) -(nil_length (A:=immediate)). by apply IH2.
+     rewrite -{2}(Nat.add_0_l i) -(nil_length (A:=lit)). by apply IH2.
   - clear. intros _ _ ????????. simplify_eq.
     split; [lia|]. split; [done|intros; lia].
   - clear. move => l0 n0 h l n oacc IH acc vl -> /=.
@@ -405,18 +405,21 @@ Proof.
   eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
 Qed.
 
-
-Lemma newcall_head_step σ :
+Lemma call_head_step σ name el xl e HC e' :
+  σ.(cfns) !! name = Some (@FunV xl e HC) →
+  Forall (λ ei, is_Some (to_val ei)) el →
+  subst_l xl el e = Some e' →
   let c := fresh (dom (gset call_id) σ.(cpro)) in
-  ∃ σ', head_step NewCall σ [NewCallEvt c] (Lit $ LitInt c) σ' [].
-Proof. eexists. econstructor; econstructor. Qed.
+  ∃ σ', head_step (Call (#(LitFnPtr name)) el) σ
+                  [NewCallEvt name c]
+                  (let: "r" := e' in EndCall #(LitCall c) ;; "r")
+                 σ' [].
+Proof. eexists. by econstructor; econstructor. Qed.
 
-
-Lemma endcall_head_step σ c (NZ: 0 ≤ c)
-  (BAR: σ.(cpro) !! (Z.to_nat c) = Some true) :
-  ∃ σ',
-  head_step (EndCall #c) σ [EndCallEvt (Z.to_nat c)] #☠ σ' [].
-Proof. eexists. econstructor; econstructor. lia. done. Qed.
+Lemma endcall_head_step σ c
+  (BAR: σ.(cpro) !! c = Some true) :
+  ∃ σ', head_step (EndCall #(LitCall c)) σ [EndCallEvt c] #☠ σ' [].
+Proof. eexists. by econstructor; econstructor. Qed.
 
 
 Lemma unsafe_action_is_Some_weak {A} (GI: A → nat → Prop)
@@ -477,12 +480,12 @@ Proof.
     case is_freeze; [intros; simplify_eq; lia|by move => /IH].
   - clear. intros ???? l1 c1 ? IH ???.
     case is_freeze; [intros; simplify_eq; lia|].
-    case lookup => [[[//|//|i]|//]|//].
+    case lookup => [[//|//|i|//|//]|//].
     case decide => [Ge0|//].
     case visit_freeze_sensitive'_clause_6_visit_lookup
       as [[? [l3 c3]]|] eqn:Eq1; [simpl|done].
     intros. simplify_eq.
-    destruct (IH (LitV LitPoison) LitPoison _ Ge0 _ _ _ Eq1) as (T1&HL&Le&Eq).
+    destruct (IH LitPoison _ Ge0 _ _ _ Eq1) as (T1&HL&Le&Eq).
     split; [done|]. rewrite le_plus_minus_r; [done|].
     etrans; [apply (le_plus_l _ c3)|]. rewrite Eq.
     rewrite (_: l1 + S c1 + tsize T1 = l1 + c1 + S (tsize T1))%nat; [|lia].
@@ -508,7 +511,7 @@ Lemma visit_freeze_sensitive'_is_Some {A} (GI: A → nat → Prop)
           f a (l +ₗ last) i true = Some a' ∧
           is_Some (f a' (l +ₗ last +ₗ i) (Z.to_nat (cur_dist + tsize T - i)) false)) *)
   (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
-          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
+          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitInt i) ∧
           0 ≤ i < length Ts) :
   GI a last → ∃ a' last' cur_dist',
   visit_freeze_sensitive' h l f a last cur_dist T = Some (a', (last', cur_dist')) ∧
@@ -521,21 +524,21 @@ Proof.
       (∀ a i j b,(last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize T)%nat → GI a i →
           ∃ a', f a (l +ₗ i) (Z.to_nat (j - i)) b = Some a' ∧ GI a' j) →
       (∀ Ts (n: nat), (n, Sum Ts) ∈ sub_sum_types T → ∃ i,
-          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
+          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitInt i) ∧
           0 ≤ i < length Ts) →
       GI a last → ∃ a' last' cur', oalc = Some (a', (last', cur')) ∧ GI a' last')
     (λ h l f _ _ _ _ a last cur_dist Ts oalc,
       (∀ a i j b, (last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Product Ts))%nat →
           GI a i → ∃ a', f a (l +ₗ i) (Z.to_nat (j - i)) b = Some a' ∧ GI a' j) →
       (∀ Ts' (n: nat), (n, Sum Ts') ∈ sub_sum_types (Product Ts) → ∃ i,
-          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitV (LitInt i)) ∧
+          h !! (l +ₗ (last + cur_dist) +ₗ n) = Some (LitInt i) ∧
           0 ≤ i < length Ts') →
       GI a last → ∃ a' last' cur', oalc = Some (a', (last', cur')) ∧ GI a' last')
     (λ h l f a last cur_dist _ Ts n oalc,
       (∀ a i j b, (last ≤ i ≤ j ∧ j ≤ last + cur_dist + tsize (Sum Ts))%nat →
           GI a i → ∃ a', f a (l +ₗ i) (Z.to_nat (j - i)) b = Some a' ∧ GI a' j) →
       (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
-          h !! (l +ₗ (last + cur_dist) +ₗ S n) = Some (LitV (LitInt i)) ∧
+          h !! (l +ₗ (last + cur_dist) +ₗ S n) = Some (LitInt i) ∧
           0 ≤ i < length Ts') → (n < length Ts)%nat →
       GI a last → ∃ a' last' cur', oalc = Some (a', (last', cur')) ∧ GI a' last')).
   - naive_solver.
@@ -549,7 +552,7 @@ Proof.
     case is_freeze; [intros; simplify_eq; exists a, l1; by eexists|].
     destruct (SUM Ts O) as [i [Eq [Ge0 Lti]]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. rewrite shift_loc_0_nat => Eq. rewrite Eq decide_True; [|done].
-    destruct (IH (LitV LitPoison) LitPoison _ Ge0) as (a2&l2&c2&Eq1&HI2);
+    destruct (IH LitPoison _ Ge0) as (a2&l2&c2&Eq1&HI2);
       [done|..|done|].
     { intros T' Ts' n IN SUB. apply SUM, sub_sum_types_elem_of_2. right.
       split; [lia|]. exists T'. split; [done|]. by rewrite Nat.sub_1_r. }
@@ -594,7 +597,7 @@ Lemma visit_freeze_sensitive_is_Some' {A} (GI: A → nat → Prop)
   (HF: ∀ a i j b, (i ≤ j ∧ j ≤ tsize T)%nat → GI a i →
           ∃ a', f a (l +ₗ i) (Z.to_nat (j - i)) b = Some a' ∧ GI a' j)
   (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
-          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
+          h !! (l +ₗ n) = Some (LitInt i) ∧ 0 ≤ i < length Ts) :
   GI a O → ∃ a', visit_freeze_sensitive h l T f a = Some a' ∧ GI a' (tsize T).
 Proof.
   intros HI. rewrite /visit_freeze_sensitive.
@@ -616,7 +619,7 @@ Lemma visit_freeze_sensitive_is_Some'_2 {A} (GI: A → nat → Prop)
   (HF: ∀ a i j b, (i ≤ j ∧ j ≤ tsize T)%nat → GI a i →
           ∃ a', f a (l +ₗ i) (Z.to_nat (j - i)) b = Some a' ∧ GI a' j)
   (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
-          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
+          h !! (l +ₗ n) = Some (LitInt i) ∧ 0 ≤ i < length Ts) :
   GI a O → is_Some (visit_freeze_sensitive h l T f a).
 Proof.
   intros HI. destruct (visit_freeze_sensitive_is_Some' GI h l f a T)
@@ -628,7 +631,7 @@ Lemma visit_freeze_sensitive_is_Some {A}
   (HF: ∀ a i j b, (i ≤ j ∧ j ≤ tsize T)%nat →
           is_Some (f a (l +ₗ i) (Z.to_nat (j - i)) b))
   (SUM: ∀ Ts (n: nat), (n, (Sum Ts)) ∈ sub_sum_types T → ∃ i,
-          h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts) :
+          h !! (l +ₗ n) = Some (LitInt i) ∧ 0 ≤ i < length Ts) :
   is_Some (visit_freeze_sensitive h l T f a).
 Proof.
   destruct (visit_freeze_sensitive_is_Some' (λ _ _, True) h l f a T)
@@ -859,9 +862,9 @@ Proof.
     intros ?. subst. by eapply NIN, elem_of_list_lookup_2.
 Qed.
 
-Lemma retag_ref_is_freeze_is_Some h α β clk l old T kind prot
+Lemma retag_ref_is_freeze_is_Some FNs h α β clk l old T kind prot
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) h)
-  (FRZ: is_freeze T) (WF: Wf (mkState h α β clk))
+  (FRZ: is_freeze T) (WF: Wf (mkState FNs h α β clk))
   (STK: ∀ m stk, (m < tsize T)%nat → α !! (l +ₗ m) = Some stk →
     let access := match kind with
                   | SharedRef | RawRef false => AccessRead
@@ -881,9 +884,9 @@ Proof.
   rewrite Eq1 /=. by eexists.
 Qed.
 
-Definition is_loc_val (v: immediate) :=
+Definition is_loc_val (v: lit) :=
   match v with
-  | LitV (LitLoc _ _) => True
+  | LitLoc _ _ => True
   | _ => False
   end.
 
@@ -920,6 +923,7 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
+  - naive_solver.
   - (* Product inner recursive case *)
     intros ????????????? IH1 IH2 ???.
     case retag as [hac|]; [|done]. move => /= /IH1 IH.
@@ -933,13 +937,14 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
+  - naive_solver.
 Qed.
 
 Lemma retag_lookup_ref h α clk β x kind T h' α' clk' :
   let Hh h h' :=
     (∀ x v, h !! x = Some v →
       match v with
-      | LitV (LitLoc l tg) => ∃ tg', h' !! x = Some (LitV (LitLoc l tg'))
+      | LitLoc l tg => ∃ tg', h' !! x = Some (LitLoc l tg')
       | _ => True
       end) in
   retag h α clk β x kind T = Some (h', α', clk') →
@@ -956,35 +961,37 @@ Proof.
     (* invariant for Sum's where P3 *)
     (λ h _ _ _ _ _ _ _ _ _ ohac, ∀ h' α' clk',
         ohac = Some (h', α', clk') → Hh h h')); rewrite /Hh.
-  - clear. intros. simplify_eq. destruct v as [[]|]; naive_solver.
+  - clear. intros. simplify_eq. destruct v; naive_solver.
   - naive_solver.
-  - clear. intros. simplify_eq. destruct v as [[]|]; naive_solver.
+  - clear. intros. simplify_eq. destruct v; naive_solver.
   - naive_solver.
   - naive_solver.
   - (* Reference cases *)
     clear. intros h x ? bor α clk β rt_kind p_kind T Eq h' α' clk'.
     destruct p_kind as [[]|[]|];
       [| |destruct rt_kind; try by
-            (intros ?? v; simplify_eq; destruct v as [[]|]; naive_solver)..|];
+            (intros ?? v; simplify_eq; destruct v; naive_solver)..|];
       (case retag_ref as [[[bor' α1] clk1]|] eqn:Eq1; [simpl|done]);
-      intros ? l0 v; simplify_eq; (destruct v as [[]|]; [done| |done..]);
+      intros ? l0 v; simplify_eq; (destruct v; [done| |done..]);
       (case (decide (l0 = x)) => [->|?];
         [rewrite lookup_insert; naive_solver
         |rewrite lookup_insert_ne; [naive_solver|done]]).
   - naive_solver.
   - naive_solver.
   - naive_solver.
-  - clear. intros. simplify_eq. destruct v as [[]|]; naive_solver.
+  - naive_solver.
+  - clear. intros. simplify_eq. destruct v; naive_solver.
   - (* Product inner recursive case *)
     intros ????????????? IH1 IH2 ???.
     case retag as [hac|]; [|done]. move => /= /IH1 IH.
     destruct hac as [[h2 α2] clk2].
-    move => x2 v /(IH2 h2 α2 clk2 eq_refl). destruct v as [[]|]; [done| |done..].
+    move => x2 v /(IH2 h2 α2 clk2 eq_refl). destruct v; [done| |done..].
     by move => [? /IH].
   - naive_solver.
   - naive_solver.
   - (* Sum case *)
     intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
+  - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
@@ -1001,7 +1008,7 @@ Definition pointer_kind_access pk :=
   | _ => AccessRead
   end.
 Definition valid_location (h: mem) (α: stacks) β (x: loc) pk T :=
-  ∃ l tg, h !! x = Some (LitV (LitLoc l tg)) ∧ is_freeze T ∧
+  ∃ l tg, h !! x = Some (LitLoc l tg) ∧ is_freeze T ∧
   (∀ m, (m < tsize T)%nat → l +ₗ m ∈ dom (gset loc) h ∧ ∃ stk,
     α !! (l +ₗ m) = Some stk ∧ access1_pre β stk (pointer_kind_access pk) tg).
 Definition valid_mem_ptr h α β x T :=
@@ -1009,34 +1016,34 @@ Definition valid_mem_ptr h α β x T :=
     valid_location h α β (x +ₗ n) pk Tr.
 Definition valid_mem_sum (h: mem) l T :=
   ∀ Ts (n: nat), (n, Sum Ts) ∈ sub_sum_types T → ∃ i,
-    h !! (l +ₗ n) = Some (LitV (LitInt i)) ∧ 0 ≤ i < length Ts.
+    h !! (l +ₗ n) = Some (LitInt i) ∧ 0 ≤ i < length Ts.
 
 
-Lemma retag1_is_freeze_is_Some h α clk β x kind pk T
-  (WF : Wf (mkState h α β clk))
+Lemma retag1_is_freeze_is_Some FNs h α clk β x kind pk T
+  (WF : Wf (mkState FNs h α β clk))
   (LOC: valid_location h α β x pk T) :
   is_Some (retag h α clk β x kind (Reference pk T)).
 Proof.
   destruct LOC as (l & tg & Eqx & FRZ & EQD).
   rewrite retag_equation_2 Eqx /=.
   destruct pk as [[]|mut|]; simpl.
-  - destruct (retag_ref_is_freeze_is_Some h α β clk l tg T
+  - destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T
                 (UniqueRef (is_two_phase kind)) (adding_protector kind))
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
     destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
-  - destruct (retag_ref_is_freeze_is_Some h α β clk l tg T SharedRef
+  - destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T SharedRef
                       (adding_protector kind))
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
     destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
   - destruct kind; [by eexists..| |by eexists].
-    destruct (retag_ref_is_freeze_is_Some h α β clk l tg T
+    destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T
               (RawRef (bool_decide (mut = Mutable))) None)
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
     destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. simplify_eq. by destruct mut.
-  - destruct (retag_ref_is_freeze_is_Some h α β clk l tg T
+  - destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T
                           (UniqueRef false) None)
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
@@ -1047,9 +1054,9 @@ Qed.
   - the place is freeze
   - any memory region pointed to by any pointer in the place is also freeze
   - all memory regions are disjoint. *)
-Lemma retag_is_freeze_is_Some h α clk β x kind T
+Lemma retag_is_freeze_is_Some FNs h α clk β x kind T
   (REF : valid_mem_ptr h α β x T) (SUM : valid_mem_sum h x T)
-  (PROT : valid_protector kind β) (WF : Wf (mkState h α β clk)) :
+  (PROT : valid_protector kind β) (WF : Wf (mkState FNs h α β clk)) :
   is_Some (retag h α clk β x kind T).
 Proof.
   revert REF SUM WF PROT.
@@ -1057,18 +1064,18 @@ Proof.
     (* general goal P *)
     (λ h α clk β x kind T ohac,
       valid_mem_ptr h α β x T → valid_mem_sum h x T →
-      Wf (mkState h α β clk) → valid_protector kind β →
+      Wf (mkState FNs h α β clk) → valid_protector kind β →
       is_Some ohac)
     (λ _ _ _ β _ kind _ h α clk x Ts ohac,
       valid_mem_ptr h α β x (Product Ts) → valid_mem_sum h x (Product Ts) →
-      Wf (mkState h α β clk) → valid_protector kind β →
+      Wf (mkState FNs h α β clk) → valid_protector kind β →
       is_Some ohac)
     (λ h x _ α clk β kind _ Ts n ohac,
       valid_mem_ptr h α β x (Sum Ts) →
       (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
-          h !! (x +ₗ S n) = Some (LitV (LitInt i)) ∧
+          h !! (x +ₗ S n) = Some (LitInt i) ∧
           0 ≤ i < length Ts') → (n < length Ts)%nat →
-      Wf (mkState h α β clk) → valid_protector kind β →
+      Wf (mkState FNs h α β clk) → valid_protector kind β →
       is_Some ohac)).
   - naive_solver.
   - naive_solver.
@@ -1082,13 +1089,16 @@ Proof.
       [apply sub_ref_types_O_elem_of|].
     assert (l0 = l ∧ tag0 = tg) as [].
     { rewrite shift_loc_0 Eq0 in Eql0. by simplify_eq. } clear Eql0. subst l0 tag0.
-    destruct (retag1_is_freeze_is_Some h α clk β x rkind pkind T WF)
+    destruct (retag1_is_freeze_is_Some FNs h α clk β x rkind pkind T WF)
       as [? Eq]; [by do 2 eexists|].
     move : Eq. rewrite retag_equation_2 Eq0 /= => ->. by eexists.
   - clear. intros h x n α _ β rk pk T Eq0 REF _ _.
     destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as (?&?& Eq &?).
     move : Eq. by rewrite shift_loc_0 Eq0.
-  - clear. intros h x ???? α _ β rk pk T Eq0 REF _ _.
+  - clear. intros h x ? α _ β rk pk T Eq0 REF _ _.
+    destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as (?&?& Eq &?).
+    move : Eq. by rewrite shift_loc_0 Eq0.
+  - clear. intros h x ? α _ β rk pk T Eq0 REF _ _.
     destruct (REF _ _ _ (sub_ref_types_O_elem_of pk T)) as (?&?& Eq &?).
     move : Eq. by rewrite shift_loc_0 Eq0.
   - clear. intros h x α _ β rk pk T Eq0 REF _ _.
@@ -1130,7 +1140,10 @@ Proof.
               |done].
     intros T' Ts' n IN1 IN2. apply SUM, sub_sum_types_elem_of_2.
     right. split; [lia|]. exists T'. split; [done|]. by rewrite /= Nat.sub_0_r.
-  - clear. intros h x f xl e ? _ _ _ _ Ts Eq0 _ SUM _ _.
+  - clear. intros h x ? _ _ _ _ Ts Eq0 _ SUM _ _.
+    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
+    move : Eq. by rewrite shift_loc_0_nat Eq0.
+  - clear. intros h x ? _ _ _ _ Ts Eq0 _ SUM _ _.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
   - clear. intros h x _ _ _ _ Ts Eq0 _ SUM _ _.
@@ -1177,10 +1190,10 @@ Lemma retag1_head_step σ x xbor pk T kind (call: Z) (Gt0: 0 ≤ call)
             [RetagEvt x (Reference pk T) kind'] #☠ σ' [].
 Proof.
   set rkind := match kind with FnEntry _ => FnEntry (Z.to_nat call) | _ => kind end.
-  destruct (retag1_is_freeze_is_Some σ.(cheap) σ.(cstk) σ.(cclk) σ.(cpro)
+  destruct (retag1_is_freeze_is_Some σ.(cfns) σ.(cheap) σ.(cstk) σ.(cclk) σ.(cpro)
                 x rkind pk T) as [[[h' α'] clk'] Eq];
     [by destruct σ|by destruct kind..|done|].
-  exists (mkState h' α' σ.(cpro) clk'), rkind.
+  exists (mkState σ.(cfns) h' α' σ.(cpro) clk'), rkind.
   econstructor. { econstructor; eauto. destruct kind; auto. naive_solver. }
   econstructor. { by destruct kind. }
   done.

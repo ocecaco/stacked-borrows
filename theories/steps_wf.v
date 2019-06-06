@@ -5,14 +5,14 @@ From stbor Require Export properties.
 
 Lemma init_mem_foldr' l n h (m: nat):
   init_mem (l +ₗ m) n h =
-  fold_right (λ (i: nat) hi, <[(l +ₗ i):=LitV ☠%V]> hi) h (seq m n).
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%V]> hi) h (seq m n).
 Proof.
   revert m. induction n as [|n IHn]; intros m; [done|]. simpl. f_equal.
   by rewrite shift_loc_assoc -(Nat2Z.inj_add m 1) Nat.add_1_r IHn.
 Qed.
 Lemma init_mem_foldr l n h:
   init_mem l n h =
-  fold_right (λ (i: nat) hi, <[(l +ₗ i):=LitV ☠%V]> hi) h (seq 0 n).
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%V]> hi) h (seq 0 n).
 Proof. by rewrite -init_mem_foldr' shift_loc_0. Qed.
 
 Lemma free_mem_foldr' l n h (m: nat):
@@ -52,14 +52,14 @@ Proof. move => ??? WF ??[?|] /WF /=; [lia|done]. Qed.
 
 (** Alloc *)
 Lemma alloc_step_wf σ σ' e e' efs h0 l bor T:
-  base_step e σ.(cheap) (AllocEvt l bor T) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) (AllocEvt l bor T) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (AllocEvt l bor T)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β clk].
-  destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [FN h α β clk].
+  destruct σ' as [FN' h' α' β' clk']. simpl.
   intros BS IS WF. inversion BS. clear BS. simplify_eq.
   destruct (tsize T) eqn:Eqs.
   - inversion IS; clear IS; simplify_eq; constructor; simpl;
@@ -104,16 +104,16 @@ Qed.
 Lemma memory_deallocated_delete α β l bor n α':
   memory_deallocated α β l bor n = Some α' →
   α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq O n).
-Proof. intros. eapply memory_deallocated_delete'. by rewrite shift_loc_0. Qed.
+Proof. intros. eapply memory_deallocated_delete'. rewrite shift_loc_0. by eauto. Qed.
 
 Lemma dealloc_step_wf σ σ' e e' efs h0 l bor T :
-  base_step e σ.(cheap) (DeallocEvt l bor T) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) (DeallocEvt l bor T) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (DeallocEvt l bor T)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [FN h α β clk]. destruct σ' as [FN' h' α' β' clk']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -139,7 +139,7 @@ Proof.
   revert α. induction n as [|n IH]; intros α; [by move => /= [-> //]|].
   simpl. destruct (α !! (l +ₗ n)) eqn:Eq; [|done].
   simpl. case f => stack' /=; [|done]. move => /IH <-.
-  symmetry. apply dom_map_insert_is_Some. by eexists.
+  symmetry. apply dom_map_insert_is_Some. rewrite Eq. by eexists.
 Qed.
 
 Definition tagged_sublist (stk1 stk2: stack) :=
@@ -318,13 +318,13 @@ Proof.
 Qed.
 
 Lemma copy_step_wf σ σ' e e' efs h0 l bor T vl :
-  base_step e σ.(cheap) (CopyEvt l bor T vl) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) (CopyEvt l bor T vl) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (CopyEvt l bor T vl)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ' ∧ vl <<b σ'.(cclk).
 Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [? h α β clk]. destruct σ' as [? h' α' β' clk']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq. split; [|done].
@@ -370,13 +370,13 @@ Proof.
 Qed.
 
 Lemma write_step_wf σ σ' e e' efs h0 l bor T vl :
-  base_step e σ.(cheap) (WriteEvt l bor T vl) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) (WriteEvt l bor T vl) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (WriteEvt l bor T vl)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [? h α β clk]. destruct σ' as [? h' α' β' clk']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -400,15 +400,15 @@ Proof.
   - eapply for_each_access1_non_empty; eauto. apply WF.
 Qed.
 
-(** NewCall *)
-Lemma newcall_step_wf σ σ' e e' efs h0 n :
-  base_step e σ.(cheap) (NewCallEvt n) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
-                    (NewCallEvt n)
+(** Call *)
+Lemma call_step_wf σ σ' e e' efs h0 name n :
+  expr_step σ.(cfns) e σ.(cheap) (NewCallEvt name n) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+                    (NewCallEvt name n)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [? h α β clk]. destruct σ' as [? h' α' β' clk']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -421,13 +421,13 @@ Qed.
 
 (** EndCall *)
 Lemma endcall_step_wf σ σ' e e' efs h0 n :
-  base_step e σ.(cheap) (EndCallEvt n) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) (EndCallEvt n) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (EndCallEvt n)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [? h α β clk]. destruct σ' as [? h' α' β' clk']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -657,11 +657,11 @@ Proof.
   - clear. intros ??????? IH ?? Hf.
     case is_freeze; [by intros ?; simplify_eq|]. by move => /(IH _ _ Hf).
   - clear. intros ??????? IH ?? Hf. case is_freeze; [by intros; simplify_eq|].
-    case lookup => [[[//|//|i]|//]|//].
+    case lookup => [[//|//|i|//|//]|//].
     case decide => [Ge0|//].
     case visit_freeze_sensitive'_clause_6_visit_lookup
       as [[]|] eqn:Eq1; [simpl|done].
-    intros. simplify_eq. eapply (IH (LitV LitPoison) LitPoison); eauto.
+    intros. simplify_eq. eapply (IH LitPoison); eauto.
   - naive_solver.
   - (* Product case *)
     intros ???????????? IH1 IH2 ?? Hf.
@@ -714,12 +714,12 @@ Qed.
 
 Lemma retag_ref_wf_stack h α β clk x l old T kind bar bor' α' clk'
   (BAR : match bar with Some c => is_Some (β !! c) | _ => True end)
-  (Eqx: h !! x = Some $ LitV (LitLoc l old)) :
+  (Eqx: h !! x = Some (LitLoc l old)) :
   retag_ref h α β clk l old T kind bar = Some (bor', α', clk') →
   wf_mem_tag h clk →
   wf_stack_item α β clk → wf_non_empty α →
-  dom (gset loc) h ≡ dom (gset loc) (<[x:=LitV (LitLoc l bor')]> h) ∧
-  wf_mem_tag (<[x:=LitV (LitLoc l bor')]> h) clk' ∧
+  dom (gset loc) h ≡ dom (gset loc) (<[x:=(LitLoc l bor')]> h) ∧
+  wf_mem_tag (<[x:=(LitLoc l bor')]> h) clk' ∧
   dom (gset loc) α ≡ dom (gset loc) α' ∧
   wf_stack_item α' β clk' ∧ wf_non_empty α'.
 Proof.
@@ -778,6 +778,7 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
+  - naive_solver.
   - (* Product inner recursive case *)
     intros ????????????? IH1 IH2 ???.
     case retag as [hac|]; [|done]. move => /= /IH1 WF BS WF1 WF2 WF3.
@@ -794,12 +795,13 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
+  - naive_solver.
 Qed.
 
-Lemma retag_wf h α clk β l kind T h' α' clk'
+Lemma retag_wf FNs FNs' h α clk β l kind T h' α' clk'
   (FNBAR : match kind with | FnEntry c => β !! c = Some true | _ => True end) :
   retag h α clk β l kind T = Some (h', α', clk') →
-  Wf (mkState h α β clk) → Wf (mkState h' α' β clk').
+  Wf (mkState FNs h α β clk) → Wf (mkState FNs' h' α' β clk').
 Proof.
   have ?: borrow_barrier_Some β kind by (destruct kind; [eexists|done..]).
   move => /retag_wf_stack WF' WF.
@@ -809,8 +811,8 @@ Proof.
 Qed.
 
 Lemma retag_step_wf σ σ' e e' efs h0 l T kind :
-  base_step e σ.(cheap) (RetagEvt l T kind) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) (RetagEvt l T kind) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (RetagEvt l T kind)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
@@ -824,22 +826,22 @@ Qed.
 
 (** Silent step *)
 Lemma silent_step_wf σ σ' e e' efs h0 :
-  base_step e σ.(cheap) SilentEvt e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) SilentEvt e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     SilentEvt
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [? h α β clk]. destruct σ' as [? h' α' β' clk']. simpl.
   intros BS IS WF.
   inversion BS; clear BS; simplify_eq;
-  inversion IS; clear IS; simplify_eq; apply WF.
+  inversion IS; clear IS; simplify_eq; constructor; apply WF.
 Qed.
 
 (** SysCall step *)
 (* Lemma syscall_step_wf σ σ' e e' id efs h0 :
-  base_step e σ.(cheap) (SysCallEvt id) e' h0 efs →
-  instrumented_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
+  expr_step σ.(cfns) e σ.(cheap) (SysCallEvt id) e' h0 efs →
+  bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk)
                     (SysCallEvt id)
                   σ'.(cheap) σ'.(cstk) σ'.(cpro) σ'.(cclk) →
   Wf σ → Wf σ'.
@@ -858,13 +860,12 @@ Proof.
   - eapply dealloc_step_wf; eauto.
   - eapply copy_step_wf; eauto.
   - eapply write_step_wf; eauto.
-  - eapply newcall_step_wf; eauto.
+  - eapply call_step_wf; eauto.
   - eapply endcall_step_wf; eauto.
   - eapply retag_step_wf; eauto.
   (* - eapply syscall_step_wf; eauto. *)
   - eapply silent_step_wf; eauto.
 Qed.
-
 Lemma thread_step_wf eσ1 eσ2 :
   eσ1 ~t~> eσ2 → Wf eσ1.2 → Wf eσ2.2.
 Proof. inversion 1. inversion PRIM. by eapply head_step_wf. Qed.
@@ -904,6 +905,7 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
+  - naive_solver.
   - (* Product inner recursive case *)
     intros ????????????? IH1 IH2 ???.
     case retag as [hac|]; [|done]. move => /= /IH1 Le. destruct hac as [[]].
@@ -912,6 +914,7 @@ Proof.
   - naive_solver.
   - (* Sum case *)
     intros ???????? IH Eq ???. case decide => Le; [|done]. by apply IH.
+  - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
@@ -948,4 +951,17 @@ Proof.
   - intros c' b Eq. case (decide (c' = call)) => ?; [subst c'|].
     + exists false. by rewrite lookup_insert.
     + exists b. by rewrite lookup_insert_ne.
+Qed.
+
+
+Lemma head_step_funs_static σ σ' e e' obs efs :
+  head_step e σ obs e' σ' efs → σ.(cfns) = σ'.(cfns).
+Proof. by inversion 1. Qed.
+Lemma thread_step_funs_static eσ1 eσ2 :
+  eσ1 ~t~> eσ2 → eσ1.2.(cfns) = eσ2.2.(cfns).
+Proof. inversion 1. inversion PRIM. by eapply head_step_funs_static. Qed.
+Lemma rtc_thread_step_funs_static eσ1 eσ2 :
+  eσ1 ~t~>* eσ2 → eσ1.2.(cfns) = eσ2.2.(cfns).
+Proof.
+  intros SS. induction SS; [done|]. erewrite thread_step_funs_static; eauto.
 Qed.

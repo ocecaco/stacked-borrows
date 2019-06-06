@@ -7,7 +7,6 @@ theories/notation.v
 theories/expr_semantics.v
 theories/bor_semantics.v
 theories/lang.v
-theories/tactics.v
 theories/properties.v
 theories/steps_wf.v
 theories/steps_progress.v
