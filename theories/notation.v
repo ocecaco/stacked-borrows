@@ -1,11 +1,18 @@
-From stbor Require Export lang.
+From stbor Require Export lang_base.
 
-Coercion App : expr >-> Funclass.
+(* Coercion App : expr >-> Funclass. *)
 Coercion of_val : val >-> expr.
-
 Coercion Var : string >-> expr.
 
-(** Lambda's arguments *)
+Notation "[ ]" := (@nil binder) : binder_scope.
+Notation "a :: b" := (@cons binder a%binder b%binder)
+  (at level 60, right associativity) : binder_scope.
+Notation "[ x1 ; x2 ; .. ; xn ]" :=
+  (@cons binder x1%binder (@cons binder x2%binder
+        (..(@cons binder xn%binder (@nil binder))..))) : binder_scope.
+Notation "[ x ]" := (@cons binder x%binder (@nil binder)) : binder_scope.
+
+(** Function arguments *)
 Notation "[ ]" := (@nil expr) : expr_scope.
 Notation "[ x ]" := (@cons expr x%E (@nil expr)) : expr_scope.
 Notation "[ x1 ; x2 ; .. ; xn ]" :=
@@ -21,36 +28,37 @@ Notation "#[ x1 ; x2 ; .. ; xn ]" :=
 
 (* No scope for the values, does not conflict and scope is often not inferred
 properly. *)
-Notation "# l" := (ImmV (LitV l%Z%V%L)) (at level 8, format "# l").
+Notation "# l" := (LitV l%Z%V%L) (at level 8, format "# l") : val_scope.
 Notation "# l" := (Lit l%Z%V%L) (at level 8, format "# l") : expr_scope.
 
 (** Some common types *)
 Notation int := (Scalar 1).
 Notation int_arr n := (Scalar n).
-Notation "'&mut' T" := (Reference (RefPtr Mutable) T%RustT)
+Notation "'&mut' T" := (Reference (RefPtr Mutable) T%T)
   (at level 8, format "&mut  T") : lrust_type.
-Notation "'&' T" := (Reference (RefPtr Immutable) T%RustT)
+Notation "'&' T" := (Reference (RefPtr Immutable) T%T)
   (at level 8, format "&  T")  : lrust_type.
-Notation "'*mut' T" := (Reference (RawPtr Mutable) T%RustT)
+Notation "'*mut' T" := (Reference (RawPtr Mutable) T%T)
   (at level 8, format "*mut  T") : lrust_type.
-Notation "'*const' T" := (Reference (RawPtr Immutable) T%RustT)
+Notation "'*const' T" := (Reference (RawPtr Immutable) T%T)
   (at level 8, format "*const  T") : lrust_type.
-Notation "'Box<' T '>'" := (Reference RawPtr T%RustT)
+Notation "'Box<' T '>'" := (Reference RawPtr T%T)
   (at level 8, format "Box< T >") : lrust_type.
 
 (** Pointer operations *)
 Notation "& e" := (Ref e%E) (at level 8, format "& e") : expr_scope.
-Notation "*{ T } e" := (Deref e%E T%RustT)
+Notation "*{ T } e" := (Deref e%E T%T)
   (at level 9, format "*{ T }  e") : expr_scope.
 
 Notation "'Copy1' e" := (Proj (Copy e%E) #0) (at level 10) : expr_scope.
 
 (** Syntax inspired by Coq/Ocaml. Constructions with higher precedence come
     first. *)
+
 Notation "'case:' e0 'of' el" := (Case e0%E el%E)
   (at level 102, e0, el at level 150) : expr_scope.
-Notation "'if:' e1 'then' e2 'else' e3" := (If e1%E e2%E e3%E)
-  (only parsing, at level 102, e1, e2, e3 at level 150) : expr_scope.
+Notation "'if:' e0 'then' e1 'else' e2" := (Case e0%E [e2%E;e1%E])
+  (only parsing, at level 102, e0, e1, e2 at level 150) : expr_scope.
 Notation "☠" := LitPoison : val_scope.
 
 (* Notation "! e" := (Read e%E) (at level 9, format "! e") : expr_scope. *)
@@ -72,24 +80,14 @@ Notation "e1 = e2" := (BinOp EqOp e1%E e2%E)
 Notation "e1 +ₗ e2" := (BinOp OffsetOp e1%E e2%E)
   (at level 50, left associativity) : expr_scope.
 
-Notation "'rec:' f xl := e" := (Rec f%binder xl%binder e%E)
-  (at level 102, f, xl at level 1, e at level 200) : expr_scope.
-Notation "'rec:' f xl := e" := (locked (RecV f%binder xl%binder e%E))
-  (at level 102, f, xl at level 1, e at level 200) : val_scope.
-
-Notation "λ: xl , e" := (Lam xl%binder e%E)
-  (at level 102, xl at level 1, e at level 200) : expr_scope.
-Notation "λ: xl , e" := (locked (LamV xl%binder e%E))
-  (at level 102, xl at level 1, e at level 200) : val_scope.
-
-Notation "'let:' x := e1 'in' e2" :=
-  ((Lam (@cons binder x%binder nil) e2%E) (@cons expr e1%E nil))
+Notation "'let:' x := e1 'in' e2" := (Let x%binder e1%E e2%E)
   (at level 102, x at level 1, e1, e2 at level 150) : expr_scope.
 Notation "e1 ;; e2" := (let: <> := e1 in e2)%E
   (at level 100, e2 at level 200, format "e1  ;;  e2") : expr_scope.
+Notation Skip := ((Lit LitPoison) ;; (Lit LitPoison)).
+
 (* These are not actually values, but we want them to be pretty-printed. *)
-Notation "'let:' x := e1 'in' e2" :=
-  (LamV (@cons binder x%binder nil) e2%E (@cons expr e1%E nil))
+Notation "'let:' x := e1 'in' e2" := (Let x%binder e1%E e2%E)
   (at level 102, x at level 1, e1, e2 at level 150) : val_scope.
 Notation "e1 ;; e2" := (let: <> := e1 in e2)%V
   (at level 100, e2 at level 200, format "e1  ;;  e2") : val_scope.

@@ -23,8 +23,9 @@ Inductive type :=
   | Product (Ts: list type)
   | Sum (Ts: list type)
   .
+Delimit Scope lrust_type with T.
 Bind Scope lrust_type with type.
-Delimit Scope lrust_type with RustT.
+
 
 (** Types that don't contain UnsafeCells. *)
 Fixpoint is_freeze (T: type) : bool :=

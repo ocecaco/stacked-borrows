@@ -2,8 +2,11 @@
 -arg -w -arg -notation-overridden,-projection-no-head-constant,-redundant-canonical-projection
 theories/helpers.v
 theories/type.v
-theories/lang.v
+theories/lang_base.v
 theories/notation.v
+theories/expr_semantics.v
+theories/bor_semantics.v
+theories/lang.v
 theories/tactics.v
 theories/properties.v
 theories/steps_wf.v
