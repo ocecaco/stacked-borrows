@@ -1,4 +1,6 @@
-From stbor Require Export lang notation.
+From stbor Require Export lang.
+
+Set Default Proof Using "Type".
 
 (** Wellformedness *)
 Class Wellformed A := Wf : A → Prop.
@@ -36,21 +38,7 @@ Record state_wf' σ := {
 
 Instance state_wf : Wellformed state :=  state_wf'.
 
-(** Terminal states *)
-Class Terminal A := terminal : A → Prop.
-Existing Class terminal.
-
-Definition expr_terminal' (e: expr) : Prop := is_Some (to_val e).
-Instance expr_terminal : Terminal expr := expr_terminal'.
-
-Instance expr_terminal_dec (e: expr): Decision (terminal e).
-Proof.
-  rewrite /terminal /expr_terminal /expr_terminal'.
-  destruct (to_val e); solve_decision.
-Qed.
-
-Lemma expr_terminal_True (e: expr) : terminal e ↔ is_Some (to_val e).
-Proof. done. Qed.
+Notation terminal e := (is_Some (to_val e)).
 
 Lemma expr_terminal_False (e: expr) : ¬ terminal e ↔ to_val e = None.
 Proof.
@@ -61,13 +49,41 @@ Proof.
 Qed.
 
 (** Thread steps *)
-Inductive thread_step (eσ1 eσ2 : expr * state) : Prop :=
+Inductive tstep (eσ1 eσ2 : expr * state) : Prop :=
 | ThreadStep ev efs
     (PRIM: prim_step eσ1.1 eσ1.2 ev eσ2.1 eσ2.2 efs)
 .
 
-Infix "~t~>" := thread_step (at level 70).
-Infix "~t~>*" := (rtc thread_step) (at level 70).
+Infix "~t~>" := tstep (at level 70).
+Infix "~t~>*" := (rtc tstep) (at level 70).
+
+(** Behaviors ----------------------------------------------------------------*)
+
+CoInductive diverges
+  (step: expr * state → expr * state → Prop)
+  (cfg: expr * state) : Prop :=
+| DivergeStep cfg' (STEP: step cfg cfg') (DIV: diverges step cfg') .
+
+Inductive behavior := | Term (v: val) | Stuck | Diverges.
+
+Inductive behaviors
+  (step: expr * state → expr * state → Prop)
+  (cfg: expr * state) : behavior → Prop :=
+| behaviors_term v
+    (TERMINAL: to_val cfg.1 = Some v) :
+    behaviors step cfg (Term v)
+| behaviors_stuck
+    (NT: ¬ terminal cfg.1)
+    (NS: ∀ cfg', ¬ step cfg cfg') :
+    behaviors step cfg Stuck
+| behaviors_diverges
+    (DIV: diverges step cfg) :
+    behaviors step cfg Diverges
+| behaviors_step cfg' ov
+    (STEP: step cfg cfg')
+    (NEXT: behaviors step cfg' ov):
+    behaviors step cfg ov
+.
 
 (*=================================== UNUSED =================================*)
 Implicit Type (ρ: cfg bor_lang).
@@ -77,6 +93,6 @@ Definition cfg_wf' ρ : Prop := Wf ρ.2.
 Instance cfg_wf : Wellformed (cfg bor_lang) :=  cfg_wf'.
 
 Definition threads_terminal' (el: list expr) := ∀ e, e ∈ el → terminal e.
-Instance threads_terminal : Terminal (list expr) := threads_terminal'.
-Definition cfg_terminal' ρ : Prop := terminal ρ.1.
-Instance cfg_terminal : Terminal (cfg bor_lang) := cfg_terminal'.
+(* Instance threads_terminal : Terminal (list expr) := threads_terminal'. *)
+(* Definition cfg_terminal' ρ : Prop := terminal ρ.1. *)
+(* Instance cfg_terminal : Terminal (cfg bor_lang) := cfg_terminal'. *)

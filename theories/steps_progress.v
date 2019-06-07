@@ -1,5 +1,7 @@
 From stbor Require Export steps_wf.
 
+Set Default Proof Using "Type".
+
 Definition fresh_block (h : mem) : block :=
   let loclst : list loc := elements (dom (gset loc) h) in
   let blockset : gset block := foldr (λ l, ({[l.1]} ∪)) ∅ loclst in

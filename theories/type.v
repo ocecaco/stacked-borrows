@@ -1,5 +1,4 @@
-From Coq Require Import Program.
-From Coq Require Import ssreflect.
+From Coq Require Import Program ssreflect.
 From stdpp Require Export list countable.
 
 From stbor Require Export helpers.

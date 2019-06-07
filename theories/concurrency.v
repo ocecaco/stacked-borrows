@@ -8,7 +8,7 @@
 | StepAtomic e1 σ1 e2 σ2 efs t1 t2 :
    ρ1 = (t1 ++ e1 :: t2, σ1) →
    ρ2 = (t1 ++ e2 :: t2 ++ efs, σ2) →
-   thread_step (e1, σ1) ev (e2, σ2) efs →
+   tstep (e1, σ1) ev (e2, σ2) efs →
    tid = length t1 →
    step ρ1 tid ev ρ2.
 

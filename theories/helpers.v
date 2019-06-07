@@ -1,6 +1,8 @@
 From Coq Require Import ssreflect.
 From stdpp Require Export list gmap.
 
+Set Default Proof Using "Type".
+
 Lemma foldr_gmap_insert_dom `{Countable K} {A B C: Type}
   (ma: gmap K A) (mb: gmap K B) (a: A) (b: B) (cs: list C) (f: C → K):
   dom (gset K) ma ≡ dom (gset K) mb →

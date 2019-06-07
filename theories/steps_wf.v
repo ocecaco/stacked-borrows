@@ -1,6 +1,8 @@
 From stbor Require Import helpers.
 From stbor Require Export properties.
 
+Set Default Proof Using "Type".
+
 (** Steps preserve wellformedness *)
 
 Lemma init_mem_foldr' l n h (m: nat):
@@ -866,14 +868,14 @@ Proof.
   (* - eapply syscall_step_wf; eauto. *)
   - eapply silent_step_wf; eauto.
 Qed.
-Lemma thread_step_wf eσ1 eσ2 :
+Lemma tstep_wf eσ1 eσ2 :
   eσ1 ~t~> eσ2 → Wf eσ1.2 → Wf eσ2.2.
 Proof. inversion 1. inversion PRIM. by eapply head_step_wf. Qed.
-Lemma rtc_thread_step_wf eσ1 eσ2 :
+Lemma rtc_tstep_wf eσ1 eσ2 :
   eσ1 ~t~>* eσ2 → Wf eσ1.2 → Wf eσ2.2.
 Proof.
   intros SS. induction SS; [done|]. intros WF1. apply IHSS. revert WF1.
-  by apply thread_step_wf.
+  by apply tstep_wf.
 Qed.
 
 Lemma retag_clk_mono h α clk β l kind T h' α' clk' :
@@ -957,11 +959,11 @@ Qed.
 Lemma head_step_funs_static σ σ' e e' obs efs :
   head_step e σ obs e' σ' efs → σ.(cfns) = σ'.(cfns).
 Proof. by inversion 1. Qed.
-Lemma thread_step_funs_static eσ1 eσ2 :
+Lemma tstep_funs_static eσ1 eσ2 :
   eσ1 ~t~> eσ2 → eσ1.2.(cfns) = eσ2.2.(cfns).
 Proof. inversion 1. inversion PRIM. by eapply head_step_funs_static. Qed.
-Lemma rtc_thread_step_funs_static eσ1 eσ2 :
+Lemma rtc_tstep_funs_static eσ1 eσ2 :
   eσ1 ~t~>* eσ2 → eσ1.2.(cfns) = eσ2.2.(cfns).
 Proof.
-  intros SS. induction SS; [done|]. erewrite thread_step_funs_static; eauto.
+  intros SS. induction SS; [done|]. erewrite tstep_funs_static; eauto.
 Qed.
