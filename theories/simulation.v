@@ -4,23 +4,38 @@ From stbor Require Export properties steps_wf steps_inversion.
 
 (** State simulation *)
 
-(* Simulated memory values *)
+(* TODO: fix simulated values for locations *)
+Definition sim_lit (v1: lit) (σ1: state) (v2: lit) (σ2: state) :=
+  match v1, v2 with
+  | LitPoison, LitPoison => True
+  | LitInt n1, LitInt n2 => n1 = n2
+  | LitLoc l1 bor1, LitLoc l2 bor2 => (* FIXME *) l1 = l2
+  | LitCall c1, LitCall c2 => c1 = c2
+  | LitFnPtr fptr1, LitFnPtr fptr2 => (* FIXME *) fptr1 = fptr2
+  | _,_ => False
+  end.
 
 Definition sim_val_expr (e1 e2: expr) :=
   ∀ v2, to_val e2 = Some v2 → to_val e1 = Some v2.
+
+Notation SIM_MEM := (relation mem)%type.
+Notation SIM_STATE := (relation state)%type.
+Notation SIM_CONFIG := (relation (expr * state))%type.
 
 (* Simulated state *)
 (* - cheap: Target memory is simulated by source memory
    - cpro, cstk, cclk : Call states, stack states, and tag counters are the same *)
 (* TODO: alloc need to be deterministic *)
-Record sim_state (σ_src σ_tgt: state) := {
-  sim_state_mem_dom : dom (gset loc) σ_src.(cheap) ≡ dom (gset loc) σ_tgt.(cheap);
-  sim_state_stack : σ_src.(cstk) = σ_tgt.(cstk);
-  sim_state_protectors : σ_src.(cpro) = σ_tgt.(cpro);
-  sim_state_mem : ∀ l v,
-    σ_tgt.(cheap) !! l = Some v → σ_src.(cheap) !! l = Some v;
-  sim_state_clk : σ_src.(cclk) = σ_tgt.(cclk)
-}.
+Inductive sim_state (sim_mem : SIM_MEM) (σ_src σ_tgt: state) : Prop :=
+| SimState
+  (MDOM: dom (gset loc) σ_src.(cheap) ≡ dom (gset loc) σ_tgt.(cheap))
+  (SMEM: sim_mem σ_src.(cheap) σ_tgt.(cheap))
+  (SSTK: σ_src.(cstk) = σ_tgt.(cstk))
+  (SPRO: σ_src.(cpro) = σ_tgt.(cpro))
+  (SCLK : σ_src.(cclk) = σ_tgt.(cclk))
+  (* (SFNS: what? *)
+.
+
 (* 
 Instance sim_lit_po : PreOrder sim_lit.
 Proof.
@@ -49,10 +64,6 @@ Qed.
 (** Thread simulation *)
 (* This is a simulation between two expressions without any interference.
   It corresponds to a sequential simulation. *)
-
-Notation SIM_CONFIG := (relation (expr * state))%type.
-Notation SIM := (SIM_CONFIG → SIM_CONFIG)%type.
-Notation SIM_STATE := (relation state)%type.
 
 (* Generator for the actual simulation *)
 (* Target is simulated by source.
