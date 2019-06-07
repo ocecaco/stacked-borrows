@@ -18,23 +18,12 @@ Definition sim_lit (v1: lit) (σ1: state) (v2: lit) (σ2: state) :=
 Definition sim_val_expr (e1 e2: expr) :=
   ∀ v2, to_val e2 = Some v2 → to_val e1 = Some v2.
 
-Notation SIM_MEM := (relation mem)%type.
 Notation SIM_STATE := (relation state)%type.
-Notation SIM_CONFIG := (relation (expr * state))%type.
 
 (* Simulated state *)
 (* - cheap: Target memory is simulated by source memory
    - cpro, cstk, cclk : Call states, stack states, and tag counters are the same *)
 (* TODO: alloc need to be deterministic *)
-Inductive sim_state (sim_mem : SIM_MEM) (σ_src σ_tgt: state) : Prop :=
-| SimState
-  (MDOM: dom (gset loc) σ_src.(cheap) ≡ dom (gset loc) σ_tgt.(cheap))
-  (SMEM: sim_mem σ_src.(cheap) σ_tgt.(cheap))
-  (SSTK: σ_src.(cstk) = σ_tgt.(cstk))
-  (SPRO: σ_src.(cpro) = σ_tgt.(cpro))
-  (SCLK : σ_src.(cclk) = σ_tgt.(cclk))
-  (* (SFNS: what? *)
-.
 
 (* 
 Instance sim_lit_po : PreOrder sim_lit.
@@ -77,8 +66,26 @@ Qed.
   the memory. Thus the simulation maintains the relation `sim_state` between
   the states. *)
 
-Definition _sim (sim : SIM_CONFIG) (eσ1_src eσ1_tgt: expr * state) : Prop :=
-  Wf eσ1_src.2 → Wf eσ1_tgt.2 →
+Section ghost.
+Context {A: Type}.
+Notation SIM_CONFIG := (A → expr * state → expr * state → Prop)%type.
+Notation SIM_MEM := (A → state → state → Prop)%type.
+Variable (Φ: A → expr * state → expr * state → A → expr * state → expr * state → Prop)
+         (sim_mem: SIM_MEM).
+
+Inductive sim_state (σG: A) (σ_src σ_tgt: state) : Prop :=
+| SimState
+  (MDOM: dom (gset loc) σ_src.(cheap) ≡ dom (gset loc) σ_tgt.(cheap))
+  (SMEM: sim_mem σG σ_src σ_tgt)
+  (SSTK: σ_src.(cstk) = σ_tgt.(cstk))
+  (SPRO: σ_src.(cpro) = σ_tgt.(cpro))
+  (SCLK : σ_src.(cclk) = σ_tgt.(cclk))
+  (* (SFNS: what? *)
+.
+
+Definition _sim
+  (sim : SIM_CONFIG) (σG: A) (eσ1_src eσ1_tgt: expr * state) : Prop :=
+  Wf eσ1_src.2 → Wf eσ1_tgt.2 → sim_state σG eσ1_src.2 eσ1_tgt.2 →
   (* If [eσ1_src] gets UB, we can have UB in the target, thus any [eσ1_tgt] is
       acceptable. Otherwise ... *)
   ¬ (∀ eσ', eσ1_src ~t~>* eσ' → stuck eσ'.1 eσ'.2) →
@@ -88,26 +95,31 @@ Definition _sim (sim : SIM_CONFIG) (eσ1_src eσ1_tgt: expr * state) : Prop :=
   (* (2) If [eσ1_tgt] diverges, then [eσ1_src] diverges. *)
   (diverges tstep eσ1_tgt → diverges tstep eσ1_src) ∧
   (* (3) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
-  (terminal eσ1_tgt.1 → ∃ eσ2_src,
+  (terminal eσ1_tgt.1 → ∃ eσ2_src σG',
     eσ1_src ~t~>* eσ2_src ∧ terminal eσ2_src.1 ∧
-    sim_val_expr eσ2_src.1 eσ1_tgt.1 (* ∧ sim_post eσ2_src eσ1_tgt *)) ∧
+    sim_val_expr eσ2_src.1 eσ1_tgt.1 ∧
+    sim_state σG' eσ2_src.2 eσ1_tgt.2 ∧ Φ σG eσ1_src eσ1_tgt σG' eσ2_src eσ1_tgt) ∧
   (* (4) If [eσ1_tgt] steps to [eσ2_tgt] with 1 step,
        then exists [eσ2_src] s.t. [eσ1_src] steps to [eσ2_src] with * step. *)
-  (∀ eσ2_tgt, eσ1_tgt ~t~> eσ2_tgt → ∃ eσ2_src,
-      eσ1_src ~t~>* eσ2_src ∧ sim eσ2_src eσ2_tgt)
+  (∀ eσ2_tgt, eσ1_tgt ~t~> eσ2_tgt → ∃ eσ2_src σG',
+      eσ1_src ~t~>* eσ2_src ∧
+      sim_state σG' eσ2_src.2 eσ2_tgt.2 ∧ Φ σG eσ1_src eσ1_tgt σG' eσ2_src eσ2_tgt ∧
+      sim σG' eσ2_src eσ2_tgt)
   .
 
-Lemma _sim_mono : monotone2 _sim.
+Lemma _sim_mono : monotone3 (_sim).
 Proof.
-  intros eσ_src eσ_tgt r r' TS LE WF1 WF2 NS.
-  destruct (TS WF1 WF2 NS) as (SU & DI & TE & ST). repeat split; auto.
-  intros eσ2_tgt ONE. destruct (ST _ ONE) as (eσ2_src & STEP1 & Hr).
-  exists eσ2_src. split; [done|]. by apply LE.
+  intros σG eσ_src eσ_tgt r r' TS LE WF1 WF2 SS NS.
+  destruct (TS WF1 WF2 SS NS) as (SU & DI & TE & ST). repeat split; auto.
+  intros eσ2_tgt ONE. destruct (ST _ ONE) as (eσ2_src & σG' & STEP1 & SS1 & HΦ & Hr).
+  exists eσ2_src, σG'. do 3 (split; [done|]). by apply LE.
 Qed.
-Hint Resolve _sim_mono: paco.
 
 (* Actual simulation *)
-Definition sim : SIM_CONFIG := paco2 _sim bot2.
+Definition sim : SIM_CONFIG := paco3 _sim bot3.
+End ghost.
+
+Hint Resolve _sim_mono: paco.
 
 (* Lemma _sim_thread_mono : monotone3 _sim_thread.
 Proof.
