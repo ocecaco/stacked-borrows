@@ -266,7 +266,7 @@ Definition to_val (e : expr) : option val :=
 
 (** Global static function table *)
 Inductive function :=
-| FunV (xl : list binder) (e : expr) `{Closed (xl +b+ []) e}.
+| FunV (cid: binder) (xl : list binder) (e : expr) `{Closed (cid :b: xl +b+ []) e}.
 Definition fn_env := gmap string function.
 
 (** Main state: a heap of literals. *)

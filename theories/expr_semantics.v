@@ -245,10 +245,10 @@ Inductive expr_step (FNs: fn_env):
     Closed (f :b: xl +b+ []) e →
     subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
     expr_step (App (Rec f xl e) el) h SilentEvt e' h [] *)
-| CallBS name (call: call_id) el h xl e HC e':
-    FNs !! name = Some (@FunV xl e HC) →
+| CallBS name (call: call_id) el h cid xl e HC e':
+    FNs !! name = Some (@FunV cid xl e HC) →
     Forall (λ ei, is_Some (to_val ei)) el →
-    subst_l xl el e = Some e' →
+    subst_l (cid :: xl) (#(LitCall call) :: el)%E e = Some e' →
     expr_step FNs (Call (#(LitFnPtr name)) el) h
                   (NewCallEvt name call)
                   (let: "r" := e' in EndCall #(LitCall call) ;; "r") h []
@@ -307,8 +307,7 @@ Inductive expr_step (FNs: fn_env):
 | RetagBS x xbor T kind kind' h e v
     (VAL: to_val e = Some v)
     (KIND: match kind with
-           | FnEntry _ => ∃ call, v = LitV $ LitInt call ∧
-                          0 ≤ call ∧ kind' = FnEntry (Z.to_nat call)
+           | FnEntry _ => ∃ c, v = LitV $ LitCall c ∧ kind' = FnEntry c
            | _ => kind' = kind
            end) :
     expr_step FNs (Retag (Place x xbor T) kind e) h

@@ -407,11 +407,11 @@ Proof.
   eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
 Qed.
 
-Lemma call_head_step σ name el xl e HC e' :
-  σ.(cfns) !! name = Some (@FunV xl e HC) →
+Lemma call_head_step σ name el cid xl e HC e' :
+  σ.(cfns) !! name = Some (@FunV cid xl e HC) →
   Forall (λ ei, is_Some (to_val ei)) el →
-  subst_l xl el e = Some e' →
   let c := fresh (dom (gset call_id) σ.(cpro)) in
+  subst_l (cid :: xl) (#(LitCall c) :: el)%E e = Some e' →
   ∃ σ', head_step (Call (#(LitFnPtr name)) el) σ
                   [NewCallEvt name c]
                   (let: "r" := e' in EndCall #(LitCall c) ;; "r")
@@ -1166,32 +1166,32 @@ Proof.
     + move : Lt => /=. lia.
 Abort.
 
-Lemma retag_head_step σ x xbor T kind (call: Z) (Gt0: 0 ≤ call)
+Lemma retag_head_step σ x xbor T kind (c: call_id)
   (BAR: match kind with
-        | FnEntry _ => σ.(cpro) !! (Z.to_nat call) = Some true
+        | FnEntry _ => σ.(cpro) !! c = Some true
         | _ => True
         end) :
   ∃ σ' kind',
-  head_step (Retag (Place x xbor T) kind #call) σ [RetagEvt x T kind'] #☠ σ' [].
+  head_step (Retag (Place x xbor T) kind #(LitCall c)) σ [RetagEvt x T kind'] #☠ σ' [].
 Proof.
   eexists.
-  exists (match kind with FnEntry _ => FnEntry (Z.to_nat call) | _ => kind end).
+  exists (match kind with FnEntry _ => FnEntry c | _ => kind end).
   econstructor. { econstructor; eauto. destruct kind; auto. naive_solver. }
   econstructor. { by destruct kind. }
 Abort.
 
-Lemma retag1_head_step σ x xbor pk T kind (call: Z) (Gt0: 0 ≤ call)
+Lemma retag1_head_step σ x xbor pk T kind (c: call_id)
   (BAR: match kind with
-        | FnEntry _ => σ.(cpro) !! (Z.to_nat call) = Some true
+        | FnEntry _ => σ.(cpro) !! c = Some true
         | _ => True
         end)
   (LOC: valid_location σ.(cheap) σ.(cstk) σ.(cpro) x pk T)
   (WF: Wf σ) :
   ∃ σ' kind',
-  head_step (Retag (Place x xbor (Reference pk T)) kind #call) σ
+  head_step (Retag (Place x xbor (Reference pk T)) kind #(LitCall c)) σ
             [RetagEvt x (Reference pk T) kind'] #☠ σ' [].
 Proof.
-  set rkind := match kind with FnEntry _ => FnEntry (Z.to_nat call) | _ => kind end.
+  set rkind := match kind with FnEntry _ => FnEntry c | _ => kind end.
   destruct (retag1_is_freeze_is_Some σ.(cfns) σ.(cheap) σ.(cstk) σ.(cclk) σ.(cpro)
                 x rkind pk T) as [[[h' α'] clk'] Eq];
     [by destruct σ|by destruct kind..|done|].
