@@ -11,4 +11,5 @@ remove: [ "sh" "-c" "rm -rf '%{lib}%/coq/user-contrib/gpfsl'" ]
 depends: [
   "coq-iris" { (= "dev.2019-05-28.2.e4644041") | (= "dev") }
   "coq-paco" { (= "3.0.0") }
+  "coq-equations" { (= "1.2~beta+8.8") }
 ]
