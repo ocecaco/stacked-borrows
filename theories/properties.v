@@ -24,15 +24,20 @@ Definition wf_non_empty (α: stacks) :=
   ∀ l stk, α !! l = Some stk → stk ≠ [].
 Definition wf_no_dup (α: stacks) :=
   ∀ l stk, α !! l = Some stk → NoDup stk.
+Definition wf_cid_pro (cids: call_id_stack) (β: protectors) :=
+  ∀ c : call_id, c ∈ cids ↔ β !! c = Some true.
 
-Definition borrow_barrier_Some (β: protectors) kind : Prop :=
-  match kind with FnEntry c => is_Some (β !! c) | _ => True end.
+Definition borrow_barrier_Some (β: protectors) kind c : Prop :=
+  match kind with FnEntry => is_Some (β !! c) | _ => True end.
 
 Record state_wf' (s: state) := {
   state_wf_dom : dom (gset loc) s.(shp) ≡ dom (gset loc) s.(sst);
   state_wf_mem_tag : wf_mem_tag s.(shp) s.(scn);
   state_wf_stack_item : wf_stack_item s.(sst) s.(spr) s.(scn);
   state_wf_non_empty : wf_non_empty s.(sst);
+  state_wf_cid_no_dup : NoDup s.(scs) ;
+  state_wf_cid_agree: wf_cid_pro s.(scs) s.(spr);
+  (* state_wf_cid_non_empty : s.(scs) ≠ []; *)
   (* state_wf_no_dup : wf_no_dup σ.(cst).(sst); *)
 }.
 

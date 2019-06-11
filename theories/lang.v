@@ -15,6 +15,8 @@ Record state := mkState {
   sst : stacks;
   (* Active call tracker *)
   spr : protectors;
+  (* Call id stack *)
+  scs : call_id_stack;
   (* Counter for pointer tag generation *)
   scn : ptr_id;
 }.
@@ -33,10 +35,11 @@ Inductive head_step :
   | HeadPureS σ e e'
       (ExprStep: pure_expr_step σ.(cst).(shp) e e')
     : head_step e σ [SilentEvt] e' σ []
-  | HeadImpureS σ e e' ev h0 h' α' β' clock'
+  | HeadImpureS σ e e' ev h0 h' α' β' cids' clock'
       (ExprStep : mem_expr_step σ.(cfn) σ.(cst).(shp) e ev h0 e')
-      (InstrStep: bor_step h0 σ.(cst).(sst) σ.(cst).(spr) σ.(cst).(scn) ev h' α' β' clock')
-    : head_step e σ [ev] e' (mkConfig σ.(cfn) (mkState h' α' β' clock')) [].
+      (InstrStep: bor_step h0 σ.(cst).(sst) σ.(cst).(spr) σ.(cst).(scs) σ.(cst).(scn)
+                           ev h' α' β' cids' clock')
+    : head_step e σ [ev] e' (mkConfig σ.(cfn) (mkState h' α' β' cids' clock')) [].
 
 
 (** BASIC LANGUAGE PROPERTIES ------------------------------------------------*)
@@ -153,18 +156,16 @@ Instance lit_countable : Countable lit.
 Proof.
   refine (inj_countable
           (λ v, match v with
-              | LitPoison => inl (inl (inl ()))
-              | LitLoc l bor => inl (inl (inr (l,bor)))
-              | LitInt n => inl (inr (inl n))
-              | LitFnPtr n => inl (inr (inr n))
-              | LitCall n => inr n
+              | LitPoison => inl (inl ())
+              | LitLoc l bor => inl (inr (l,bor))
+              | LitInt n => inr (inl n)
+              | LitFnPtr n => inr (inr n)
               end)
           (λ s, match s with
-              | inl (inl (inl ())) => Some LitPoison
-              | inl (inl (inr (l,bor))) => Some $ LitLoc l bor
-              | inl (inr (inl n)) => Some $ LitInt n
-              | inl (inr (inr n)) => Some $ LitFnPtr n
-              | inr n => Some $ LitCall n
+              | inl (inl ()) => Some LitPoison
+              | inl (inr (l,bor)) => Some $ LitLoc l bor
+              | inr (inl n) => Some $ LitInt n
+              | inr (inr n) => Some $ LitFnPtr n
               end) _); by intros [].
 Qed.
 
@@ -174,13 +175,13 @@ Instance retag_kind_countable : Countable retag_kind.
 Proof.
   refine (inj_countable
           (λ k, match k with
-              | FnEntry n => inl $ inl n
+              | FnEntry => inl $ inl ()
               | TwoPhase => inl $ inr ()
               | RawRt => inr $ inl ()
               | Default => inr $ inr ()
               end)
           (λ s, match s with
-              | inl (inl n) => Some $ FnEntry n
+              | inl (inl _) => Some $ FnEntry
               | inl (inr _) => Some TwoPhase
               | inr (inl _) => Some RawRt
               | inr (inr _) => Some Default
@@ -209,10 +210,10 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
       bool_decide (l = l') && bool_decide (bor = bor') && bool_decide (T = T')
   | Deref e T, Deref e' T' =>
       bool_decide (T = T') && expr_beq e e'
-  | Retag e kind call, Retag e' kind' call' =>
-     bool_decide (kind = kind') && expr_beq e e' && expr_beq call call'
+  | Retag e kind, Retag e' kind' =>
+     bool_decide (kind = kind') && expr_beq e e'
   | Copy e, Copy e' | Ref e, Ref e'
-  (* | AtomRead e, AtomRead e' *) | EndCall e, EndCall e' => expr_beq e e'
+  (* | AtomRead e, AtomRead e' *) | Return e, Return e' => expr_beq e e'
   | Let x e1 e2, Let x' e1' e2' =>
     bool_decide (x = x') && expr_beq e1 e1' && expr_beq e2 e2'
   | Proj e1 e2, Proj e1' e2' | Conc e1 e2, Conc e1' e2'
@@ -264,7 +265,7 @@ Proof.
                                  GenLeaf $ inl $ inl $ inr $ inr xl; go e]
       | App e el => GenNode 3 (go e :: (go <$> el)) *)
       | Call e el => GenNode 2 (go e :: (go <$> el))
-      | EndCall e => GenNode 3 [go e]
+      | Return e => GenNode 3 [go e]
       | BinOp op e1 e2 => GenNode 4 [GenLeaf $ inl $ inl $ inr $ inl op;
                                      go e1; go e2]
       | TVal el => GenNode 5 (go <$> el)
@@ -280,7 +281,7 @@ Proof.
       | Deref e T => GenNode 13 [GenLeaf $ inl $ inr $ inr $ inr T; go e]
       | Ref e => GenNode 14 [go e]
       | Field e path => GenNode 15 [GenLeaf $ inr $ inl $ inl (* $ inl *) path; go e]
-      | Retag e kind call => GenNode 16 [GenLeaf $ inr $ inl (* $ inr *) $ inr kind; go e; go call]
+      | Retag e kind => GenNode 16 [GenLeaf $ inr $ inl (* $ inr *) $ inr kind; go e]
       | Let x e1 e2 => GenNode 17 [GenLeaf $ inr $ inr x; go e1; go e2]
       | Case e el => GenNode 18 (go e :: (go <$> el))
       (* | Fork e => GenNode 23 [go e]
@@ -290,7 +291,7 @@ Proof.
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
      | GenNode 1 [GenLeaf (inl (inl (inl (inr l))))] => Lit l
      | GenNode 2 (e :: el) => Call (go e) (go <$> el)
-     | GenNode 3 [e] => EndCall (go e)
+     | GenNode 3 [e] => Return (go e)
      (* | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
                   GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)
      | GenNode 3 (e :: el) => App (go e) (go <$> el) *)
@@ -308,8 +309,8 @@ Proof.
      | GenNode 13 [GenLeaf (inl (inr (inr (inr T)))); e] => Deref (go e) T
      | GenNode 14 [e] => Ref (go e)
      | GenNode 15 [GenLeaf (inr (inl (inl (*  (inl *) path(* ) *)))); e] => Field (go e) path
-     | GenNode 16 [GenLeaf (inr (inl (* (inr *) (inr kind)(* ) *))); e; call] =>
-        Retag (go e) kind (go call)
+     | GenNode 16 [GenLeaf (inr (inl (* (inr *) (inr kind)(* ) *))); e] =>
+        Retag (go e) kind
      | GenNode 17 [GenLeaf (inr (inr x)); e1; e2] => Let x (go e1) (go e2)
      | GenNode 18 (e :: el) => Case (go e) (go <$> el)
      (* | GenNode 23 [e] => Fork (go e)
@@ -409,8 +410,8 @@ Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
   to_val e1 = None → to_val e2 = None →
   fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
 Proof.
-  destruct Ki1 as [|v1 vl1 el1| | | |vl1 el1| | | | | | | | | | | | | | |],
-           Ki2 as [|v2 vl2 el2| | | |vl2 el2| | | | | | | | | | | | | | |];
+  destruct Ki1 as [|v1 vl1 el1| | | |vl1 el1| | | | | | | | | | | | | |],
+           Ki2 as [|v2 vl2 el2| | | |vl2 el2| | | | | | | | | | | | | |];
   intros He1 He2 EQ; try discriminate; simplify_eq/=;
     repeat match goal with
     | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H

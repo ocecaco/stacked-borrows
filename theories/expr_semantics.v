@@ -15,7 +15,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   (* | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e *)
   | Call e el => Call (subst x es e) (map (subst x es) el)
-  | EndCall e => EndCall (subst x es e)
+  | Return e => Return (subst x es e)
   | Place l tag T => Place l tag T
   (* | App e1 el => App (subst x es e1) (map (subst x es) el) *)
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
@@ -32,7 +32,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Deref e T => Deref (subst x es e) T
   | Ref e => Ref (subst x es e)
   | Field e path => Field (subst x es e) path
-  | Retag e kind call => Retag (subst x es e) kind (subst x es call)
+  | Retag e kind => Retag (subst x es e) kind
   | Let x1 e1 e2 =>
       Let x1 (subst x es e1)
                  (if bool_decide (BNamed x ≠ x1) then subst x es e2 else e2)
@@ -70,7 +70,7 @@ Inductive ectx_item :=
 (* | AppRCtx (v : val) (vl : list val) (el : list expr) *)
 | CallLCtx (el: list expr)
 | CallRCtx (v : val) (vl : list val) (el : list expr)
-| EndCallCtx
+| ReturnCtx
 | BinOpLCtx (op : bin_op) (e2 : expr)
 | BinOpRCtx (op : bin_op) (v1 : val)
 | TValCtx (vl : list val) (el : list expr)
@@ -91,8 +91,7 @@ Inductive ectx_item :=
 | DerefCtx (T: type)
 | RefCtx
 | FieldCtx (path : list nat)
-| RetagLCtx (kind: retag_kind) (call: expr)
-| RetagRCtx (v: val) (kind: retag_kind)
+| RetagCtx (kind: retag_kind)
 | LetCtx (x: binder) (e2: expr)
 | CaseCtx (el : list expr).
 
@@ -102,7 +101,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   (* | AppRCtx v vl el => App (of_val v) ((of_val <$> vl) ++ e :: el) *)
   | CallLCtx el => Call e el
   | CallRCtx v vl el => Call (of_val v) ((of_val <$> vl) ++ e :: el)
-  | EndCallCtx => EndCall e
+  | ReturnCtx => Return e
   | BinOpLCtx op e2 => BinOp op e e2
   | BinOpRCtx op v1 => BinOp op (of_val v1) e
   | TValCtx vl el => TVal ((of_val <$> vl) ++ e :: el)
@@ -123,8 +122,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   | DerefCtx T => Deref e T
   | RefCtx => Ref e
   | FieldCtx path => Field e path
-  | RetagLCtx kind call => Retag e kind call
-  | RetagRCtx v kind => Retag (of_val v) kind e
+  | RetagCtx kind => Retag e kind
   | LetCtx x e2 => Let x e e2
   | CaseCtx el => Case e el
   end.
@@ -280,18 +278,20 @@ Inductive pure_expr_step (h: mem) : expr → expr → Prop :=
     el !! (Z.to_nat i) = Some e →
     pure_expr_step h (case: #i of el) e.
 
+
 Inductive mem_expr_step (FNs: fn_env) (h: mem) :
   expr → mem_event → mem → expr → Prop :=
-| CallBS name (call: call_id) el cid xl e HC e':
-    FNs !! name = Some (@FunV cid xl e HC) →
+| CallBS name (call: call_id) el xl e HC e':
+    FNs !! name = Some (@FunV xl e HC) →
     Forall (λ ei, is_Some (to_val ei)) el →
-    subst_l (cid :: xl) (#(LitCall call) :: el)%E e = Some e' →
+    subst_l xl el e = Some e' →
     mem_expr_step FNs
               h (Call (#(LitFnPtr name)) el)
               (NewCallEvt name call)
-              h (let: "r" := e' in EndCall #(LitCall call) ;; "r")
-| EndCallBS (call: call_id):
-    mem_expr_step FNs h (EndCall #(LitCall call)) (EndCallEvt call) h #☠
+              h (Return e')
+| ReturnBS (call: call_id) e v:
+    to_val e = Some v →
+    mem_expr_step FNs h (Return e) (EndCallEvt call) h v
 | CopyBS l lbor T (vl: list lit)
     (READ: read_mem l (tsize T) h = Some vl)
     (* (LEN: length vl = tsize T) *)
@@ -319,15 +319,10 @@ Inductive mem_expr_step (FNs: fn_env) (h: mem) :
               h (Free (Place l lbor T))
               (DeallocEvt l lbor T)
               (free_mem l (tsize T) h) #☠
-| RetagBS x xbor T kind kind' e v
-    (VAL: to_val e = Some v)
-    (KIND: match kind with
-           | FnEntry _ => ∃ c, v = LitV $ LitCall c ∧ kind' = FnEntry c
-           | _ => kind' = kind
-           end) :
+| RetagBS x xbor T kind :
     mem_expr_step FNs
-              h (Retag (Place x xbor T) kind e)
-              (RetagEvt x T kind')
+              h (Retag (Place x xbor T) kind)
+              (RetagEvt x T kind)
               h (Lit LitPoison).
 (* | ForkBS e h:
     expr_step (Fork e) h SilentEvt (Lit LitPoison) h [e] *)

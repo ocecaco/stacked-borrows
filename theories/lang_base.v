@@ -100,12 +100,10 @@ Definition stack := list item.
 Definition stacks := gmap loc stack.
 
 (** Retag kinds *)
-Inductive retag_kind := FnEntry (c: call_id) | TwoPhase | RawRt | Default.
+Inductive retag_kind := FnEntry | TwoPhase | RawRt | Default.
 
 Definition is_two_phase (kind: retag_kind) : bool :=
   match kind with TwoPhase => true | _ => false end.
-Definition adding_protector (kind: retag_kind) : option call_id :=
-  match kind with FnEntry c => Some c | _ => None end.
 
 (** Language base constructs -------------------------------------------------*)
 
@@ -133,8 +131,7 @@ Inductive bin_op :=
 (** Base values *)
 Inductive lit :=
   | LitPoison | LitLoc (l: loc) (tg: tag) | LitInt (n : Z)
-  | LitFnPtr (name: string)
-  | LitCall (id: call_id).
+  | LitFnPtr (name: string).
 
 (** Expressions *)
 Inductive expr :=
@@ -148,7 +145,7 @@ Inductive expr :=
 | Call (e: expr) (el: list expr) (* Call a function through a FnPtr `e`
                                     with arguments `el` *)
 (* function call tracking *)
-| EndCall (e: expr)               (* End the call with id `e` *)
+| Return (e: expr)               (* Return the value e and end the current call *)
 (* temp values *)
 | TVal (el: list expr)
 | Proj (e1 e2 : expr)
@@ -176,8 +173,7 @@ Inductive expr :=
 (* | AtomWrite (e1 e2: expr) *)
 (* | AtomRead (e: expr) *)
 (* retag *)
-| Retag (e : expr) (kind: retag_kind) (call_id: expr)
-                                  (* Retag the place `e` with retag kind `kind`. *)
+| Retag (e : expr) (kind: retag_kind) (* Retag the place `e` with retag kind `kind`. *)
 (* let binding *)
 | Let (x : binder) (e1 e2: expr)
 (* case *)
@@ -193,7 +189,7 @@ Bind Scope expr_scope with expr.
 (* Arguments App _%E _%E. *)
 Arguments BinOp _ _%E _%E.
 Arguments Call _%E _%E.
-Arguments EndCall _%E.
+Arguments Return _%E.
 Arguments TVal _%E.
 Arguments Proj _%E _%E.
 Arguments Conc _%E _%E.
@@ -207,7 +203,7 @@ Arguments Free _%E.
 (* Arguments CAS _%E _%E _%E. *)
 (* Arguments AtomWrite _%E _%E. *)
 (* Arguments AtomRead _%E. *)
-Arguments Retag _%E _ _%E.
+Arguments Retag _%E _.
 Arguments Let _%binder _%E _%E.
 Arguments Case _%E _%E.
 (* Arguments Fork _%E. *)
@@ -218,13 +214,13 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Lit _ | Place _ _ _ | Alloc _ (* | SysCall _ *) => true
   | Var x => bool_decide (x ∈ X)
   (* | Rec f xl e => is_closed (f :b: xl +b+ X) e *)
-  | BinOp _ e1 e2 | (* AtomWrite e1 e2 | *) Write e1 e2 | Retag e1 _ e2
+  | BinOp _ e1 e2 | (* AtomWrite e1 e2 | *) Write e1 e2
       | Conc e1 e2 | Proj e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
   | Let x e1 e2 => is_closed X e1 && is_closed (x :b: X) e2
   | Case e el | Call e el (* | App e el  *) => is_closed X e && forallb (is_closed X) el
-  | Copy e | Deref e _ | Ref e | Field e _
-      | Free e | EndCall e (* | AtomRead e | Fork e *) => is_closed X e
+  | Copy e | Retag e _ | Deref e _ | Ref e | Field e _
+      | Free e | Return e (* | AtomRead e | Fork e *) => is_closed X e
   (* | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2 *)
   end.
 
@@ -266,7 +262,7 @@ Definition to_val (e : expr) : option val :=
 
 (** Global static function table *)
 Inductive function :=
-| FunV (cid: binder) (xl : list binder) (e : expr) `{Closed (cid :b: xl +b+ []) e}.
+| FunV (xl : list binder) (e : expr) `{Closed (xl +b+ []) e}.
 Definition fn_env := gmap string function.
 
 (** Main state: a heap of literals. *)
