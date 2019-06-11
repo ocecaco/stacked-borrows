@@ -13,7 +13,7 @@ Ltac inv_head_step :=
      try (is_var e; fail 1); (* inversion yields many goals if [e] is a variable
      and can thus better be avoided. *)
      inversion H ; subst; clear H
-  | H : expr_step _ _ _ _ _ _ _ |- _ =>
+  | H : mem_expr_step _ _ _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
   end.
 
@@ -83,14 +83,14 @@ Qed.
 Lemma tstep_bin_op_terminal op e1 e2 e' σ σ'
   (STEP: (BinOp op e1 e2, σ) ~t~> (e', σ'))
   (TM1: terminal e1) (TM2: terminal e2):
-  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(cheap) op l1 l2 l ∧ e' = (TVal [Lit l]).
+  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(cst).(shp) op l1 l2 l ∧ e' = (TVal [Lit l]).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
     as [[]|[[K' [? Eq']]|[v1 [K' [? [Eq' VAL]]]]]]; subst.
-  - clear Eq. simpl in HS. inv_head_step.
-    inversion InstrStep; subst.
-    split; [by destruct σ|]. simpl. naive_solver.
+  - clear Eq. simpl in HS. inv_head_step; [|by inversion ExprStep].
+    inversion ExprStep; subst.
+    split; [done|]. simpl. naive_solver.
   - apply fill_val in TM1. apply val_head_stuck in HS.
     rewrite /= HS in TM1. by destruct TM1.
   - apply fill_val in TM2. apply val_head_stuck in HS.
@@ -165,13 +165,13 @@ Qed.
 Lemma tstep_copy_terminal e e' σ σ'
   (STEP: (Copy e, σ) ~t~> (e', σ')) (TM: terminal e) :
   ∃ l ltag T vl , e = Place l ltag T ∧ e' = of_val (TValV vl) ∧
-    read_mem l (tsize T) σ.(cheap) = Some vl
+    read_mem l (tsize T) σ.(cst).(shp) = Some vl
     (* not true: the stacked borrows may change, ∧ σ' = σ *).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_copy_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
-  - clear Eq. simpl in HS. inv_head_step.
-    (* inversion InstrStep; subst. *)
+  - clear Eq. simpl in HS. inv_head_step; [by inversion ExprStep|].
+    inversion ExprStep; subst.
     by exists l, lbor, T, vl.
     (* TODO: about the state *)
   - apply fill_val in TM. apply val_head_stuck in HS.

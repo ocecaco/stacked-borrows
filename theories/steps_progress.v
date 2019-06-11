@@ -4,8 +4,8 @@ Set Default Proof Using "Type".
 
 (* TODO: do we need non-empty condition? ie (tsize T) > 0? *)
 Lemma alloc_head_step σ T :
-  let l := (fresh_block σ.(cheap), 0) in
-  let t := σ.(cclk) in
+  let l := (fresh_block σ.(cst).(shp), 0) in
+  let t := σ.(cst).(scn) in
   ∃ σ',
   head_step (Alloc T) σ [AllocEvt l (Tagged t) T] (Place l (Tagged t) T) σ' [].
 Proof.
@@ -77,23 +77,23 @@ Proof.
   case protector; naive_solver.
 Qed.
 
-Lemma dealloc_head_step (σ: state) T l bor
-  (WF: Wf σ)
-  (BLK: ∀ m : Z, l +ₗ m ∈ dom (gset loc) σ.(cheap) ↔ 0 ≤ m ∧ m < tsize T)
+Lemma dealloc_head_step (σ: config) T l bor
+  (WF: Wf σ.(cst))
+  (BLK: ∀ m : Z, l +ₗ m ∈ dom (gset loc) σ.(cst).(shp) ↔ 0 ≤ m ∧ m < tsize T)
   (BOR: ∀ (n: nat) stk, (n < tsize T)%nat →
-    σ.(cstk) !! (l +ₗ n) = Some stk →
+    σ.(cst).(sst) !! (l +ₗ n) = Some stk →
     (∃ it, it ∈ stk ∧ it.(tg) = bor ∧
       it.(perm) ≠ Disabled ∧ it.(perm) ≠ SharedReadOnly) ∧
       ∀ it, it ∈ stk →
-      match it.(protector) with Some c => σ.(cpro) !! c = Some false | _ => True end) :
+      match it.(protector) with Some c => σ.(cst).(spr) !! c = Some false | _ => True end) :
   ∃ σ',
   head_step (Free (Place l bor T)) σ [DeallocEvt l bor T] #☠ σ' [].
 Proof.
-  destruct (memory_deallocated_progress σ.(cstk) σ.(cpro) l bor (tsize T))
+  destruct (memory_deallocated_progress σ.(cst).(sst) σ.(cst).(spr) l bor (tsize T))
     as [α' Eq']; [|done|].
   - intros. rewrite -(state_wf_dom _ WF). by apply BLK.
   - eexists. econstructor; econstructor; [|done].
-    intros. by rewrite -(elem_of_dom (D:= gset loc) σ.(cheap)).
+    intros. by rewrite -(elem_of_dom (D:= gset loc) σ.(cst).(shp)).
 Qed.
 
 Lemma read_mem_is_Some l n h
@@ -333,17 +333,17 @@ Proof.
     destruct (access1_read_is_Some _ _ _ STK) as [? Eq2]. rewrite Eq2. by eexists.
 Qed.
 
-Lemma copy_head_step (σ: state) l bor T
-  (WF: Wf σ)
-  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
-  (BOR: ∀ m stk, (m < tsize T)%nat → σ.(cstk) !! (l +ₗ m) = Some stk →
-        access1_read_pre σ.(cpro) stk bor) :
+Lemma copy_head_step (σ: config) l bor T
+  (WF: Wf σ.(cst))
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cst).(shp))
+  (BOR: ∀ m stk, (m < tsize T)%nat → σ.(cst).(sst) !! (l +ₗ m) = Some stk →
+        access1_read_pre σ.(cst).(spr) stk bor) :
   ∃ σ' vl,
   head_step (Copy (Place l bor T)) σ
             [CopyEvt l bor T vl] (of_val (TValV vl)) σ' [].
 Proof.
   destruct (read_mem_is_Some _ _ _ BLK) as [vl RM].
-  destruct (memory_read_is_Some σ.(cstk) σ.(cpro) l bor (tsize T));[|done|].
+  destruct (memory_read_is_Some σ.(cst).(sst) σ.(cst).(spr) l bor (tsize T));[|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
   do 2 eexists. econstructor; econstructor; [done..|].
   move => l1 bor1 /elem_of_list_lookup [i Eqi].
@@ -375,27 +375,27 @@ Proof.
     destruct (access1_write_is_Some _ _ _ STK) as [? Eq2]. rewrite Eq2. by eexists.
 Qed.
 
-Lemma write_head_step (σ: state) l bor T el vl
-  (WF: Wf σ)
+Lemma write_head_step (σ: config) l bor T el vl
+  (WF: Wf σ.(cst))
   (LEN: length vl = tsize T)
   (VALUES: to_val (TVal el) = Some (TValV vl))
-  (LOCVAL: vl <<b σ.(cclk))
-  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cheap))
-  (STK: ∀ m stk, (m < tsize T)%nat → σ.(cstk) !! (l +ₗ m) = Some stk →
-        access1_write_pre σ.(cpro) stk bor) :
+  (LOCVAL: vl <<b σ.(cst).(scn))
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(cst).(shp))
+  (STK: ∀ m stk, (m < tsize T)%nat → σ.(cst).(sst) !! (l +ₗ m) = Some stk →
+        access1_write_pre σ.(cst).(spr) stk bor) :
   ∃ σ',
   head_step (Write (Place l bor T) (TVal el)) σ
             [WriteEvt l bor T vl] #☠ σ' [].
 Proof.
-  destruct (memory_written_is_Some σ.(cstk) σ.(cpro) l bor (tsize T)); [|done|].
+  destruct (memory_written_is_Some σ.(cst).(sst) σ.(cst).(spr) l bor (tsize T)); [|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
   eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
 Qed.
 
 Lemma call_head_step σ name el cid xl e HC e' :
-  σ.(cfns) !! name = Some (@FunV cid xl e HC) →
+  σ.(cfn) !! name = Some (@FunV cid xl e HC) →
   Forall (λ ei, is_Some (to_val ei)) el →
-  let c := fresh (dom (gset call_id) σ.(cpro)) in
+  let c := fresh (dom (gset call_id) σ.(cst).(spr)) in
   subst_l (cid :: xl) (#(LitCall c) :: el)%E e = Some e' →
   ∃ σ', head_step (Call (#(LitFnPtr name)) el) σ
                   [NewCallEvt name c]
@@ -404,7 +404,7 @@ Lemma call_head_step σ name el cid xl e HC e' :
 Proof. eexists. by econstructor; econstructor. Qed.
 
 Lemma endcall_head_step σ c
-  (BAR: σ.(cpro) !! c = Some true) :
+  (BAR: σ.(cst).(spr) !! c = Some true) :
   ∃ σ', head_step (EndCall #(LitCall c)) σ [EndCallEvt c] #☠ σ' [].
 Proof. eexists. by econstructor; econstructor. Qed.
 
@@ -849,9 +849,9 @@ Proof.
     intros ?. subst. by eapply NIN, elem_of_list_lookup_2.
 Qed.
 
-Lemma retag_ref_is_freeze_is_Some FNs h α β clk l old T kind prot
+Lemma retag_ref_is_freeze_is_Some h α β clk l old T kind prot
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) h)
-  (FRZ: is_freeze T) (WF: Wf (mkState FNs h α β clk))
+  (FRZ: is_freeze T) (WF: Wf (mkState h α β clk))
   (STK: ∀ m stk, (m < tsize T)%nat → α !! (l +ₗ m) = Some stk →
     let access := match kind with
                   | SharedRef | RawRef false => AccessRead
@@ -1006,31 +1006,31 @@ Definition valid_mem_sum (h: mem) l T :=
     h !! (l +ₗ n) = Some (LitInt i) ∧ 0 ≤ i < length Ts.
 
 
-Lemma retag1_is_freeze_is_Some FNs h α clk β x kind pk T
-  (WF : Wf (mkState FNs h α β clk))
+Lemma retag1_is_freeze_is_Some h α clk β x kind pk T
+  (WF : Wf (mkState h α β clk))
   (LOC: valid_location h α β x pk T) :
   is_Some (retag h α clk β x kind (Reference pk T)).
 Proof.
   destruct LOC as (l & tg & Eqx & FRZ & EQD).
   rewrite retag_equation_2 Eqx /=.
   destruct pk as [[]|mut|]; simpl.
-  - destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T
+  - destruct (retag_ref_is_freeze_is_Some h α β clk l tg T
                 (UniqueRef (is_two_phase kind)) (adding_protector kind))
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
     destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
-  - destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T SharedRef
+  - destruct (retag_ref_is_freeze_is_Some h α β clk l tg T SharedRef
                       (adding_protector kind))
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
     destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
   - destruct kind; [by eexists..| |by eexists].
-    destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T
+    destruct (retag_ref_is_freeze_is_Some h α β clk l tg T
               (RawRef (bool_decide (mut = Mutable))) None)
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
     destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. simplify_eq. by destruct mut.
-  - destruct (retag_ref_is_freeze_is_Some FNs h α β clk l tg T
+  - destruct (retag_ref_is_freeze_is_Some h α β clk l tg T
                           (UniqueRef false) None)
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
@@ -1041,9 +1041,9 @@ Qed.
   - the place is freeze
   - any memory region pointed to by any pointer in the place is also freeze
   - all memory regions are disjoint. *)
-Lemma retag_is_freeze_is_Some FNs h α clk β x kind T
+Lemma retag_is_freeze_is_Some h α clk β x kind T
   (REF : valid_mem_ptr h α β x T) (SUM : valid_mem_sum h x T)
-  (PROT : valid_protector kind β) (WF : Wf (mkState FNs h α β clk)) :
+  (PROT : valid_protector kind β) (WF : Wf (mkState h α β clk)) :
   is_Some (retag h α clk β x kind T).
 Proof.
   revert REF SUM WF PROT.
@@ -1051,18 +1051,18 @@ Proof.
     (* general goal P *)
     (λ h α clk β x kind T ohac,
       valid_mem_ptr h α β x T → valid_mem_sum h x T →
-      Wf (mkState FNs h α β clk) → valid_protector kind β →
+      Wf (mkState h α β clk) → valid_protector kind β →
       is_Some ohac)
     (λ _ _ _ β _ kind _ h α clk x Ts ohac,
       valid_mem_ptr h α β x (Product Ts) → valid_mem_sum h x (Product Ts) →
-      Wf (mkState FNs h α β clk) → valid_protector kind β →
+      Wf (mkState h α β clk) → valid_protector kind β →
       is_Some ohac)
     (λ h x _ α clk β kind _ Ts n ohac,
       valid_mem_ptr h α β x (Sum Ts) →
       (∀ T' Ts' (n: nat), T' ∈ Ts → (n, Sum Ts') ∈ sub_sum_types T' → ∃ i,
           h !! (x +ₗ S n) = Some (LitInt i) ∧
           0 ≤ i < length Ts') → (n < length Ts)%nat →
-      Wf (mkState FNs h α β clk) → valid_protector kind β →
+      Wf (mkState h α β clk) → valid_protector kind β →
       is_Some ohac)).
   - naive_solver.
   - naive_solver.
@@ -1076,7 +1076,7 @@ Proof.
       [apply sub_ref_types_O_elem_of|].
     assert (l0 = l ∧ tag0 = tg) as [].
     { rewrite shift_loc_0 Eq0 in Eql0. by simplify_eq. } clear Eql0. subst l0 tag0.
-    destruct (retag1_is_freeze_is_Some FNs h α clk β x rkind pkind T WF)
+    destruct (retag1_is_freeze_is_Some h α clk β x rkind pkind T WF)
       as [? Eq]; [by do 2 eexists|].
     move : Eq. rewrite retag_equation_2 Eq0 /= => ->. by eexists.
   - clear. intros h x n α _ β rk pk T Eq0 REF _ _.
@@ -1153,7 +1153,7 @@ Abort.
 
 Lemma retag_head_step σ x xbor T kind (c: call_id)
   (BAR: match kind with
-        | FnEntry _ => σ.(cpro) !! c = Some true
+        | FnEntry _ => σ.(cst).(spr) !! c = Some true
         | _ => True
         end) :
   ∃ σ' kind',
@@ -1167,20 +1167,20 @@ Abort.
 
 Lemma retag1_head_step σ x xbor pk T kind (c: call_id)
   (BAR: match kind with
-        | FnEntry _ => σ.(cpro) !! c = Some true
+        | FnEntry _ => σ.(cst).(spr) !! c = Some true
         | _ => True
         end)
-  (LOC: valid_location σ.(cheap) σ.(cstk) σ.(cpro) x pk T)
-  (WF: Wf σ) :
+  (LOC: valid_location σ.(cst).(shp) σ.(cst).(sst) σ.(cst).(spr) x pk T)
+  (WF: Wf σ.(cst)) :
   ∃ σ' kind',
   head_step (Retag (Place x xbor (Reference pk T)) kind #(LitCall c)) σ
             [RetagEvt x (Reference pk T) kind'] #☠ σ' [].
 Proof.
   set rkind := match kind with FnEntry _ => FnEntry c | _ => kind end.
-  destruct (retag1_is_freeze_is_Some σ.(cfns) σ.(cheap) σ.(cstk) σ.(cclk) σ.(cpro)
+  destruct (retag1_is_freeze_is_Some σ.(cst).(shp) σ.(cst).(sst) σ.(cst).(scn) σ.(cst).(spr)
                 x rkind pk T) as [[[h' α'] clk'] Eq];
-    [by destruct σ|by destruct kind..|done|].
-  exists (mkState σ.(cfns) h' α' σ.(cpro) clk'), rkind.
+    [by destruct σ.(cst)|by destruct kind..|done|].
+  exists (mkConfig σ.(cfn) (mkState h' α' σ.(cst).(spr) clk')), rkind.
   econstructor. { econstructor; eauto. destruct kind; auto. naive_solver. }
   econstructor. { by destruct kind. }
   done.

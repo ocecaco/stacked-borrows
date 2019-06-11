@@ -1,24 +1,67 @@
 From Paco Require Import paco.
 
-From stbor Require Export properties steps_wf steps_inversion.
+From stbor Require Export properties.
 
-(** State simulation *)
+CoInductive diverges
+  (step: expr * config → expr * config → Prop)
+  (cfg: expr * config) : Prop :=
+| DivergeStep cfg' (STEP: step cfg cfg') (DIV: diverges step cfg') .
 
-(* TODO: fix simulated values for locations *)
-Definition sim_lit (v1: lit) (σ1: state) (v2: lit) (σ2: state) :=
-  match v1, v2 with
-  | LitPoison, LitPoison => True
-  | LitInt n1, LitInt n2 => n1 = n2
-  | LitLoc l1 bor1, LitLoc l2 bor2 => (* FIXME *) l1 = l2 ∧ bor1 = bor2
-  | LitCall c1, LitCall c2 => c1 = c2
-  | LitFnPtr fptr1, LitFnPtr fptr2 => (* FIXME *) fptr1 = fptr2
-  | _,_ => False
-  end.
-
-Definition sim_val_expr (e1 e2: expr) :=
+Definition sim_expr_terminal (e1 e2: expr) :=
   ∀ v2, to_val e2 = Some v2 → to_val e1 = Some v2.
+Instance sim_expr_terminal_po : PreOrder sim_expr_terminal.
+Proof.
+  constructor.
+  - intros ?. rewrite /sim_expr_terminal. naive_solver.
+  - move => e1 e2 e3 S1 S2 v3 /S2 /S1 //.
+Qed.
 
-Notation SIM_STATE := (relation state)%type.
+Notation SIM_CONFIG := (expr * config → expr * config → Prop)%type.
+
+(* This is a simulation between two expressions without any interference.
+  It corresponds to a sequential simulation. *)
+
+Record sim_base (sim: SIM_CONFIG) (eσ1_src eσ1_tgt: expr * config) : Prop := mkSimBase {
+  (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
+  sim_stuck :
+    stuck eσ1_tgt.1 eσ1_tgt.2 → ∃ eσ2_src,
+    eσ1_src ~t~>* eσ2_src ∧ stuck eσ2_src.1 eσ2_src.2 ;
+  (* (2) If [eσ1_tgt] diverges, then [eσ1_src] diverges. *)
+  (* sim_diverges : diverges tstep eσ1_tgt → diverges tstep eσ1_src ; *)
+  (* (3) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
+  sim_terminal :
+    terminal eσ1_tgt.1 → ∃ eσ2_src,
+    eσ1_src ~t~>* eσ2_src ∧ terminal eσ2_src.1 ∧ sim_expr_terminal eσ2_src.1 eσ1_tgt.1;
+  (* (4) If [eσ1_tgt] steps to [eσ2_tgt] with 1 step,
+       then exists [eσ2_src] s.t. [eσ1_src] steps to [eσ2_src] with * step. *)
+  sim_step :
+    ∀ eσ2_tgt, eσ1_tgt ~t~> eσ2_tgt → ∃ eσ2_src,
+      eσ1_src ~t~>* eσ2_src ∧ sim eσ2_src eσ2_tgt;
+}.
+
+Definition no_UB (eσ: expr * config) : Prop :=
+  ¬ (∀ eσ', eσ ~t~>* eσ' → stuck eσ'.1 eσ'.2).
+
+(* Generator for the actual simulation *)
+Definition _sim
+  (sim : SIM_CONFIG) (eσ1_src eσ1_tgt: expr * config) : Prop :=
+  Wf eσ1_src.2 → Wf eσ1_tgt.2 →
+  (* If [eσ1_src] gets UB, we can have UB in the target, thus any [eσ1_tgt] is
+      acceptable. Otherwise ... *)
+  no_UB eσ1_src → sim_base sim eσ1_src eσ1_tgt.
+
+Lemma _sim_mono : monotone2 (_sim).
+Proof.
+  intros eσ_src eσ_tgt r r' TS LE WF1 WF2 NUB.
+  destruct (TS WF1 WF2 NUB) as [SU (* DI *) TE ST]. repeat split; auto.
+  intros eσ2_tgt ONE. destruct (ST _ ONE) as (eσ2_src & STEP1 & Hr).
+  exists eσ2_src. split; [done|]. by apply LE.
+Qed.
+
+(* Global simulation *)
+Definition sim : SIM_CONFIG := paco2 _sim bot2.
+
+Hint Resolve _sim_mono: paco.
 
 (* Simulated state *)
 (* - cheap: Target memory is simulated by source memory
@@ -43,96 +86,6 @@ Proof.
   etrans; [by eapply H1|by eapply H2].
 Qed. *)
 
-Instance sim_val_expr_po : PreOrder sim_val_expr.
-Proof.
-  constructor.
-  - intros ?. rewrite /sim_val_expr. naive_solver.
-  - move => e1 e2 e3 S1 S2 v3 /S2 /S1 //.
-Qed.
-
-(** Thread simulation *)
-(* This is a simulation between two expressions without any interference.
-  It corresponds to a sequential simulation. *)
-
-(* Generator for the actual simulation *)
-(* Target is simulated by source.
-  Adequacy should states that any defined behavior by target is also a defined
-  behavior by source. In the proof of optimizations, we pick target to be the
-  optimized version, and source to be the unoptimized one.
-  This simulation is goal-based, ie. it does not have intermediate observation,
-  and the simulation finalizes at the simulation `sim_terminal` between the
-  non-reducible values.
-  The values can contain any observations of the states in between by reading
-  the memory. Thus the simulation maintains the relation `sim_state` between
-  the states. *)
-
-Section ghost.
-Context {A: Type}.
-Notation SIM_CONFIG := (A → expr * state → expr * state → Prop)%type.
-Notation SIM_MEM := (A → state → state → Prop)%type.
-Variable (Φ: A → expr * state → expr * state → A → expr * state → expr * state → Prop)
-         (sim_mem: SIM_MEM).
-
-Inductive sim_state (σG: A) (σ_src σ_tgt: state) : Prop :=
-| SimState
-  (MDOM: dom (gset loc) σ_src.(cheap) ≡ dom (gset loc) σ_tgt.(cheap))
-  (SMEM: sim_mem σG σ_src σ_tgt)
-  (SSTK: σ_src.(cstk) = σ_tgt.(cstk))
-  (SPRO: σ_src.(cpro) = σ_tgt.(cpro))
-  (SCLK : σ_src.(cclk) = σ_tgt.(cclk))
-  (* (SFNS: what? *)
-.
-
-Record sim_base (eσ1_src eσ1_tgt: expr * state) : Prop := mkSimBase {
-  (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
-  sim_stuck :
-    stuck eσ1_tgt.1 eσ1_tgt.2 → ∃ eσ2_src,
-    eσ1_src ~t~>* eσ2_src ∧ stuck eσ2_src.1 eσ2_src.2 ;
-  (* (2) If [eσ1_tgt] diverges, then [eσ1_src] diverges. *)
-  sim_diverges : diverges tstep eσ1_tgt → diverges tstep eσ1_src ;
-  sim_terminal :
-    terminal eσ1_tgt.1 → ∃ eσ2_src,
-    eσ1_src ~t~>* eσ2_src ∧ terminal eσ2_src.1 ∧
-    sim_val_expr eσ2_src.1 eσ1_tgt.1;
-}.
-
-Definition _sim
-  (sim : SIM_CONFIG) (σG: A) (eσ1_src eσ1_tgt: expr * state) : Prop :=
-  Wf eσ1_src.2 → Wf eσ1_tgt.2 → sim_state σG eσ1_src.2 eσ1_tgt.2 →
-  (* If [eσ1_src] gets UB, we can have UB in the target, thus any [eσ1_tgt] is
-      acceptable. Otherwise ... *)
-  ¬ (∀ eσ', eσ1_src ~t~>* eσ' → stuck eσ'.1 eσ'.2) →
-  (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
-  (stuck eσ1_tgt.1 eσ1_tgt.2 → ∃ eσ2_src,
-    eσ1_src ~t~>* eσ2_src ∧ stuck eσ2_src.1 eσ2_src.2) ∧
-  (* (2) If [eσ1_tgt] diverges, then [eσ1_src] diverges. *)
-  (diverges tstep eσ1_tgt → diverges tstep eσ1_src) ∧
-  (* (3) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
-  (terminal eσ1_tgt.1 → ∃ eσ2_src σG',
-    eσ1_src ~t~>* eσ2_src ∧ terminal eσ2_src.1 ∧
-    sim_val_expr eσ2_src.1 eσ1_tgt.1 ∧
-    sim_state σG' eσ2_src.2 eσ1_tgt.2 ∧ Φ σG eσ1_src eσ1_tgt σG' eσ2_src eσ1_tgt) ∧
-  (* (4) If [eσ1_tgt] steps to [eσ2_tgt] with 1 step,
-       then exists [eσ2_src] s.t. [eσ1_src] steps to [eσ2_src] with * step. *)
-  (∀ eσ2_tgt, eσ1_tgt ~t~> eσ2_tgt → ∃ eσ2_src σG',
-      eσ1_src ~t~>* eσ2_src ∧
-      sim_state σG' eσ2_src.2 eσ2_tgt.2 ∧ Φ σG eσ1_src eσ1_tgt σG' eσ2_src eσ2_tgt ∧
-      sim σG' eσ2_src eσ2_tgt)
-  .
-
-Lemma _sim_mono : monotone3 (_sim).
-Proof.
-  intros σG eσ_src eσ_tgt r r' TS LE WF1 WF2 SS NS.
-  destruct (TS WF1 WF2 SS NS) as (SU & DI & TE & ST). repeat split; auto.
-  intros eσ2_tgt ONE. destruct (ST _ ONE) as (eσ2_src & σG' & STEP1 & SS1 & HΦ & Hr).
-  exists eσ2_src, σG'. do 3 (split; [done|]). by apply LE.
-Qed.
-
-(* Actual simulation *)
-Definition sim : SIM_CONFIG := paco3 _sim bot3.
-End ghost.
-
-Hint Resolve _sim_mono: paco.
 
 (* Lemma _sim_thread_mono : monotone3 _sim_thread.
 Proof.

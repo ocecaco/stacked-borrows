@@ -28,16 +28,16 @@ Definition wf_no_dup (α: stacks) :=
 Definition borrow_barrier_Some (β: protectors) kind : Prop :=
   match kind with FnEntry c => is_Some (β !! c) | _ => True end.
 
-Record state_wf' σ := {
-  state_wf_dom : dom (gset loc) σ.(cheap) ≡ dom (gset loc) σ.(cstk);
-  state_wf_mem_tag : wf_mem_tag σ.(cheap) σ.(cclk);
-  state_wf_stack_item : wf_stack_item σ.(cstk) σ.(cpro) σ.(cclk);
-  state_wf_non_empty : wf_non_empty σ.(cstk);
-  (* state_wf_no_dup : wf_no_dup σ.(cstk); *)
+Record state_wf' (s: state) := {
+  state_wf_dom : dom (gset loc) s.(shp) ≡ dom (gset loc) s.(sst);
+  state_wf_mem_tag : wf_mem_tag s.(shp) s.(scn);
+  state_wf_stack_item : wf_stack_item s.(sst) s.(spr) s.(scn);
+  state_wf_non_empty : wf_non_empty s.(sst);
+  (* state_wf_no_dup : wf_no_dup σ.(cst).(sst); *)
 }.
 
 Instance state_wf : Wellformed state :=  state_wf'.
-
+Instance config_wf : Wellformed config := λ cfg, Wf cfg.(cst).
 Notation terminal e := (is_Some (to_val e)).
 
 Lemma expr_terminal_False (e: expr) : ¬ terminal e ↔ to_val e = None.
@@ -49,7 +49,7 @@ Proof.
 Qed.
 
 (** Thread steps *)
-Inductive tstep (eσ1 eσ2 : expr * state) : Prop :=
+Inductive tstep (eσ1 eσ2 : expr * config) : Prop :=
 | ThreadStep ev efs
     (PRIM: prim_step eσ1.1 eσ1.2 ev eσ2.1 eσ2.2 efs)
 .
@@ -57,42 +57,14 @@ Inductive tstep (eσ1 eσ2 : expr * state) : Prop :=
 Infix "~t~>" := tstep (at level 70).
 Infix "~t~>*" := (rtc tstep) (at level 70).
 
-(** Behaviors ----------------------------------------------------------------*)
-
-CoInductive diverges
-  (step: expr * state → expr * state → Prop)
-  (cfg: expr * state) : Prop :=
-| DivergeStep cfg' (STEP: step cfg cfg') (DIV: diverges step cfg') .
-
-Inductive behavior := | Term (v: val) | Stuck | Diverges.
-
-Inductive behaviors
-  (step: expr * state → expr * state → Prop)
-  (cfg: expr * state) : behavior → Prop :=
-| behaviors_term v
-    (TERMINAL: to_val cfg.1 = Some v) :
-    behaviors step cfg (Term v)
-| behaviors_stuck
-    (NT: ¬ terminal cfg.1)
-    (NS: ∀ cfg', ¬ step cfg cfg') :
-    behaviors step cfg Stuck
-| behaviors_diverges
-    (DIV: diverges step cfg) :
-    behaviors step cfg Diverges
-| behaviors_step cfg' ov
-    (STEP: step cfg cfg')
-    (NEXT: behaviors step cfg' ov):
-    behaviors step cfg ov
-.
-
 (*=================================== UNUSED =================================*)
-Implicit Type (ρ: cfg bor_lang).
+(* Implicit Type (ρ: cfg bor_lang). *)
 
 (* TODO: this may need strengthening *)
-Definition cfg_wf' ρ : Prop := Wf ρ.2.
-Instance cfg_wf : Wellformed (cfg bor_lang) :=  cfg_wf'.
+(* Definition cfg_wf' ρ : Prop := Wf ρ.2. *)
+(* Instance cfg_wf : Wellformed (cfg bor_lang) :=  cfg_wf'. *)
 
-Definition threads_terminal' (el: list expr) := ∀ e, e ∈ el → terminal e.
+(* Definition threads_terminal' (el: list expr) := ∀ e, e ∈ el → terminal e. *)
 (* Instance threads_terminal : Terminal (list expr) := threads_terminal'. *)
 (* Definition cfg_terminal' ρ : Prop := terminal ρ.1. *)
 (* Instance cfg_terminal : Terminal (cfg bor_lang) := cfg_terminal'. *)
