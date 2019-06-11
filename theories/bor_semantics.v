@@ -411,8 +411,6 @@ Infix "<<b" := tag_values_included (at level 60, no associativity).
 (* This ignores CAS for now. *)
 Inductive bor_step h α β (clk: ptr_id):
   mem_event → mem → stacks → protectors → ptr_id → Prop :=
-| SilentIS :
-    bor_step h α β clk SilentEvt h α β clk
 (* | SysCallIS id :
     bor_step h α β clk (SysCallEvt id) h α β clk *)
 (* This implements EvalContextExt::new_allocation. *)

@@ -2,20 +2,6 @@ From stbor Require Export steps_wf.
 
 Set Default Proof Using "Type".
 
-Definition fresh_block (h : mem) : block :=
-  let loclst : list loc := elements (dom (gset loc) h) in
-  let blockset : gset block := foldr (λ l, ({[l.1]} ∪)) ∅ loclst in
-  fresh blockset.
-
-Lemma is_fresh_block h i : (fresh_block h,i) ∉ dom (gset loc) h.
-Proof.
-  assert (∀ l (ls: list loc) (X : gset block),
-    l ∈ ls → l.1 ∈ foldr (λ l, ({[l.1]} ∪)) X ls) as help.
-  { induction 1; set_solver. }
-  rewrite /fresh_block /shift /= -elem_of_elements.
-  move=> /(help _ _ ∅) /=. apply is_fresh.
-Qed.
-
 (* TODO: do we need non-empty condition? ie (tsize T) > 0? *)
 Lemma alloc_head_step σ T :
   let l := (fresh_block σ.(cheap), 0) in
@@ -23,8 +9,7 @@ Lemma alloc_head_step σ T :
   ∃ σ',
   head_step (Alloc T) σ [AllocEvt l (Tagged t) T] (Place l (Tagged t) T) σ' [].
 Proof.
-  eexists. econstructor; econstructor.
-  intros. by apply (not_elem_of_dom (D:=gset loc)), is_fresh_block.
+  eexists. by econstructor; econstructor.
 Qed.
 
 Lemma find_granting_is_Some stk kind bor

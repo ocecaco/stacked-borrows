@@ -235,93 +235,102 @@ Equations read_mem (l: loc) (n: nat) h: option (list lit) :=
           v ← h !! l;
           go (l +ₗ 1) n (Some (acc ++ [v])).
 
-Inductive expr_step (FNs: fn_env):
-  expr → mem → mem_event → expr → mem → list expr → Prop :=
-| BinOpBS op l1 l2 l' h :
+Definition fresh_block (h : mem) : block :=
+  let loclst : list loc := elements (dom (gset loc) h) in
+  let blockset : gset block := foldr (λ l, ({[l.1]} ∪)) ∅ loclst in
+  fresh blockset.
+
+Lemma is_fresh_block h i : (fresh_block h,i) ∉ dom (gset loc) h.
+Proof.
+  assert (∀ l (ls: list loc) (X : gset block),
+    l ∈ ls → l.1 ∈ foldr (λ l, ({[l.1]} ∪)) X ls) as help.
+  { induction 1; set_solver. }
+  rewrite /fresh_block /shift /= -elem_of_elements.
+  move=> /(help _ _ ∅) /=. apply is_fresh.
+Qed.
+
+Inductive pure_expr_step (h: mem) : expr → expr → Prop :=
+| BinOpPS op l1 l2 l' :
     bin_op_eval h op l1 l2 l' →
-    expr_step FNs (BinOp op (#[ #l1]) (#[ #l2])) h SilentEvt (#[ #l']) h []
-(* | BetaBS f xl e e' el h :
-    Forall (λ ei, is_Some (to_val ei)) el →
-    Closed (f :b: xl +b+ []) e →
-    subst_l (f::xl) (Rec f xl e :: el) e = Some e' →
-    expr_step (App (Rec f xl e) el) h SilentEvt e' h [] *)
-| CallBS name (call: call_id) el h cid xl e HC e':
+    pure_expr_step h (BinOp op (#[ #l1]) (#[ #l2])) (#[ #l'])
+(* TODO: add more operations for tempvalue lists *)
+| ProjBS el (i: Z) vl v
+    (DEFINED: 0 ≤ i ∧ vl !! (Z.to_nat i) = Some v)
+    (VALUES: to_val (TVal el) = Some (TValV vl)) :
+    pure_expr_step h (Proj (TVal el) #i) #v
+| ConcBS el1 el2 vl1 vl2
+    (VALUES1: to_val (TVal el1) = Some (TValV vl1))
+    (VALUES2: to_val (TVal el2) = Some (TValV vl2)) :
+    pure_expr_step h (Conc (TVal el1) (TVal el2)) (of_val (TValV (vl1 ++ vl2)))
+| RefBS l lbor T :
+    is_Some (h !! l) →
+    pure_expr_step h (Ref (Place l lbor T)) #(LitLoc l lbor)
+| DerefBS l lbor T
+    (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) :
+    pure_expr_step h ( *{T} #(LitLoc l lbor)) (Place l lbor T)
+| FieldBS l lbor T path off T'
+    (FIELD: field_access T path = Some (off, T')) :
+    pure_expr_step h (Field (Place l lbor T) path) (Place (l +ₗ off) lbor T')
+| LetBS x e1 e2 e' :
+    is_Some (to_val e1) →
+    subst x e2 e1 = e' →
+    pure_expr_step h (let: x := e1 in e2) e'
+| CaseBS i el e :
+    0 ≤ i →
+    el !! (Z.to_nat i) = Some e →
+    pure_expr_step h (case: #i of el) e.
+
+Inductive mem_expr_step (FNs: fn_env) (h: mem) :
+  expr → mem_event → mem → expr → Prop :=
+| CallBS name (call: call_id) el cid xl e HC e':
     FNs !! name = Some (@FunV cid xl e HC) →
     Forall (λ ei, is_Some (to_val ei)) el →
     subst_l (cid :: xl) (#(LitCall call) :: el)%E e = Some e' →
-    expr_step FNs (Call (#(LitFnPtr name)) el) h
-                  (NewCallEvt name call)
-                  (let: "r" := e' in EndCall #(LitCall call) ;; "r") h []
-| EndCallBS (call: call_id) h:
-    expr_step FNs (EndCall #(LitCall call)) h (EndCallEvt call) #☠ h []
-(* TODO: add more operations for tempvalue lists *)
-| ProjBS h el (i: Z) vl v
-    (DEFINED: 0 ≤ i ∧ vl !! (Z.to_nat i) = Some v)
-    (VALUES: to_val (TVal el) = Some (TValV vl)) :
-    expr_step FNs (Proj (TVal el) #i) h SilentEvt #v h []
-| ConcBS h el1 el2 vl1 vl2
-    (VALUES1: to_val (TVal el1) = Some (TValV vl1))
-    (VALUES2: to_val (TVal el2) = Some (TValV vl2)) :
-    expr_step FNs (Conc (TVal el1) (TVal el2)) h
-              SilentEvt (of_val (TValV (vl1 ++ vl2))) h []
-| CopyBS l lbor T (vl: list lit) h
+    mem_expr_step FNs
+              h (Call (#(LitFnPtr name)) el)
+              (NewCallEvt name call)
+              h (let: "r" := e' in EndCall #(LitCall call) ;; "r")
+| EndCallBS (call: call_id):
+    mem_expr_step FNs h (EndCall #(LitCall call)) (EndCallEvt call) h #☠
+| CopyBS l lbor T (vl: list lit)
     (READ: read_mem l (tsize T) h = Some vl)
     (* (LEN: length vl = tsize T) *)
     (* (VALUES: ∀ (i: nat), (i < length vl)%nat → h !! (l +ₗ i) = vl !! i) *) :
-    expr_step FNs (Copy (Place l lbor T)) h
+    mem_expr_step FNs
+              h (Copy (Place l lbor T))
               (CopyEvt l lbor T vl)
-              (of_val (TValV vl)) h
-              []
-| WriteBS l lbor T el vl h (LENe: length vl = tsize T)
+              h (of_val (TValV vl))
+| WriteBS l lbor T el vl (LENe: length vl = tsize T)
     (DEFINED: ∀ (i: nat), (i < length vl)%nat → l +ₗ i ∈ dom (gset loc) h)
     (VALUES: to_val (TVal el) = Some (TValV vl)) :
-    expr_step FNs (Place l lbor T <- TVal el) h
+    mem_expr_step FNs
+              h (Place l lbor T <- TVal el)
               (WriteEvt l lbor T vl)
-              #☠ (write_mem l vl h)
-              []
-| AllocBS l lbor T h :
-    (∀ m, h !! (l +ₗ m) = None) →
-    expr_step FNs (Alloc T) h
+              (write_mem l vl h) #☠
+| AllocBS lbor T :
+    let l := (fresh_block h, 0) in
+    mem_expr_step FNs
+              h (Alloc T)
               (AllocEvt l lbor T)
-              (Place l lbor T) (init_mem l (tsize T) h)
-              []
-| DeallocBS T l lbor h :
+              (init_mem l (tsize T) h) (Place l lbor T)
+| DeallocBS T l lbor :
     (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
-    expr_step FNs (Free (Place l lbor T)) h
+    mem_expr_step FNs
+              h (Free (Place l lbor T))
               (DeallocEvt l lbor T)
-              #☠ (free_mem l (tsize T) h)
-              []
-| RefBS l lbor T h :
-    is_Some (h !! l) →
-    expr_step FNs (Ref (Place l lbor T)) h SilentEvt #(LitLoc l lbor) h []
-| DerefBS l lbor T h
-    (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) :
-    expr_step FNs ( *{T} #(LitLoc l lbor)) h
-              SilentEvt
-              (Place l lbor T) h
-              []
-| FieldBS l lbor T path off T' h
-    (FIELD: field_access T path = Some (off, T')) :
-    expr_step FNs (Field (Place l lbor T) path) h
-              SilentEvt (Place (l +ₗ off) lbor T') h []
-| RetagBS x xbor T kind kind' h e v
+              (free_mem l (tsize T) h) #☠
+| RetagBS x xbor T kind kind' e v
     (VAL: to_val e = Some v)
     (KIND: match kind with
            | FnEntry _ => ∃ c, v = LitV $ LitCall c ∧ kind' = FnEntry c
            | _ => kind' = kind
            end) :
-    expr_step FNs (Retag (Place x xbor T) kind e) h
-              (RetagEvt x T kind') (Lit LitPoison) h []
-| LetBS x e1 e2 h e' :
-    is_Some (to_val e1) →
-    subst x e2 e1 = e' →
-    expr_step FNs (let: x := e1 in e2) h SilentEvt e' h []
-| CaseBS i el e h :
-    0 ≤ i →
-    el !! (Z.to_nat i) = Some e →
-    expr_step FNs (case: #i of el) h SilentEvt e h []
+    mem_expr_step FNs
+              h (Retag (Place x xbor T) kind e)
+              (RetagEvt x T kind')
+              h (Lit LitPoison).
 (* | ForkBS e h:
     expr_step (Fork e) h SilentEvt (Lit LitPoison) h [e] *)
 (* observable behavior *)
 (* | SysCallBS id h:
-    expr_step (SysCall id) h (SysCallEvt id) (Lit LitPoison) h [] *).
+    expr_step (SysCall id) h (SysCallEvt id) (Lit LitPoison) h [] *)

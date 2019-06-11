@@ -7,44 +7,40 @@ Set Default Proof Using "Type".
 Module bor_lang.
 
 (** COMBINED SEMANTICS -------------------------------------------------------*)
+
 Record state := mkState {
-  (* Global function table *)
-  cfns : fn_env;
   (* Heap with base values *)
-  cheap: mem;
+  shp : mem;
   (* Stacked borrows for the heap *)
-  cstk : stacks;
+  sst : stacks;
   (* Active call tracker *)
-  cpro : protectors;
+  spr : protectors;
   (* Counter for pointer tag generation *)
-  cclk : ptr_id;
+  scn : ptr_id;
 }.
 
-Implicit Type (σ: state).
+Record config := mkConfig {
+  (* Static global function table *)
+  cfn : fn_env;
+  (* Shared state *)
+  cst : state;
+}.
+
+Implicit Type (σ: config).
 
 Inductive head_step :
-  expr → state → list mem_event → expr → state → list expr → Prop :=
-  | HeadStep σ e e' efs ev h0 h' α' β' clock'
-      (ExprStep : expr_step σ.(cfns) e σ.(cheap) ev e' h0 efs)
-      (InstrStep: bor_step h0 σ.(cstk) σ.(cpro) σ.(cclk) ev h' α' β' clock')
-  : head_step e σ [ev] e' (mkState σ.(cfns) h' α' β' clock') efs .
+  expr → config → list mem_event → expr → config → list expr → Prop :=
+  | HeadPureS σ e e'
+      (ExprStep: pure_expr_step σ.(cst).(shp) e e')
+    : head_step e σ [SilentEvt] e' σ []
+  | HeadImpureS σ e e' ev h0 h' α' β' clock'
+      (ExprStep : mem_expr_step σ.(cfn) σ.(cst).(shp) e ev h0 e')
+      (InstrStep: bor_step h0 σ.(cst).(sst) σ.(cst).(spr) σ.(cst).(scn) ev h' α' β' clock')
+    : head_step e σ [ev] e' (mkConfig σ.(cfn) (mkState h' α' β' clock')) [].
 
 
 (** BASIC LANGUAGE PROPERTIES ------------------------------------------------*)
 (** Closed expressions *)
-(* Lemma is_closed_weaken X Y e : is_closed X e → X ⊆ Y → is_closed Y e.
-Proof.
-  revert e X Y. fix FIX 1; destruct e=>X Y/=; try naive_solver.
-  - rewrite !andb_True. intros [He Hel] HXY. split. by eauto.
-    induction el=>/=; naive_solver.
-  - intros Hel HXY. induction el=>/=; naive_solver.
-  - naive_solver set_solver.
-  - rewrite !andb_True. intros [He Hel] HXY. split. by eauto.
-    induction el=>/=; naive_solver.
-Qed.
-
-Lemma is_closed_weaken_nil X e : is_closed [] e → is_closed X e.
-Proof. intros. by apply is_closed_weaken with [], list_subseteq_nil. Qed. *)
 
 Lemma is_closed_subst X e x es : is_closed X e → x ∉ X → subst x es e = e.
 Proof.

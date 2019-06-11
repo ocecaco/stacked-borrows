@@ -9,7 +9,7 @@ Definition sim_lit (v1: lit) (σ1: state) (v2: lit) (σ2: state) :=
   match v1, v2 with
   | LitPoison, LitPoison => True
   | LitInt n1, LitInt n2 => n1 = n2
-  | LitLoc l1 bor1, LitLoc l2 bor2 => (* FIXME *) l1 = l2
+  | LitLoc l1 bor1, LitLoc l2 bor2 => (* FIXME *) l1 = l2 ∧ bor1 = bor2
   | LitCall c1, LitCall c2 => c1 = c2
   | LitFnPtr fptr1, LitFnPtr fptr2 => (* FIXME *) fptr1 = fptr2
   | _,_ => False
@@ -82,6 +82,19 @@ Inductive sim_state (σG: A) (σ_src σ_tgt: state) : Prop :=
   (SCLK : σ_src.(cclk) = σ_tgt.(cclk))
   (* (SFNS: what? *)
 .
+
+Record sim_base (eσ1_src eσ1_tgt: expr * state) : Prop := mkSimBase {
+  (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
+  sim_stuck :
+    stuck eσ1_tgt.1 eσ1_tgt.2 → ∃ eσ2_src,
+    eσ1_src ~t~>* eσ2_src ∧ stuck eσ2_src.1 eσ2_src.2 ;
+  (* (2) If [eσ1_tgt] diverges, then [eσ1_src] diverges. *)
+  sim_diverges : diverges tstep eσ1_tgt → diverges tstep eσ1_src ;
+  sim_terminal :
+    terminal eσ1_tgt.1 → ∃ eσ2_src,
+    eσ1_src ~t~>* eσ2_src ∧ terminal eσ2_src.1 ∧
+    sim_val_expr eσ2_src.1 eσ1_tgt.1;
+}.
 
 Definition _sim
   (sim : SIM_CONFIG) (σG: A) (eσ1_src eσ1_tgt: expr * state) : Prop :=
