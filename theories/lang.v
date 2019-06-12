@@ -213,7 +213,7 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
   | Retag e kind, Retag e' kind' =>
      bool_decide (kind = kind') && expr_beq e e'
   | Copy e, Copy e' | Ref e, Ref e'
-  (* | AtomRead e, AtomRead e' *) | Return e, Return e' => expr_beq e e'
+  (* | AtomRead e, AtomRead e' *) | EndCall e, EndCall e' => expr_beq e e'
   | Let x e1 e2, Let x' e1' e2' =>
     bool_decide (x = x') && expr_beq e1 e1' && expr_beq e2 e2'
   | Proj e1 e2, Proj e1' e2' | Conc e1 e2, Conc e1' e2'
@@ -265,7 +265,7 @@ Proof.
                                  GenLeaf $ inl $ inl $ inr $ inr xl; go e]
       | App e el => GenNode 3 (go e :: (go <$> el)) *)
       | Call e el => GenNode 2 (go e :: (go <$> el))
-      | Return e => GenNode 3 [go e]
+      | EndCall e => GenNode 3 [go e]
       | BinOp op e1 e2 => GenNode 4 [GenLeaf $ inl $ inl $ inr $ inl op;
                                      go e1; go e2]
       | TVal el => GenNode 5 (go <$> el)
@@ -291,7 +291,7 @@ Proof.
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
      | GenNode 1 [GenLeaf (inl (inl (inl (inr l))))] => Lit l
      | GenNode 2 (e :: el) => Call (go e) (go <$> el)
-     | GenNode 3 [e] => Return (go e)
+     | GenNode 3 [e] => EndCall (go e)
      (* | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
                   GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)
      | GenNode 3 (e :: el) => App (go e) (go <$> el) *)

@@ -15,7 +15,7 @@ Definition stack_item_included (stk: stack) (β: protectors) (clk: ptr_id) :=
                     | _ => True
                    end ∧
                    match si.(protector) with
-                    | Some c =>is_Some (β !! c)
+                    | Some c => c ∈ β
                     | _ => True
                    end.
 Definition wf_stack_item (α: stacks) (β: protectors) (clk: ptr_id) :=
@@ -25,10 +25,7 @@ Definition wf_non_empty (α: stacks) :=
 Definition wf_no_dup (α: stacks) :=
   ∀ l stk, α !! l = Some stk → NoDup stk.
 Definition wf_cid_pro (cids: call_id_stack) (β: protectors) :=
-  ∀ c : call_id, c ∈ cids ↔ β !! c = Some true.
-
-Definition borrow_barrier_Some (β: protectors) kind c : Prop :=
-  match kind with FnEntry => is_Some (β !! c) | _ => True end.
+  ∀ c : call_id, c ∈ cids → c ∈ β.
 
 Record state_wf' (s: state) := {
   state_wf_dom : dom (gset loc) s.(shp) ≡ dom (gset loc) s.(sst);

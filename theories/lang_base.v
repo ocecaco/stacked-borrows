@@ -42,10 +42,12 @@ Proof. destruct l as [b o]; intros n n' [=?]; lia. Qed.
 Lemma shift_loc_block l n : (l +ₗ n).1 = l.1.
 Proof. done. Qed.
 
-(** Protector tracker: track if a call_id is active,
-  i.e. the call is still in the call stack *)
+(** Id to track calls *)
 Notation call_id := nat (only parsing).
-Definition protectors := gmap call_id bool.
+(* Protector tracker: track which call id has been used *)
+Definition protectors := gset call_id.
+(* Stack of active call ids *)
+Definition call_id_stack := list call_id.
 
 (** Tags for pointers *)
 Notation ptr_id := nat (only parsing).
@@ -145,7 +147,7 @@ Inductive expr :=
 | Call (e: expr) (el: list expr) (* Call a function through a FnPtr `e`
                                     with arguments `el` *)
 (* function call tracking *)
-| Return (e: expr)               (* Return the value e and end the current call *)
+| EndCall (e: expr)               (* End the current call with value `e` *)
 (* temp values *)
 | TVal (el: list expr)
 | Proj (e1 e2 : expr)
@@ -189,7 +191,7 @@ Bind Scope expr_scope with expr.
 (* Arguments App _%E _%E. *)
 Arguments BinOp _ _%E _%E.
 Arguments Call _%E _%E.
-Arguments Return _%E.
+Arguments EndCall _%E.
 Arguments TVal _%E.
 Arguments Proj _%E _%E.
 Arguments Conc _%E _%E.
@@ -220,7 +222,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Let x e1 e2 => is_closed X e1 && is_closed (x :b: X) e2
   | Case e el | Call e el (* | App e el  *) => is_closed X e && forallb (is_closed X) el
   | Copy e | Retag e _ | Deref e _ | Ref e | Field e _
-      | Free e | Return e (* | AtomRead e | Fork e *) => is_closed X e
+      | Free e | EndCall e (* | AtomRead e | Fork e *) => is_closed X e
   (* | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2 *)
   end.
 

@@ -15,7 +15,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   (* | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e *)
   | Call e el => Call (subst x es e) (map (subst x es) el)
-  | Return e => Return (subst x es e)
+  | EndCall e => EndCall (subst x es e)
   | Place l tag T => Place l tag T
   (* | App e1 el => App (subst x es e1) (map (subst x es) el) *)
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
@@ -70,7 +70,7 @@ Inductive ectx_item :=
 (* | AppRCtx (v : val) (vl : list val) (el : list expr) *)
 | CallLCtx (el: list expr)
 | CallRCtx (v : val) (vl : list val) (el : list expr)
-| ReturnCtx
+| EndCallCtx
 | BinOpLCtx (op : bin_op) (e2 : expr)
 | BinOpRCtx (op : bin_op) (v1 : val)
 | TValCtx (vl : list val) (el : list expr)
@@ -101,7 +101,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   (* | AppRCtx v vl el => App (of_val v) ((of_val <$> vl) ++ e :: el) *)
   | CallLCtx el => Call e el
   | CallRCtx v vl el => Call (of_val v) ((of_val <$> vl) ++ e :: el)
-  | ReturnCtx => Return e
+  | EndCallCtx => EndCall e
   | BinOpLCtx op e2 => BinOp op e e2
   | BinOpRCtx op v1 => BinOp op (of_val v1) e
   | TValCtx vl el => TVal ((of_val <$> vl) ++ e :: el)
@@ -288,10 +288,10 @@ Inductive mem_expr_step (FNs: fn_env) (h: mem) :
     mem_expr_step FNs
               h (Call (#(LitFnPtr name)) el)
               (NewCallEvt name call)
-              h (Return e')
-| ReturnBS (call: call_id) e v:
+              h (EndCall e')
+| EndCallBS (call: call_id) e v:
     to_val e = Some v →
-    mem_expr_step FNs h (Return e) (EndCallEvt call) h v
+    mem_expr_step FNs h (EndCall e) (EndCallEvt call) h v
 | CopyBS l lbor T (vl: list lit)
     (READ: read_mem l (tsize T) h = Some vl)
     (* (LEN: length vl = tsize T) *)
@@ -323,9 +323,10 @@ Inductive mem_expr_step (FNs: fn_env) (h: mem) :
     mem_expr_step FNs
               h (Retag (Place x xbor T) kind)
               (RetagEvt x T kind)
-              h (Lit LitPoison).
+              h (Lit LitPoison)
 (* | ForkBS e h:
     expr_step (Fork e) h SilentEvt (Lit LitPoison) h [e] *)
 (* observable behavior *)
 (* | SysCallBS id h:
     expr_step (SysCall id) h (SysCallEvt id) (Lit LitPoison) h [] *)
+.
