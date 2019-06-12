@@ -286,7 +286,7 @@ Inductive mem_expr_step (FNs: fn_env) (h: mem) :
     Forall (λ ei, is_Some (to_val ei)) el →
     subst_l xl el e = Some e' →
     mem_expr_step FNs
-              h (Call (#(LitFnPtr name)) el)
+              h (Call #(LitFnPtr name) el)
               (NewCallEvt name call)
               h (EndCall e')
 | EndCallBS (call: call_id) e v:

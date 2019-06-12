@@ -1,3 +1,100 @@
+From Paco Require Import paco.
+From iris.algebra Require Import cmra.
+
+From stbor Require Import simulation.
+
+Section local.
+Context {A: ucmraT}.
+Variable (Φ: A → state → state → Prop).
+Variable (fns_src fns_tgt: fn_env).
+Variable (cids_entry_src cids_entry_tgt: call_id_stack) (c_src c_tgt: call_id).
+
+(* (* For any frame ghost gσ_f that is compatible with our local ghost gσ *)
+      ✓ (gσ ⋅ gσ_f) →
+      (* and our invariant Φ holds for the composed ghost + pair of physical states, *)
+      Φ (gσ ⋅ gσ_f) σ_src σ_tgt → *)
+
+(* TODO: encode what it means for the context to not contain our private tags! *)
+(* TODO: how do we know we're at the top of the stack? *)
+Inductive _sim_local
+  (sim_local : A → A → expr → state → expr → state → Prop)
+  (gσ_f gσ: A) : expr → state → expr → state → Prop :=
+(* If src is stuck, then anything is related *)
+| sim_local_stuck e_src σ_src e_tgt σ_tgt
+    (STUCK: stuck e_src (mkConfig fns_src σ_src))
+    : _sim_local sim_local gσ_f gσ e_src σ_src e_tgt σ_tgt
+(* If tgt makes 1 step, src can make some step *)
+| sim_local_step e_src σ_src e_tgt σ_tgt
+    (STEP: ∀ e_tgt' cfg_tgt',
+      (* if tgt can makes 1 step *)
+      (e_tgt, (mkConfig fns_tgt σ_tgt)) ~t~> (e_tgt', cfg_tgt') →
+      (* then we locally can makes some step and still preserve the frame gσ_f
+        and the invariant Φ, and the simulation continues. *)
+      ∃ e_src' cfg_src' gσ',
+        (e_src, (mkConfig fns_src σ_src)) ~t~>* (e_src', cfg_src') ∧
+        ✓ (gσ' ⋅ gσ_f) ∧ Φ (gσ' ⋅ gσ_f) cfg_src'.(cst) cfg_tgt'.(cst) ∧
+        sim_local gσ_f gσ' e_src' cfg_src'.(cst) e_tgt' cfg_tgt'.(cst))
+    : _sim_local sim_local gσ_f gσ e_src σ_src e_tgt σ_tgt
+(* If tgt prepares to make a call to [name], src should be able to make the same
+  call. Here we do not want to step into the call of [name], but to step over
+  it. To make the call, we need to re-establish the invariant
+  `Φ (gσ ⋅ gσ_f) cfg_src.(cst) σ_tgt`. Then after the call we can assume that:
+  - the context K_src/tgt did not change
+  - the call id stack did not change
+  - the private ghost gσ did not change
+  - the invariant is re-established by [name] for some new frame and new states. *)
+| sim_local_step_over_call K_src K_tgt name e_src el_src el_tgt σ_src
+    cfg_src σ_tgt
+    (STEPS: (e_src, (mkConfig fns_src σ_src)) ~t~>*
+            (fill K_src (Call #(LitFnPtr name) el_src), cfg_src))
+    (VALS: Forall (λ ei, terminal ei) el_src)
+    (VALT: Forall (λ ei, terminal ei) el_tgt)
+    (VALEQ: Forall2 sim_expr_terminal el_src el_tgt)
+    (VALID: ✓ (gσ ⋅ gσ_f))
+    (INV: Φ (gσ ⋅ gσ_f) cfg_src.(cst) σ_tgt)
+    (RET: ∀ v gσ_f' cfg_src' cfg_tgt',
+      (* For any new frame ghost gσ_f' that is compatible with our local ghost gσ and frame gσ_f *)
+      ✓ (gσ ⋅ gσ_f ⋅ gσ_f') →
+      (* and our invariant Φ holds for the composed ghost + pair of physical states, *)
+      Φ (gσ ⋅ gσ_f ⋅ gσ_f') cfg_src'.(cst) cfg_tgt'.(cst) →
+      (* stack unchanged *)
+      cfg_src'.(cst).(scs) = cfg_src.(cst).(scs) →
+      cfg_tgt'.(cst).(scs) = σ_tgt.(scs) →
+      sim_local (gσ_f ⋅ gσ_f') gσ
+                (fill K_src (of_val v)) cfg_src'.(cst)
+                (fill K_tgt (of_val v)) cfg_tgt'.(cst))
+    : _sim_local sim_local gσ_f gσ e_src σ_src
+        (fill K_tgt (Call #(LitFnPtr name) el_tgt)) σ_tgt
+(* If tgt prepares to return, src also prepares to return *)
+| sim_local_end_call e_src σ_src cfg_src v_src v_tgt σ_tgt
+    (STEPS: (e_src, (mkConfig fns_src σ_src)) ~t~>* (EndCall v_src, cfg_src))
+    (TERMS: terminal v_src)
+    (TERMT: terminal v_tgt)
+    (VALEQ: sim_expr_terminal v_src v_tgt)
+    (CIDS: cfg_src.(cst).(scs) = c_src :: cids_entry_src)
+    (CIDT: σ_tgt.(scs) = c_tgt :: cids_entry_src)
+    (GUAR: ∀ cfg_src' cfg_tgt',
+            (EndCall v_src, cfg_src) ~t~> cfg_src' →
+            (EndCall v_tgt, (mkConfig fns_tgt σ_tgt)) ~t~> cfg_tgt' →
+            ∃ gσ', ✓ (gσ' ⋅ gσ_f) ∧ Φ (gσ' ⋅ gσ_f) cfg_src'.2.(cst) cfg_tgt'.2.(cst))
+    : _sim_local sim_local gσ_f gσ e_src σ_src (EndCall v_tgt) σ_tgt
+.
+
+Lemma sim_local_mono : monotone6 _sim_local.
+Proof.
+  intros gσ_f gσ es σs et σt r r' SIM LE; inversion SIM; subst.
+  - by eapply sim_local_stuck.
+  - eapply sim_local_step. intros et' cfgt' STEPT.
+    destruct (STEP _ _ STEPT) as (es' & cfgs' & gσ' & STEPS & VAL' & INV' & Hr).
+    naive_solver.
+  - eapply sim_local_step_over_call; eauto.
+  - eapply sim_local_end_call; eauto.
+Qed.
+
+Definition sim_local := paco6 _sim_local bot6.
+
+End local.
+
 (** Thread simulation *)
 
 (* Target is simulated by source.
