@@ -31,12 +31,12 @@ Record config := mkConfig {
 Implicit Type (σ: config).
 
 Inductive head_step :
-  expr → config → list mem_event → expr → config → list expr → Prop :=
-  | HeadPureS σ e e'
-      (ExprStep: pure_expr_step σ.(cst).(shp) e e')
-    : head_step e σ [SilentEvt] e' σ []
+  expr → config → list event → expr → config → list expr → Prop :=
+  | HeadPureS σ e e' ev
+      (ExprStep: pure_expr_step σ.(cfn) σ.(cst).(shp) e ev e')
+    : head_step e σ [ev] e' σ []
   | HeadImpureS σ e e' ev h0 h' α' β' cids' clock'
-      (ExprStep : mem_expr_step σ.(cfn) σ.(cst).(shp) e ev h0 e')
+      (ExprStep : mem_expr_step σ.(cst).(shp) e ev h0 e')
       (InstrStep: bor_step h0 σ.(cst).(sst) σ.(cst).(spr) σ.(cst).(scs) σ.(cst).(scn)
                            ev h' α' β' cids' clock')
     : head_step e σ [ev] e' (mkConfig σ.(cfn) (mkState h' α' β' cids' clock')) [].
@@ -212,7 +212,7 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
       bool_decide (T = T') && expr_beq e e'
   | Retag e kind, Retag e' kind' =>
      bool_decide (kind = kind') && expr_beq e e'
-  | Copy e, Copy e' | Ref e, Ref e'
+  | Copy e, Copy e' | Ref e, Ref e' | InitCall e, InitCall e'
   (* | AtomRead e, AtomRead e' *) | EndCall e, EndCall e' => expr_beq e e'
   | Let x e1 e2, Let x' e1' e2' =>
     bool_decide (x = x') && expr_beq e1 e1' && expr_beq e2 e2'
@@ -232,8 +232,8 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
 Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
 Proof.
   revert e1 e2; fix FIX 1;
-    destruct e1 as [| |? el1| |el1| | | | | | | | | | | | | |? el1],
-             e2 as [| |? el2| |el2| | | | | | | | | | | | | |? el2];
+    destruct e1 as [| |? el1| | |el1| | | | | | | | | | | | | |? el1],
+             e2 as [| |? el2| | |el2| | | | | | | | | | | | | |? el2];
     simpl; try done;
     rewrite ?andb_True ?bool_decide_spec ?FIX;
     try (split; intro; [destruct_and?|split_and?]; congruence).
@@ -265,6 +265,7 @@ Proof.
                                  GenLeaf $ inl $ inl $ inr $ inr xl; go e]
       | App e el => GenNode 3 (go e :: (go <$> el)) *)
       | Call e el => GenNode 2 (go e :: (go <$> el))
+      | InitCall e => GenNode 19 [go e]
       | EndCall e => GenNode 3 [go e]
       | BinOp op e1 e2 => GenNode 4 [GenLeaf $ inl $ inl $ inr $ inl op;
                                      go e1; go e2]
@@ -291,6 +292,7 @@ Proof.
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
      | GenNode 1 [GenLeaf (inl (inl (inl (inr l))))] => Lit l
      | GenNode 2 (e :: el) => Call (go e) (go <$> el)
+     | GenNode 19 [e] => InitCall (go e)
      | GenNode 3 [e] => EndCall (go e)
      (* | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
                   GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)

@@ -144,9 +144,9 @@ Inductive expr :=
 (* | App (e : expr) (el: list expr) *)
 (* | Rec (f : binder) (xl : list binder) (e : expr) *)
 (* function calls *)
-| Call (e: expr) (el: list expr) (* Call a function through a FnPtr `e`
-                                    with arguments `el` *)
-(* function call tracking *)
+| Call (e: expr) (el: list expr)  (* Call a function through a FnPtr `e` with
+                                     arguments `el` *)
+| InitCall (e: expr)              (* Initializing a stack frame for e *)
 | EndCall (e: expr)               (* End the current call with value `e` *)
 (* temp values *)
 | TVal (el: list expr)
@@ -191,6 +191,7 @@ Bind Scope expr_scope with expr.
 (* Arguments App _%E _%E. *)
 Arguments BinOp _ _%E _%E.
 Arguments Call _%E _%E.
+Arguments InitCall _%E.
 Arguments EndCall _%E.
 Arguments TVal _%E.
 Arguments Proj _%E _%E.
@@ -220,9 +221,11 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
       | Conc e1 e2 | Proj e1 e2 => is_closed X e1 && is_closed X e2
   | TVal el => forallb (is_closed X) el
   | Let x e1 e2 => is_closed X e1 && is_closed (x :b: X) e2
-  | Case e el | Call e el (* | App e el  *) => is_closed X e && forallb (is_closed X) el
+  | Case e el | Call e el (* | App e el  *)
+      => is_closed X e && forallb (is_closed X) el
   | Copy e | Retag e _ | Deref e _ | Ref e | Field e _
-      | Free e | EndCall e (* | AtomRead e | Fork e *) => is_closed X e
+      | Free e | InitCall e | EndCall e (* | AtomRead e | Fork e *)
+      => is_closed X e
   (* | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2 *)
   end.
 
@@ -270,14 +273,15 @@ Definition fn_env := gmap string function.
 (** Main state: a heap of literals. *)
 Definition mem := gmap loc lit.
 
-(** Internal memory events *)
-Inductive mem_event :=
+(** Internal events *)
+Inductive event :=
 | AllocEvt (l : loc) (lbor: tag) (T: type)
 | DeallocEvt (l: loc) (lbor: tag) (T: type)
 | CopyEvt (l: loc) (lbor: tag) (T: type) (vl: list lit)
 | WriteEvt (l: loc) (lbor: tag) (T: type) (vl: list lit)
-| NewCallEvt (name: string) (call: call_id)
-| EndCallEvt (call: call_id)
+| NewCallEvt (name: string)
+| InitCallEvt (c: call_id)
+| EndCallEvt (c: call_id)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
 (* | SysCallEvt (id: nat) *)
 | SilentEvt

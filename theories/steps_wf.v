@@ -53,8 +53,8 @@ Lemma wf_mem_tag_mono h :
 Proof. move => ??? WF ??[?|] /WF /=; [lia|done]. Qed.
 
 (** Alloc *)
-Lemma alloc_step_wf FNs (σ σ': state) e e' h0 l bor T:
-  mem_expr_step FNs σ.(shp) e (AllocEvt l bor T) h0 e' →
+Lemma alloc_step_wf (σ σ': state) e e' h0 l bor T:
+  mem_expr_step σ.(shp) e (AllocEvt l bor T) h0 e' →
   bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
                     (AllocEvt l bor T)
                   σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
@@ -110,8 +110,8 @@ Lemma memory_deallocated_delete α β l bor n α':
   α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq O n).
 Proof. intros. eapply memory_deallocated_delete'. rewrite shift_loc_0. by eauto. Qed.
 
-Lemma dealloc_step_wf FNs σ σ' e e' h0 l bor T :
-  mem_expr_step FNs σ.(shp) e (DeallocEvt l bor T) h0 e' →
+Lemma dealloc_step_wf σ σ' e e' h0 l bor T :
+  mem_expr_step σ.(shp) e (DeallocEvt l bor T) h0 e' →
   bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
                     (DeallocEvt l bor T)
                   σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
@@ -323,8 +323,8 @@ Proof.
   move => ? /SUB [? [IN [-> ->]]]. by apply (WF _ _ Eq _ IN).
 Qed.
 
-Lemma copy_step_wf FNs σ σ' e e' h0 l bor T vl :
-  mem_expr_step FNs σ.(shp) e (CopyEvt l bor T vl) h0 e' →
+Lemma copy_step_wf σ σ' e e' h0 l bor T vl :
+  mem_expr_step σ.(shp) e (CopyEvt l bor T vl) h0 e' →
   bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
                     (CopyEvt l bor T vl)
                   σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
@@ -377,8 +377,8 @@ Proof.
       apply Lt. by lia.
 Qed.
 
-Lemma write_step_wf FNs σ σ' e e' h0 l bor T vl :
-  mem_expr_step FNs σ.(shp) e (WriteEvt l bor T vl) h0 e' →
+Lemma write_step_wf σ σ' e e' h0 l bor T vl :
+  mem_expr_step σ.(shp) e (WriteEvt l bor T vl) h0 e' →
   bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
                     (WriteEvt l bor T vl)
                   σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
@@ -411,10 +411,10 @@ Proof.
 Qed.
 
 (** Call *)
-Lemma call_step_wf FNs σ σ' e e' h0 name n :
-  mem_expr_step FNs σ.(shp) e (NewCallEvt name n) h0 e' →
+Lemma initcall_step_wf σ σ' e e' h0 n :
+  mem_expr_step σ.(shp) e (InitCallEvt n) h0 e' →
   bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
-                    (NewCallEvt name n)
+                    (InitCallEvt n)
                   σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
   Wf σ → Wf σ'.
 Proof.
@@ -436,8 +436,8 @@ Proof.
 Qed.
 
 (** EndCall *)
-Lemma endcall_step_wf FNs σ σ' e e' h0 n :
-  mem_expr_step FNs σ.(shp) e (EndCallEvt n) h0 e' →
+Lemma endcall_step_wf σ σ' e e' h0 n :
+  mem_expr_step σ.(shp) e (EndCallEvt n) h0 e' →
   bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
                     (EndCallEvt n)
                   σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
@@ -828,8 +828,8 @@ Proof.
   by rewrite -Eq1 -Eq2; apply WF.
 Qed.
 
-Lemma retag_step_wf FNs σ σ' e e' h0 l T kind :
-  mem_expr_step FNs σ.(shp) e (RetagEvt l T kind) h0 e' →
+Lemma retag_step_wf σ σ' e e' h0 l T kind :
+  mem_expr_step σ.(shp) e (RetagEvt l T kind) h0 e' →
   bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
                     (RetagEvt l T kind)
                   σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
@@ -864,7 +864,8 @@ Proof.
   - eapply dealloc_step_wf; eauto.
   - eapply copy_step_wf; eauto.
   - eapply write_step_wf; eauto.
-  - eapply call_step_wf; eauto.
+  - by inversion ExprStep.
+  - eapply initcall_step_wf; eauto.
   - eapply endcall_step_wf; eauto.
   - eapply retag_step_wf; eauto.
   - by inversion ExprStep.

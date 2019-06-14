@@ -394,11 +394,18 @@ Qed.
 Lemma call_head_step σ name el xl e HC e' :
   σ.(cfn) !! name = Some (@FunV xl e HC) →
   Forall (λ ei, is_Some (to_val ei)) el →
-  let c := fresh σ.(cst).(spr) in
   subst_l xl el e = Some e' →
   ∃ σ', head_step (Call (#(LitFnPtr name)) el) σ
-                  [NewCallEvt name c]
-                  (EndCall e')
+                  [NewCallEvt name]
+                  (InitCall e')
+                 σ' [].
+Proof. eexists. by econstructor; econstructor. Qed.
+
+Lemma initcall_head_step σ e :
+  let c := fresh σ.(cst).(spr) in
+  ∃ σ', head_step (InitCall e) σ
+                  [InitCallEvt c]
+                  (EndCall e)
                  σ' [].
 Proof. eexists. by econstructor; econstructor. Qed.
 
@@ -1155,7 +1162,7 @@ Lemma retag_head_step σ x xbor T kind :
   head_step (Retag (Place x xbor T) kind ) σ [RetagEvt x T kind] #☠ σ' [].
 Proof.
   eexists.
-  econstructor. { econstructor; eauto. }
+  econstructor 2. { econstructor; eauto. }
   econstructor.
 Abort.
 

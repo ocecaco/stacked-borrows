@@ -116,7 +116,7 @@ Definition sim_fn_body_fn (r: A) (fn_src fn_tgt : function) : Prop :=
     (EQT: match fn_tgt with
           | FunV xl e => subst_l xl el_tgt e = Some e_tgt
           end),
-    sim_fn_body_expr r e_src e_tgt.
+    sim_fn_body_expr r (InitCall e_src) (InitCall e_tgt).
 
 Definition sim_fn_body_fns : Prop :=
   ∀ name fn_src, fns_src !! name = Some fn_src → ∃ r fn_tgt,

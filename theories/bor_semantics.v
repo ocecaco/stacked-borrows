@@ -415,7 +415,7 @@ Infix "<<b" := tag_values_included (at level 60, no associativity).
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
 Inductive bor_step h α β (cids: call_id_stack) (clk: ptr_id):
-  mem_event → mem → stacks → protectors → call_id_stack → ptr_id → Prop :=
+  event → mem → stacks → protectors → call_id_stack → ptr_id → Prop :=
 (* | SysCallIS id :
     bor_step h α β clk (SysCallEvt id) h α β clk *)
 (* This implements EvalContextExt::new_allocation. *)
@@ -439,9 +439,9 @@ Inductive bor_step h α β (cids: call_id_stack) (clk: ptr_id):
 | DeallocIS α' l lbor T
     (ACC: memory_deallocated α cids l lbor (tsize T) = Some α') :
     bor_step h α β cids clk (DeallocEvt l lbor T) h α' β cids clk
-| CallIS name :
+| InitCallIS :
     let c : call_id := fresh β in
-    bor_step h α β cids clk (NewCallEvt name c) h α ({[c]} ∪ β) (c :: cids) clk
+    bor_step h α β cids clk (InitCallEvt c) h α ({[c]} ∪ β) (c :: cids) clk
 | EndCallIS c cids'
     (TOP: cids = c :: cids') :
     bor_step h α β cids clk (EndCallEvt c) h α β cids' clk
