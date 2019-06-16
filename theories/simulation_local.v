@@ -105,8 +105,8 @@ Definition sim_fn_body_expr (r: A) (e_src e_tgt: expr) : Prop :=
   sim_fn_body r_f r e_src σ_src e_tgt σ_tgt.
 
 (* Simulating functions: assuming the calls have been initialized. *)
-Definition sim_fn_body_fn (r: A) (fn_src fn_tgt : function) : Prop :=
-  ∀ e_src e_tgt el_src el_tgt
+Definition sim_fn_body_fn (fn_src fn_tgt : function) : Prop :=
+  ∀ r e_src e_tgt el_src el_tgt
     (VALS: Forall (λ ei, terminal ei) el_src)
     (VALT: Forall (λ ei, terminal ei) el_tgt)
     (VALEQ: Forall2 (vrel r) el_src el_tgt)

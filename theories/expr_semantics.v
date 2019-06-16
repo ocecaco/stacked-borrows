@@ -1,6 +1,9 @@
 From Equations Require Import Equations.
 From stdpp Require Export gmap.
 
+(* TODO: remove list of expressions *)
+(* TODO: fixing the set of used protectors as a counter *)
+
 From stbor Require Export lang_base notation.
 
 Set Default Proof Using "Type".

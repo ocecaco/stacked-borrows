@@ -13,7 +13,7 @@ Record state := mkState {
   shp : mem;
   (* Stacked borrows for the heap *)
   sst : stacks;
-  (* Active call tracker *)
+  (* Used call ids *)
   spr : protectors;
   (* Call id stack *)
   scs : call_id_stack;

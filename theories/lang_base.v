@@ -131,9 +131,9 @@ Inductive bin_op :=
   .
 
 (** Base values *)
-Inductive lit :=
-  | LitPoison | LitLoc (l: loc) (tg: tag) | LitInt (n : Z)
-  | LitFnPtr (name: string).
+Inductive scalar := ScPoison | ScInt (n: Z) | ScPtr (l: loc) (tg: tag) | ScFnPtr (name: string).
+
+Definition value := ScV (sc: list scalar).
 
 (** Expressions *)
 Inductive expr :=
