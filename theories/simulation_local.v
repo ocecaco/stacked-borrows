@@ -171,3 +171,6 @@ Proof.
   - eapply cmap_inv_downward_mono; eauto.
   -
 Abort.
+
+Definition sim_fn := sim_local_fn wsat vrel_expr.
+Definition sim_fns := sim_local_fns wsat vrel_expr.
