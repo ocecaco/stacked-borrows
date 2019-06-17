@@ -15,7 +15,7 @@ Inductive pointer_kind :=
   RefPtr (mut: mutability) | RawPtr (mut: mutability) | BoxPtr.
 
 Inductive type :=
-  | Scalar (sz: nat)
+  | FixedSize (sz: nat)
   | Reference (kind: pointer_kind) (T: type)
   | Unsafe (T: type)
   | Union (Ts: list type)
@@ -29,7 +29,7 @@ Bind Scope lrust_type with type.
 (** Types that don't contain UnsafeCells. *)
 Fixpoint is_freeze (T: type) : bool :=
   match T with
-  | Scalar _ | Reference _ _ => true
+  | FixedSize _ | Reference _ _ => true
   | Unsafe _ => false
   | Union Ts | Product Ts | Sum Ts => forallb is_freeze Ts
   end.
@@ -67,7 +67,7 @@ Qed.
 
 Fixpoint tsize (T: type) : nat :=
   match T with
-  | Scalar sz => sz
+  | FixedSize sz => sz
   | Reference _ _ => 1%nat     (* We do not go beyond pointers *)
   | Unsafe T => tsize T
   | Union Ts => list_nat_max (tsize <$> Ts) O
@@ -104,7 +104,7 @@ Proof. cbn. lia. Qed.
 (** Tree size of types *)
 Fixpoint tnode_size (T: type) : nat :=
   match T with
-  | Scalar sz => 1%nat
+  | FixedSize sz => 1%nat
   | Reference _ T => 1 + tnode_size T
   | Unsafe T => 1 + tnode_size T
   | Union Ts | Product Ts | Sum Ts =>
@@ -143,7 +143,7 @@ Proof. intros ?. by apply tnode_size_elem_of. Qed.
 
 Section type_general_ind.
 Variable (P : type → Prop)
-         (F1: ∀ sz, P (Scalar sz))
+         (F1: ∀ sz, P (FixedSize sz))
          (F2: ∀ kind T, P T → P (Reference kind T))
          (F3: ∀ T, P T → P (Unsafe T))
          (F4: ∀ Ts, (∀ T, T ∈ Ts → P T) → P (Union Ts))
@@ -152,7 +152,7 @@ Variable (P : type → Prop)
 Program Fixpoint type_elim
          (T: type) {measure (tnode_size T)} : P T :=
     match T with
-    | Scalar sz => F1 sz
+    | FixedSize sz => F1 sz
     | Reference kind T => F2 kind T (type_elim T)
     | Unsafe T => F3 T (type_elim T)
     | Union Ts => F4 Ts (λ T (IN: T ∈ Ts), type_elim T)
@@ -169,7 +169,7 @@ End type_general_ind.
 
 (** Decidability *)
 
-Instance type_inhabited : Inhabited type := populate (Scalar 0).
+Instance type_inhabited : Inhabited type := populate (FixedSize 0).
 
 Instance mutability_eq_dec : EqDecision mutability.
 Proof. solve_decision. Defined.
@@ -206,7 +206,7 @@ Fixpoint type_beq (T T': type) : bool :=
     end
   in
   match T, T' with
-  | Scalar n, Scalar n' => bool_decide (n = n')
+  | FixedSize n, FixedSize n' => bool_decide (n = n')
   | Reference k T, Reference k' T' => bool_decide (k = k') && type_beq T T'
   | Unsafe T, Unsafe T' => type_beq T T'
   | Union Ts, Union Ts' | Product Ts, Product Ts' | Sum Ts, Sum Ts' =>
@@ -242,7 +242,7 @@ Instance type_countable : Countable type.
 Proof.
   refine (inj_countable'
     (fix go T := match T with
-     | Scalar sz => GenNode 0 [GenLeaf $ inl sz]
+     | FixedSize sz => GenNode 0 [GenLeaf $ inl sz]
      | Reference kind T => GenNode 1 [GenLeaf $ inr kind; go T]
      | Unsafe T => GenNode 2 [go T]
      | Union Ts => GenNode 3 (go <$> Ts)
@@ -250,13 +250,13 @@ Proof.
      | Sum Ts => GenNode 5 (go <$> Ts)
      end)
     (fix go s := match s with
-     | GenNode 0 [GenLeaf (inl sz)] => Scalar sz
+     | GenNode 0 [GenLeaf (inl sz)] => FixedSize sz
      | GenNode 1 [GenLeaf (inr kind); T] => Reference kind (go T)
      | GenNode 2 [T] => Unsafe (go T)
      | GenNode 3 Ts => Union (go <$> Ts)
      | GenNode 4 Ts => Product (go <$> Ts)
      | GenNode 5 Ts => Sum (go <$> Ts)
-     | _ => Scalar 0
+     | _ => FixedSize 0
      end) _).
   fix FIX 1. intros []; f_equal=>//; revert Ts; clear -FIX.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.

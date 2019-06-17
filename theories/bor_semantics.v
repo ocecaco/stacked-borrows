@@ -7,7 +7,7 @@ Set Default Proof Using "Type".
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
-Implicit Type (α: stacks) (β: protectors) (t: ptr_id) (c: call_id) (T: type).
+Implicit Type (α: stacks) (t: ptr_id) (c: call_id) (T: type).
 
 (** CORE SEMANTICS *)
 
@@ -183,7 +183,7 @@ Context {A: Type}.
 Equations visit_freeze_sensitive'
   (h: mem) (l: loc) (f: A → loc → nat → bool → option A)
   (a: A) (last cur_dist: nat) (T: type) : option (A * (nat * nat)) :=
-  visit_freeze_sensitive' h l f a last cur_dist (Scalar n) :=
+  visit_freeze_sensitive' h l f a last cur_dist (FixedSize n) :=
     (* consider frozen, simply extend the distant by n *)
       Some (a, (last, cur_dist + n)%nat) ;
   visit_freeze_sensitive' h l f a last cur_dist (Reference _ _) :=
@@ -231,7 +231,7 @@ Equations visit_freeze_sensitive'
             of that discriminant. Note that this consitutes a read-access, and
             should adhere to the access checks. But we are skipping them here.
             FIXME *)
-        | Some (LitInt i) =>
+        | Some (ScInt i) =>
             if decide (O ≤ i)
             then (* the discriminant is well-defined, visit with the
                     corresponding type *)
@@ -354,11 +354,11 @@ Definition adding_protector (kind: retag_kind) (c: call_id) : option call_id :=
 Equations retag
   (h: mem) α (clk: ptr_id) (cids: call_id_stack) (ct: call_id) (x: loc) (kind: retag_kind) T :
   option (mem * stacks * ptr_id) :=
-  retag h α clk cids ct x kind (Scalar _)         := Some (h, α, clk) ;
+  retag h α clk cids ct x kind (FixedSize _)         := Some (h, α, clk) ;
   retag h α clk cids ct x kind (Union _)          := Some (h, α, clk) ;
   retag h α clk cids ct x kind (Unsafe T)         := retag h α clk cids ct x kind T ;
   retag h α clk cids ct x kind (Reference pk Tr) with h !! x :=
-  { | Some (LitLoc l otag) :=
+  { | Some (ScPtr l otag) :=
         let qualify : option (ref_kind * option call_id) :=
           match pk, kind with
           (* Mutable reference *)
@@ -376,7 +376,7 @@ Equations retag
         match qualify with
         | Some (rkind, protector) =>
             bac ← retag_ref h α cids clk l otag Tr rkind protector ;
-            Some (<[x := LitLoc l bac.1.1]>h, bac.1.2, bac.2)
+            Some (<[x := ScPtr l bac.1.1]>h, bac.1.2, bac.2)
         | None => Some (h, α, clk)
         end ;
     | _ := None } ;
@@ -389,7 +389,7 @@ Equations retag
           hac ← retag h α clk cids ct x kind T ;
           visit_LR hac.1.1 hac.1.2 hac.2 (x +ₗ (tsize T)) Ts } ;
   retag h α clk cids ct x kind (Sum Ts) with h !! x :=
-  { | Some (LitInt i) :=
+  { | Some (ScInt i) :=
         if decide (O ≤ i < length Ts)
         then (* the discriminant is well-defined, visit with the
                 corresponding type *)
@@ -402,50 +402,51 @@ Equations retag
     | _ := None }
   .
 
-Definition tag_value_included (tg: tag) (clk: ptr_id) : Prop :=
+Definition tag_included (tg: tag) (clk: ptr_id) : Prop :=
   match tg with
   | Tagged t => (t < clk)%nat
   | _ => True
   end.
-Infix "<b" := tag_value_included (at level 60, no associativity).
-Definition tag_values_included (vl: list lit) clk :=
-  ∀ l tg, LitLoc l tg ∈ vl → tg <b clk.
+Infix "<b" := tag_included (at level 60, no associativity).
+Definition tag_values_included (v: value) clk :=
+  ∀ l tg, ScPtr l tg ∈ v → tg <b clk.
 Infix "<<b" := tag_values_included (at level 60, no associativity).
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
-Inductive bor_step h α β (cids: call_id_stack) (clk: ptr_id):
-  event → mem → stacks → protectors → call_id_stack → ptr_id → Prop :=
+Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
+  event → mem → stacks → call_id_stack → ptr_id → call_id → Prop :=
 (* | SysCallIS id :
     bor_step h α β clk (SysCallEvt id) h α β clk *)
 (* This implements EvalContextExt::new_allocation. *)
 | AllocIS x T :
     (* Tagged clk is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
-    bor_step h α β cids clk
-              (AllocEvt x (Tagged clk) T) h
-              (init_stacks α x (tsize T) (Tagged clk)) β cids (S clk)
+    bor_step h α cids nxtp nxtc
+              (AllocEvt x (Tagged nxtp) T) h
+              (init_stacks α x (tsize T) (Tagged nxtp)) cids (S nxtp) nxtc
 (* This implements AllocationExtra::memory_read. *)
 | CopyIS α' l lbor T vl
     (ACC: memory_read α cids l lbor (tsize T) = Some α')
-    (BOR: vl <<b clk) :
-    bor_step h α β cids clk (CopyEvt l lbor T vl) h α' β cids clk
+    (* This comes from wellformedness, but for convenience we require it here *)
+    (BOR: vl <<b nxtp):
+    bor_step h α cids nxtp nxtc (CopyEvt l lbor T vl) h α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_written. *)
 | WriteIS α' l lbor T vl
     (ACC: memory_written α cids l lbor (tsize T) = Some α')
-    (BOR: vl <<b clk) :
-    bor_step h α β cids clk (WriteEvt l lbor T vl) h α' β cids clk
+    (* This comes from wellformedness, but for convenience we require it here *)
+    (BOR: vl <<b nxtp) :
+    bor_step h α cids nxtp nxtc (WriteEvt l lbor T vl) h α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor T
     (ACC: memory_deallocated α cids l lbor (tsize T) = Some α') :
-    bor_step h α β cids clk (DeallocEvt l lbor T) h α' β cids clk
+    bor_step h α cids nxtp nxtc (DeallocEvt l lbor T) h α' cids nxtp nxtc
 | InitCallIS :
-    let c : call_id := fresh β in
-    bor_step h α β cids clk (InitCallEvt c) h α ({[c]} ∪ β) (c :: cids) clk
-| EndCallIS c cids'
+    bor_step h α cids nxtp nxtc (InitCallEvt nxtc) h α (nxtc :: cids) nxtp (S nxtc)
+| EndCallIS c cids' v
     (TOP: cids = c :: cids') :
-    bor_step h α β cids clk (EndCallEvt c) h α β cids' clk
-| RetagIS h' α' clk' x T kind c cids'
+    bor_step h α cids nxtp nxtc (EndCallEvt c v) h α cids' nxtp nxtc
+| RetagIS h' α' nxtp' x T kind c cids'
     (TOP: cids = c :: cids')
-    (RETAG: retag h α clk cids c x kind T = Some (h', α', clk')) :
-    bor_step h α β cids clk (RetagEvt x T kind) h' α' β cids clk'.
+    (RETAG: retag h α nxtp cids c x kind T = Some (h', α', nxtp')) :
+    bor_step h α cids nxtp nxtc (RetagEvt x T kind) h' α' cids nxtp' nxtc.

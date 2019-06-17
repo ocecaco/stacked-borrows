@@ -66,9 +66,8 @@ Hint Resolve _sim_mono: paco.
 (* Simulated state *)
 (* - cheap: Target memory is simulated by source memory
    - cpro, cstk, cclk : Call states, stack states, and tag counters are the same *)
-(* TODO: alloc need to be deterministic *)
 
-(* 
+(*
 Instance sim_lit_po : PreOrder sim_lit.
 Proof.
   constructor; first by intros [].

@@ -4,13 +4,13 @@ From stbor Require Import simulation steps_wf.
 
 (** Behaviors ----------------------------------------------------------------*)
 
-Inductive behavior := | Term (v: val) | Stuck | Diverges.
+Inductive behavior := | Term (v: value) | Stuck | Diverges.
 
 Inductive behaviors
   (step: expr * config → expr * config → Prop)
   (cfg: expr * config) : behavior → Prop :=
 | behaviors_term v
-    (TERMINAL: to_val cfg.1 = Some v) :
+    (TERMINAL: to_result cfg.1 = Some (ValR v)) :
     behaviors step cfg (Term v)
 | behaviors_stuck
     (NT: ¬ terminal cfg.1)

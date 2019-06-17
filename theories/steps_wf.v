@@ -7,14 +7,14 @@ Set Default Proof Using "Type".
 
 Lemma init_mem_foldr' l n h (m: nat):
   init_mem (l +ₗ m) n h =
-  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%V]> hi) h (seq m n).
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%S]> hi) h (seq m n).
 Proof.
   revert m. induction n as [|n IHn]; intros m; [done|]. simpl. f_equal.
   by rewrite shift_loc_assoc -(Nat2Z.inj_add m 1) Nat.add_1_r IHn.
 Qed.
 Lemma init_mem_foldr l n h:
   init_mem l n h =
-  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%V]> hi) h (seq 0 n).
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%S]> hi) h (seq 0 n).
 Proof. by rewrite -init_mem_foldr' shift_loc_0. Qed.
 
 Lemma free_mem_foldr' l n h (m: nat):
@@ -41,11 +41,12 @@ Lemma init_stacks_foldr α l n si:
   fold_right (λ (i: nat) hi, <[(l +ₗ i):=[mkItem Unique si None]]> hi) α (seq 0 n).
 Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 
-Lemma wf_stack_item_mono α β :
-  Proper ((≤)%nat ==> impl) (wf_stack_item α β).
+Lemma wf_stack_item_mono α :
+  Proper ((≤)%nat ==> (≤)%nat ==> impl) (wf_stack_item α).
 Proof.
-  move=> ??? WF ?? /WF Hf ? /Hf [TG ?]. split; [|done].
-  move : TG. case tg => [?|]; [lia|done].
+  move=> ?? Le1 ? ? Le2 WF ?? /WF Hf ? /Hf [TG1 TG2]. split.
+  - move : TG1. case tg => [?|]; [lia|done].
+  - move : TG2. case protector => [?|]; [lia|done].
 Qed.
 
 Lemma wf_mem_tag_mono h :
@@ -55,19 +56,19 @@ Proof. move => ??? WF ??[?|] /WF /=; [lia|done]. Qed.
 (** Alloc *)
 Lemma alloc_step_wf (σ σ': state) e e' h0 l bor T:
   mem_expr_step σ.(shp) e (AllocEvt l bor T) h0 e' →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
+  bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                     (AllocEvt l bor T)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
+                  σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β cids clk].
-  destruct σ' as [h' α' β' cids' clk']. simpl.
+  destruct σ as [h α cids nxtp nxtc].
+  destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
   intros BS IS WF. inversion BS. clear BS. simplify_eq.
   destruct (tsize T) eqn:Eqs.
   - inversion IS; clear IS; simplify_eq; constructor; simpl;
       try rewrite Eqs /=; try by apply WF.
     + eapply wf_mem_tag_mono; [|by apply WF]. simpl; lia.
-    + eapply wf_stack_item_mono; [|by apply WF]. simpl; lia.
+    + eapply wf_stack_item_mono; [..|by apply WF]; [simpl; lia|done].
   - inversion IS; clear IS; simplify_eq; constructor; cbn -[init_mem].
     + rewrite Eqs init_stacks_foldr init_mem_foldr.
       apply foldr_gmap_insert_dom, WF.
@@ -90,8 +91,8 @@ Proof.
 Qed.
 
 (** Dealloc *)
-Lemma memory_deallocated_delete' α β l bor n α' (m: nat):
-  memory_deallocated α β (l +ₗ m) bor n = Some α' →
+Lemma memory_deallocated_delete' α nxtc l bor n α' (m: nat):
+  memory_deallocated α nxtc (l +ₗ m) bor n = Some α' →
   α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq m n).
 Proof.
   revert α.
@@ -105,19 +106,20 @@ Proof.
                -shift_loc_assoc IH.
 Qed.
 
-Lemma memory_deallocated_delete α β l bor n α':
-  memory_deallocated α β l bor n = Some α' →
+Lemma memory_deallocated_delete α nxtc l bor n α':
+  memory_deallocated α nxtc l bor n = Some α' →
   α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq O n).
 Proof. intros. eapply memory_deallocated_delete'. rewrite shift_loc_0. by eauto. Qed.
 
 Lemma dealloc_step_wf σ σ' e e' h0 l bor T :
   mem_expr_step σ.(shp) e (DeallocEvt l bor T) h0 e' →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
+  bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                     (DeallocEvt l bor T)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
+                  σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β cids clk]. destruct σ' as [h' α' β' cids' clk']. simpl.
+  destruct σ as [h α cids nxtp nxtc].
+  destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -280,9 +282,9 @@ Proof.
     + move => ??. apply Lt. lia.
 Qed.
 
-Lemma for_each_access1 α β l n tg kind α' :
+Lemma for_each_access1 α nxtc l n tg kind α' :
   for_each α l n false
-          (λ stk, nstk' ← access1 stk kind tg β; Some nstk'.2) = Some α' →
+          (λ stk, nstk' ← access1 stk kind tg nxtc; Some nstk'.2) = Some α' →
   ∀ (l: loc) stk', α' !! l = Some stk' → ∃ stk, α !! l = Some stk ∧
     tagged_sublist stk' stk ∧ (stk ≠ [] → stk' ≠ []).
 Proof.
@@ -312,10 +314,10 @@ Proof.
   move => /for_each_access1 EQ1 WF ?? /EQ1 [? [? [? NE]]]. by eapply NE, WF.
 Qed.
 
-Lemma for_each_access1_stack_item α β cids clk l n tg kind α' :
+Lemma for_each_access1_stack_item α nxtc cids nxtp l n tg kind α' :
   for_each α l n false
           (λ stk, nstk' ← access1 stk kind tg cids; Some nstk'.2) = Some α' →
-  wf_stack_item α β clk → wf_stack_item α' β clk.
+  wf_stack_item α nxtp nxtc → wf_stack_item α' nxtp nxtc.
 Proof.
   intros ACC WF l' stk'.
   move => /for_each_access1 EQ.
@@ -325,12 +327,13 @@ Qed.
 
 Lemma copy_step_wf σ σ' e e' h0 l bor T vl :
   mem_expr_step σ.(shp) e (CopyEvt l bor T vl) h0 e' →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
+  bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                     (CopyEvt l bor T vl)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
-  Wf σ → Wf σ' ∧ vl <<b σ'.(scn).
+                  σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  Wf σ → Wf σ' ∧ vl <<b σ'.(snp).
 Proof.
-  destruct σ as [h α β cids clk]. destruct σ' as [h' α' β' cids' clk']. simpl.
+  destruct σ as [h α cids nxtp nxtc].
+  destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq. split; [|done].
@@ -379,12 +382,13 @@ Qed.
 
 Lemma write_step_wf σ σ' e e' h0 l bor T vl :
   mem_expr_step σ.(shp) e (WriteEvt l bor T vl) h0 e' →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
+  bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                     (WriteEvt l bor T vl)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
+                  σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β cids clk]. destruct σ' as [h' α' β' cids' clk']. simpl.
+  destruct σ as [h α cids nxtp nxtc].
+  destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -413,37 +417,38 @@ Qed.
 (** Call *)
 Lemma initcall_step_wf σ σ' e e' h0 n :
   mem_expr_step σ.(shp) e (InitCallEvt n) h0 e' →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
+  bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                     (InitCallEvt n)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
+                  σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β cids clk]. destruct σ' as [h' α' β' cids' clk']. simpl.
+  destruct σ as [h α cids nxtp nxtc].
+  destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
-  (* have EqN: β !! fresh (dom (gset nat) β) = None
+  (* have EqN: nxtc !! fresh (dom (gset nat) nxtc) = None
     by apply (not_elem_of_dom (D:= gset nat)), is_fresh. *)
   constructor; simpl; [apply WF..| |apply WF| |].
   - intros ?? Eq ? In.
     destruct (state_wf_stack_item _ WF _ _ Eq _ In) as [SI1 SI2].
-    split; [done|]. destruct si.(protector); [|done].
-    by apply elem_of_union_r.
+    split; [done|]. move : SI2. destruct si.(protector); [simpl; lia|done].
   - apply NoDup_cons_2; [|apply WF].
-    move => /(state_wf_cid_agree _ WF) /=. apply is_fresh.
-  - intros c. rewrite elem_of_cons elem_of_union elem_of_singleton.
+    move => /(state_wf_cid_agree _ WF) /=. lia.
+  - intros c. rewrite elem_of_cons.
     move => [->|/(state_wf_cid_agree _ WF)]; [by left|by right].
 Qed.
 
 (** EndCall *)
-Lemma endcall_step_wf σ σ' e e' h0 n :
-  mem_expr_step σ.(shp) e (EndCallEvt n) h0 e' →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
-                    (EndCallEvt n)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
+Lemma endcall_step_wf σ σ' e e' h0 n v :
+  mem_expr_step σ.(shp) e (EndCallEvt n v) h0 e' →
+  bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+                    (EndCallEvt n v)
+                  σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β cids clk]. destruct σ' as [h' α' β' cids' clk']. simpl.
+  destruct σ as [h α cids nxtp nxtc].
+  destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -456,24 +461,24 @@ Qed.
 (** Retag *)
 
 Lemma tag_value_included_trans tg :
-  Proper ((≤)%nat ==> impl) (tag_value_included tg).
+  Proper ((≤)%nat ==> impl) (tag_included tg).
 Proof.
-  intros clk clk' Le. rewrite /tag_value_included.
+  intros nxtp nxtp' Le. rewrite /tag_included.
   by destruct tg; simpl; intros ?; [lia..|done].
 Qed.
 
-Lemma retag_ref_clk_mono h α cids clk l bor T kind bar bor' α' clk' :
-  retag_ref h α cids clk l bor T kind bar = Some (bor', α', clk') →
-  (clk ≤ clk')%nat.
+Lemma retag_ref_nxtp_mono h α cids nxtp l bor T kind bar bor' α' nxtp' :
+  retag_ref h α cids nxtp l bor T kind bar = Some (bor', α', nxtp') →
+  (nxtp ≤ nxtp')%nat.
 Proof.
   rewrite /retag_ref.
   case tsize => ?; [by intros; simplify_eq|].
   case reborrow eqn:Eqb; [simpl|done]. intros. simplify_eq. lia.
 Qed.
 
-Lemma retag_ref_clk_bor_mono h α cids clk l bor T kind bar bor' α' clk' :
-  retag_ref h α cids clk l bor T kind bar = Some (bor', α', clk') →
-  bor <b clk → bor' <b clk'.
+Lemma retag_ref_nxtp_bor_mono h α cids nxtp l bor T kind bar bor' α' nxtp' :
+  retag_ref h α cids nxtp l bor T kind bar = Some (bor', α', nxtp') →
+  bor <b nxtp → bor' <b nxtp'.
 Proof.
   rewrite /retag_ref.
   case tsize => ?; [by intros; simplify_eq|].
@@ -524,14 +529,14 @@ Proof.
     simpl. intros ? _. simplify_eq. destruct stk1; [done|by case decide].
 Qed.
 
-Lemma tagged_sublist_stack_item_included stk stk' β clk  :
+Lemma tagged_sublist_stack_item_included stk stk' nxtp nxtc  :
   tagged_sublist stk' stk →
-  stack_item_included stk β clk → stack_item_included stk' β clk.
+  stack_item_included stk nxtp nxtc → stack_item_included stk' nxtp nxtc.
 Proof. by move => SF HI si /SF [? [/HI ? [-> ->]]]. Qed.
 
-Lemma subseteq_stack_item_included stk stk' β clk  :
+Lemma subseteq_stack_item_included stk stk' nxtp nxtc  :
   stk' ⊆ stk →
-  stack_item_included stk β clk → stack_item_included stk' β clk.
+  stack_item_included stk nxtp nxtc → stack_item_included stk' nxtp nxtc.
 Proof. by move => SF HI si /SF /HI. Qed.
 
 Lemma subseteq_tagged_sublist stk stk' :
@@ -595,11 +600,11 @@ Proof.
   move => /for_each_grant EQ1 WF ?? /EQ1 [? [? [? NE]]]. by eapply NE, WF.
 Qed.
 
-Lemma for_each_grant_stack_item α β cids clk l n bor new α'
-  (PR: match new.(protector) with Some c => c ∈ β | _ => True end)
-  (TG: new.(tg) <b clk) :
+Lemma for_each_grant_stack_item α nxtc cids nxtp l n bor new α'
+  (PR: match new.(protector) with Some c => (c < nxtc)%nat | _ => True end)
+  (TG: new.(tg) <b nxtp) :
   for_each α l n false (λ stk, grant stk bor new cids) = Some α' →
-  wf_stack_item α β clk → wf_stack_item α' β clk.
+  wf_stack_item α nxtp nxtc → wf_stack_item α' nxtp nxtc.
 Proof.
   intros ACC WF l' stk'.
   move => /for_each_grant EQ.
@@ -608,13 +613,13 @@ Proof.
   move => it /elem_of_cons [-> //|]. by apply (WF _ _ Eq).
 Qed.
 
-Lemma reborrowN_wf_stack α β cids clk l n old new pm bar α'
-  (PR: match bar with Some c => c ∈ β | _ => True end)
-  (TG: new <b clk) :
+Lemma reborrowN_wf_stack α nxtc cids nxtp l n old new pm bar α'
+  (PR: match bar with Some c => (c < nxtc)%nat | _ => True end)
+  (TG: new <b nxtp) :
   reborrowN α cids l n old new pm bar = Some α' →
-  wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
-  wf_stack_item α' β clk ∧ wf_non_empty α'.
+  wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
 Proof.
   intros RB [WF1 WF2]. split; last split.
   - eapply for_each_dom; eauto.
@@ -623,15 +628,15 @@ Proof.
 Qed.
 
 Lemma unsafe_action_wf_stack
-  (f: stacks → _ → _ → _ → _) α l last fs us α' lc' β clk :
+  (f: stacks → _ → _ → _ → _) α l last fs us α' lc' nxtp nxtc :
   (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-    wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+    wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
     dom (gset loc) α1 ≡ dom (gset loc) α2 ∧
-    wf_stack_item α2 β clk ∧ wf_non_empty α2) →
+    wf_stack_item α2 nxtp nxtc ∧ wf_non_empty α2) →
   unsafe_action f α l last fs us = Some (α', lc') →
-  wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
-  wf_stack_item α' β clk ∧ wf_non_empty α'.
+  wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
 Proof.
   intros Hf. rewrite /unsafe_action.
   case f as [α1|] eqn:Eq1; [simpl|done].
@@ -642,17 +647,17 @@ Proof.
 Qed.
 
 Lemma visit_freeze_sensitive'_wf_stack h l (f: stacks → _ → _ → _ → _)
-  α α' last cur T lc' β clk :
+  α α' last cur T lc' nxtp nxtc :
   let Hα α1 α2 :=
-    (wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+    (wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
       dom (gset loc) α1 ≡ dom (gset loc) α2 ∧
-      wf_stack_item α2 β clk ∧ wf_non_empty α2) in
+      wf_stack_item α2 nxtp nxtc ∧ wf_non_empty α2) in
   let HF f α1 α2 := (∀ l n b, f α1 l n b = Some α2 → Hα α1 α2) in
   (∀ α1 α2, HF f α1 α2) →
   visit_freeze_sensitive' h l f α last cur T = Some (α', lc') →
-  wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
-  wf_stack_item α' β clk ∧ wf_non_empty α'.
+  wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
 Proof.
   intros Hα HF.
   apply (visit_freeze_sensitive'_elim
@@ -673,11 +678,11 @@ Proof.
   - clear. intros ??????? IH ?? Hf.
     case is_freeze; [by intros ?; simplify_eq|]. by move => /(IH _ _ Hf).
   - clear. intros ??????? IH ?? Hf. case is_freeze; [by intros; simplify_eq|].
-    case lookup => [[//|//|i|//]|//].
+    case lookup => [[//|i|//|//]|//].
     case decide => [Ge0|//].
     case visit_freeze_sensitive'_clause_6_visit_lookup
       as [[]|] eqn:Eq1; [simpl|done].
-    intros. simplify_eq. eapply (IH LitPoison); eauto.
+    intros. simplify_eq. eapply (IH ScPoison); eauto.
   - naive_solver.
   - (* Product case *)
     intros ???????????? IH1 IH2 ?? Hf.
@@ -691,15 +696,15 @@ Proof.
 Qed.
 
 Lemma visit_freeze_sensitive_wf_stack h l T (f: stacks → _ → _ → _ → _)
-  clk β α α' :
+  nxtp nxtc α α' :
   (∀ α1 α2 l n b, f α1 l n b = Some α2 →
-    wf_stack_item α1 β clk ∧ wf_non_empty α1 →
+    wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
     dom (gset loc) α1 ≡ dom (gset loc) α2 ∧
-   wf_stack_item α2 β clk ∧ wf_non_empty α2) →
+   wf_stack_item α2 nxtp nxtc ∧ wf_non_empty α2) →
   visit_freeze_sensitive h l T f α = Some α' →
-  wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
-  wf_stack_item α' β clk ∧ wf_non_empty α'.
+  wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
 Proof.
   intros Hf. rewrite /visit_freeze_sensitive.
   case visit_freeze_sensitive' as [[α1 [last cur]]|] eqn:Eq; [|done].
@@ -709,13 +714,13 @@ Proof.
   by eapply Hf; eauto.
 Qed.
 
-Lemma reborrow_wf_stack h α β cids clk l old T kind new bar α'
-  (INCL: new <b clk)
-  (BAR : match bar with Some c => c ∈ β | _ => True end) :
+Lemma reborrow_wf_stack h α nxtc cids nxtp l old T kind new bar α'
+  (INCL: new <b nxtp)
+  (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end) :
   reborrow h α cids l old T kind new bar = Some α' →
-  wf_stack_item α β clk ∧ wf_non_empty α →
+  wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
-  wf_stack_item α' β clk ∧ wf_non_empty α'.
+  wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
 Proof.
   rewrite /reborrow. destruct kind as [[]| |].
   - by eapply reborrowN_wf_stack; eauto.
@@ -728,73 +733,73 @@ Proof.
       intros ?????. by eapply reborrowN_wf_stack.
 Qed.
 
-Lemma retag_ref_wf_stack h α β cids clk x l old T kind bar bor' α' clk'
-  (BAR : match bar with Some c => c ∈ β | _ => True end)
-  (Eqx: h !! x = Some (LitLoc l old)) :
-  retag_ref h α cids clk l old T kind bar = Some (bor', α', clk') →
-  wf_mem_tag h clk →
-  wf_stack_item α β clk → wf_non_empty α →
-  dom (gset loc) h ≡ dom (gset loc) (<[x:=(LitLoc l bor')]> h) ∧
-  wf_mem_tag (<[x:=(LitLoc l bor')]> h) clk' ∧
+Lemma retag_ref_wf_stack h α nxtc cids nxtp x l old T kind bar bor' α' nxtp'
+  (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end)
+  (Eqx: h !! x = Some (ScPtr l old)) :
+  retag_ref h α cids nxtp l old T kind bar = Some (bor', α', nxtp') →
+  wf_mem_tag h nxtp →
+  wf_stack_item α nxtp nxtc → wf_non_empty α →
+  dom (gset loc) h ≡ dom (gset loc) (<[x:=(ScPtr l bor')]> h) ∧
+  wf_mem_tag (<[x:=(ScPtr l bor')]> h) nxtp' ∧
   dom (gset loc) α ≡ dom (gset loc) α' ∧
-  wf_stack_item α' β clk' ∧ wf_non_empty α'.
+  wf_stack_item α' nxtp' nxtc ∧ wf_non_empty α'.
 Proof.
   intros RE WF1 WF2 WF3. split; last split.
   { symmetry; apply dom_map_insert_is_Some; by eexists. }
   { intros  x' l' bor1. case (decide (x' = x)) => ?; [subst x'|].
     - rewrite lookup_insert => ?. simplify_eq.
-      by eapply retag_ref_clk_bor_mono; eauto.
+      by eapply retag_ref_nxtp_bor_mono; eauto.
     - rewrite lookup_insert_ne; [|done].
       move => /WF1. apply tag_value_included_trans.
-      by eapply retag_ref_clk_mono. }
+      by eapply retag_ref_nxtp_mono. }
   move : RE WF2 WF3.
   rewrite /retag_ref. case tsize eqn:Eq; [by intros; simplify_eq|].
   case reborrow as [α1|] eqn:Eq1; [simpl|done].
   intros ?. simplify_eq. intros WF2 WF3.
   eapply reborrow_wf_stack; eauto.
   - destruct kind; simpl; [lia..|done].
-  - split; [|done]. eapply wf_stack_item_mono; [|exact WF2]. by lia.
+  - split; [|done]. eapply wf_stack_item_mono; [..|done|exact WF2]. by lia.
 Qed.
 
-Definition borrow_barrier_Some (β: protectors) kind c : Prop :=
-  match kind with FnEntry => c ∈ β | _ => True end.
+Definition borrow_barrier_Some nxtc kind c : Prop :=
+  match kind with FnEntry => (c < nxtc)%nat | _ => True end.
 
 
-Lemma retag_wf_stack h α clk β cids c l kind T h' α' clk' :
-  let Hα h h' α α' clk clk' cids c kind :=
-    (borrow_barrier_Some β kind c →
-      wf_mem_tag h clk →
-      wf_stack_item α β clk → wf_non_empty α →
+Lemma retag_wf_stack h α nxtp nxtc cids c l kind T h' α' nxtp' :
+  let Hα h h' α α' nxtp nxtp' cids c kind :=
+    (borrow_barrier_Some nxtc kind c →
+      wf_mem_tag h nxtp →
+      wf_stack_item α nxtp nxtc → wf_non_empty α →
       dom (gset loc) h ≡ dom (gset loc) h' ∧
-      wf_mem_tag h' clk' ∧ dom (gset loc) α ≡ dom (gset loc) α' ∧
-      wf_stack_item α' β clk' ∧ wf_non_empty α') in
-  retag h α clk cids c l kind T = Some (h', α', clk') →
-  Hα h h' α α' clk clk' cids c kind.
+      wf_mem_tag h' nxtp' ∧ dom (gset loc) α ≡ dom (gset loc) α' ∧
+      wf_stack_item α' nxtp' nxtc ∧ wf_non_empty α') in
+  retag h α nxtp cids c l kind T = Some (h', α', nxtp') →
+  Hα h h' α α' nxtp nxtp' cids c kind.
 Proof.
   intros Hα.
   eapply (retag_elim
     (* general goal P *)
-    (λ h α clk cids c _ kind _ ohac, ∀ h' α' clk',
-        ohac = Some (h', α', clk') → Hα h h' α α' clk clk' cids c kind)
+    (λ h α nxtp cids c _ kind _ ohac, ∀ h' α' nxtp',
+        ohac = Some (h', α', nxtp') → Hα h h' α α' nxtp nxtp' cids c kind)
     (* invariant for Product's where P1 *)
-    (λ _ _ _ cids c _ kind _ h α clk _ _ ohac, ∀ h' α' clk',
-        ohac = Some (h', α', clk') → Hα h h' α α' clk clk' cids c kind)
+    (λ _ _ _ cids c _ kind _ h α nxtp _ _ ohac, ∀ h' α' nxtp',
+        ohac = Some (h', α', nxtp') → Hα h h' α α' nxtp nxtp' cids c kind)
     (* invariant for Sum's where P3 *)
-    (λ h _ _ α clk cids c kind _ _ _ ohac, ∀ h' α' clk',
-        ohac = Some (h', α', clk') → Hα h h' α α' clk clk' cids c kind)); rewrite /Hα.
+    (λ h _ _ α nxtp cids c kind _ _ _ ohac, ∀ h' α' nxtp',
+        ohac = Some (h', α', nxtp') → Hα h h' α α' nxtp nxtp' cids c kind)); rewrite /Hα.
+  - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
   - (* Reference cases *)
-    clear. intros h ?? bor α clk cids c rt_kind p_kind T Eq h' α' clk'.
+    clear. intros h ?? bor α nxtp cids c rt_kind p_kind T Eq h' α' nxtp'.
     destruct p_kind as [[]|[]|];
       [| |destruct rt_kind; try by (intros; simplify_eq)..|];
-      (case retag_ref as [[[new α1] clk1]|] eqn:Eq1; [simpl|done]);
+      (case retag_ref as [[[new α1] nxtp1]|] eqn:Eq1; [simpl|done]);
       intros ???; simplify_eq; eapply retag_ref_wf_stack; eauto; [| |done..];
       by destruct rt_kind.
-  - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
@@ -806,7 +811,6 @@ Proof.
     destruct (WF BS) as (? & ? & ? & ?); [done..|].
     split; last split; last split; [by rewrite Eq1|done|by rewrite Eq2|done..].
   - naive_solver.
-  - naive_solver.
   - (* Sum case *)
     intros ????????? IH Eq ???. case decide => Le; [|done]. by apply IH.
   - naive_solver.
@@ -814,28 +818,30 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
+  - naive_solver.
 Qed.
 
-Lemma retag_wf h α clk β c cids l kind T h' α' clk' :
-  retag h α clk (c::cids) c l kind T = Some (h', α', clk') →
-  Wf (mkState h α β (c::cids) clk) → Wf (mkState h' α' β (c::cids) clk').
+Lemma retag_wf h α nxtp nxtc c cids l kind T h' α' nxtp' :
+  retag h α nxtp (c::cids) c l kind T = Some (h', α', nxtp') →
+  Wf (mkState h α (c::cids) nxtp nxtc) → Wf (mkState h' α' (c::cids) nxtp' nxtc).
 Proof.
   move => /retag_wf_stack WF' WF.
-  have ?: borrow_barrier_Some β kind c.
+  have ?: borrow_barrier_Some nxtc kind c.
   { destruct kind; [|done..]. apply WF. by left. }
-  destruct (WF' β) as (Eq1 & ? & Eq2 & ? & ?); [done|apply WF..|].
+  destruct (WF' nxtc) as (Eq1 & ? & Eq2 & ? & ?); [done|apply WF..|].
   constructor; simpl; [|done..|apply WF|apply WF].
   by rewrite -Eq1 -Eq2; apply WF.
 Qed.
 
 Lemma retag_step_wf σ σ' e e' h0 l T kind :
   mem_expr_step σ.(shp) e (RetagEvt l T kind) h0 e' →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scs) σ.(scn)
+  bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                     (RetagEvt l T kind)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scs) σ'.(scn) →
+                  σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β cids clk]. destruct σ' as [h' α' β' cids' clk']. simpl.
+  destruct σ as [h α cids nxtp nxtc].
+  destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
@@ -845,12 +851,12 @@ Qed.
 (** SysCall step *)
 (* Lemma syscall_step_wf σ σ' e e' id efs h0 :
   mem_expr_step FNs e σ.(shp) (SysCallEvt id) e' h0 efs →
-  bor_step h0 σ.(sst) σ.(spr) σ.(scn)
+  bor_step h0 σ.(sst) σ.(snc) σ.(snp)
                     (SysCallEvt id)
-                  σ'.(shp) σ'.(sst) σ'.(spr) σ'.(scn) →
+                  σ'.(shp) σ'.(sst) σ'.(snc) σ'.(snp) →
   Wf σ → Wf σ'.
 Proof.
-  destruct σ as [h α β clk]. destruct σ' as [h' α' β' clk']. simpl.
+  destruct σ as [h α nxtp nxtc]. destruct σ' as [h' α' nxtc' nxtp']. simpl.
   intros BS IS WF.
   inversion BS; clear BS; simplify_eq;
   inversion IS; clear IS; simplify_eq; apply WF.
@@ -881,32 +887,32 @@ Proof.
   by apply tstep_wf.
 Qed.
 
-Lemma retag_clk_mono h α clk cids c l kind T h' α' clk' :
-  retag h α clk cids c l kind T = Some (h', α', clk') →
-  (clk ≤ clk')%nat.
+Lemma retag_nxtp_mono h α nxtp cids c l kind T h' α' nxtp' :
+  retag h α nxtp cids c l kind T = Some (h', α', nxtp') →
+  (nxtp ≤ nxtp')%nat.
 Proof.
   eapply (retag_elim
     (* general goal P *)
-    (λ h α clk _ _ _ _ _ ohac, ∀ h' α' clk',
-        ohac = Some (h', α', clk') → (clk ≤ clk')%nat)
+    (λ h α nxtp _ _ _ _ _ ohac, ∀ h' α' nxtp',
+        ohac = Some (h', α', nxtp') → (nxtp ≤ nxtp')%nat)
     (* invariant for Product's where P1 *)
-    (λ _ _ _ _ _ _ _ _ h α clk _ _ ohac, ∀ h' α' clk',
-        ohac = Some (h', α', clk') → (clk ≤ clk')%nat)
+    (λ _ _ _ _ _ _ _ _ h α nxtp _ _ ohac, ∀ h' α' nxtp',
+        ohac = Some (h', α', nxtp') → (nxtp ≤ nxtp')%nat)
     (* invariant for Sum's where P3 *)
-    (λ h _ _ α clk _ _ _ _ _ _ ohac, ∀ h' α' clk',
-        ohac = Some (h', α', clk') → (clk ≤ clk')%nat)).
+    (λ h _ _ α nxtp _ _ _ _ _ _ ohac, ∀ h' α' nxtp',
+        ohac = Some (h', α', nxtp') → (nxtp ≤ nxtp')%nat)).
+  - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
   - naive_solver.
   - (* Reference cases *)
-    clear. intros h ?? bor α clk cids c rt_kind p_kind T Eq h' α' clk'. simpl.
+    clear. intros h ?? bor α nxtp cids c rt_kind p_kind T Eq h' α' nxtp'. simpl.
     destruct p_kind as [[]|[]|];
       [| |destruct rt_kind; try by (intros; simplify_eq)..|];
-      (case retag_ref as [[[new α1] clk1]|] eqn:Eq1; [simpl|done]);
-      intros; simplify_eq; eapply retag_ref_clk_mono; eauto.
-  - naive_solver.
+      (case retag_ref as [[[new α1] nxtp1]|] eqn:Eq1; [simpl|done]);
+      intros; simplify_eq; eapply retag_ref_nxtp_mono; eauto.
   - naive_solver.
   - naive_solver.
   - naive_solver.
@@ -915,7 +921,6 @@ Proof.
     case retag as [hac|]; [|done]. move => /= /IH1 Le. destruct hac as [[]].
     etrans; [|exact Le]. by eapply IH2.
   - naive_solver.
-  - naive_solver.
   - (* Sum case *)
     intros ????????? IH Eq ???. case decide => Le; [|done]. by apply IH.
   - naive_solver.
@@ -923,18 +928,19 @@ Proof.
   - naive_solver.
   - naive_solver.
   - naive_solver.
+  - naive_solver.
 Qed.
 
-Lemma head_step_clk_mono σ σ' e e' obs efs :
-  head_step e σ obs e' σ' efs → (σ.(cst).(scn) ≤ σ'.(cst).(scn))%nat.
+Lemma head_step_nxtp_mono σ σ' e e' obs efs :
+  head_step e σ obs e' σ' efs → (σ.(cst).(snp) ≤ σ'.(cst).(snp))%nat.
 Proof.
   intros HS. inversion HS; [done|]. simplify_eq.
   inversion InstrStep; simplify_eq; simpl; try done; [lia|].
-  by eapply retag_clk_mono.
+  by eapply retag_nxtp_mono.
 Qed.
 
-(* Definition future_protector (β β': protectors) :=
-  ∀ c b, β !! c = Some b → ∃ b', β' !! c = Some b' ∧ (b = false → b' = false).
+(* Definition future_protector (nxtc nxtc': protectors) :=
+  ∀ c b, nxtc !! c = Some b → ∃ b', nxtc' !! c = Some b' ∧ (b = false → b' = false).
 
 Instance future_state_preorder: PreOrder future_protector.
 Proof.
@@ -944,7 +950,7 @@ Proof.
 Qed.
 
 Lemma head_step_protectors_mono σ σ' e e' obs efs :
-  head_step e σ obs e' σ' efs → future_protector σ.(cst).(spr) σ'.(cst).(spr).
+  head_step e σ obs e' σ' efs → future_protector σ.(cst).(snc) σ'.(cst).(snc).
 Proof.
   intros HS. inversion HS; [done|]. simplify_eq.
   inversion InstrStep; simplify_eq; simpl; try done.

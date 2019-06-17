@@ -9,16 +9,16 @@ Module bor_lang.
 (** COMBINED SEMANTICS -------------------------------------------------------*)
 
 Record state := mkState {
-  (* Heap with base values *)
+  (* Heap of scalars *)
   shp : mem;
   (* Stacked borrows for the heap *)
   sst : stacks;
-  (* Used call ids *)
-  spr : protectors;
-  (* Call id stack *)
+  (* Stack of active call ids *)
   scs : call_id_stack;
   (* Counter for pointer tag generation *)
-  scn : ptr_id;
+  snp : ptr_id;
+  (* Counter for call id generation *)
+  snc : call_id;
 }.
 
 Record config := mkConfig {
@@ -35,11 +35,11 @@ Inductive head_step :
   | HeadPureS σ e e' ev
       (ExprStep: pure_expr_step σ.(cfn) σ.(cst).(shp) e ev e')
     : head_step e σ [ev] e' σ []
-  | HeadImpureS σ e e' ev h0 h' α' β' cids' clock'
+  | HeadImpureS σ e e' ev h0 h' α' cids' nxtp' nxtc'
       (ExprStep : mem_expr_step σ.(cst).(shp) e ev h0 e')
-      (InstrStep: bor_step h0 σ.(cst).(sst) σ.(cst).(spr) σ.(cst).(scs) σ.(cst).(scn)
-                           ev h' α' β' cids' clock')
-    : head_step e σ [ev] e' (mkConfig σ.(cfn) (mkState h' α' β' cids' clock')) [].
+      (InstrStep: bor_step h0 σ.(cst).(sst) σ.(cst).(scs) σ.(cst).(snp) σ.(cst).(snc)
+                           ev h' α' cids' nxtp' nxtc')
+    : head_step e σ [ev] e' (mkConfig σ.(cfn) (mkState h' α' cids' nxtp' nxtc')) [].
 
 
 (** BASIC LANGUAGE PROPERTIES ------------------------------------------------*)
@@ -54,69 +54,22 @@ Proof.
     f_equal; intuition eauto with set_solver.
   - move : He. induction el=>//=. rewrite andb_True=>?.
     f_equal; intuition eauto with set_solver.
-  - case He=> _. clear He. induction el=>//=. rewrite andb_True=>?.
-    f_equal; intuition eauto with set_solver.
 Qed.
 
 Lemma is_closed_nil_subst e x es : is_closed [] e → subst x es e = e.
 Proof. intros. apply is_closed_subst with []; set_solver. Qed.
 
-Lemma is_closed_of_val X v : is_closed X (of_val v).
-Proof.
-  destruct v as [[]|vl|]; auto.
-  induction vl as [|v vl]; first auto. destruct v; simpl; auto.
-Qed.
+Lemma is_closed_of_result X v : is_closed X (of_result v).
+Proof. by destruct v as [[]|]. Qed.
 
-Lemma to_lits_cons vl e el:
-  to_lits vl (e :: el) = v ← to_lit e; to_lits (vl ++ [v]) el.
-Proof.
-  rewrite /to_lits /=. destruct (to_lit e); simpl; [done|].
-  by induction el.
-Qed.
-Lemma to_lits_app vl el1 el2 :
-  to_lits vl (el1 ++ el2) = vl' ← to_lits vl el1; to_lits vl' el2.
-Proof.
-  revert vl. induction el1 as [|e el1 IH]; intros vl; [done|].
-  rewrite /= 2!to_lits_cons option_bind_assoc.
-  apply option_bind_ext; [|done]. intros; by apply IH.
-Qed.
-
-Lemma to_of_lits vl1 vl2 :
-  to_lits vl1 (Lit <$> vl2) = Some (vl1 ++ vl2).
-Proof.
-  revert vl1. induction vl2 as [|v vl2 IH]; intros vl1; [by rewrite app_nil_r|].
-  rewrite fmap_cons to_lits_cons  /= IH. f_equal.
-  by rewrite (cons_middle v vl1 vl2) app_assoc.
-Qed.
-
-Lemma of_to_lit e v : to_lit e = Some v → Lit v = e.
-Proof. destruct e=>//= Eq. by inversion Eq. Qed.
-Lemma of_to_lits vl1 el2 vl:
-  to_lits vl1 el2 = Some vl →
-  of_val (TValV vl) = (TVal ((Lit <$> vl1) ++ el2)).
-Proof.
-  revert vl1 vl. induction el2 as [|e el2 IH]; intros vl1 vl.
-  - by rewrite /to_lits /= app_nil_r => [[->]].
-  - rewrite to_lits_cons.
-    destruct (to_lit e) as [v|] eqn:Eqv; [|done].
-    move => /(IH _ _) ->. f_equal.
-    by rewrite fmap_app -(of_to_lit _ _ Eqv) /= -app_assoc cons_middle.
-Qed.
-
-Lemma to_of_val v : to_val (of_val v) = Some v.
-Proof. destruct v as [[]|vl|]; auto. by rewrite /= to_of_lits. Qed.
-Lemma of_to_val e v : to_val e = Some v → of_val v = e.
-Proof.
-  destruct e=>//=; [|destruct (to_lits [] el) as [vl|] eqn:Eq; [|done]
-                    |]; intros [= <-]; auto.
-  by rewrite (of_to_lits _ _ _ Eq).
-Qed.
-
-Instance of_val_inj : Inj (=) (=) of_val.
-Proof. by intros ?? Hv; apply (inj Some); rewrite -2!to_of_val Hv /=. Qed.
-
-Lemma is_closed_to_val X e v : to_val e = Some v → is_closed X e.
-Proof. intros <-%of_to_val. apply is_closed_of_val. Qed.
+Lemma to_of_result v : to_result (of_result v) = Some v.
+Proof. by destruct v as [[]|]. Qed.
+Lemma of_to_result e v : to_result e = Some v → of_result v = e.
+Proof. destruct e=>//=; intros; by simplify_eq. Qed.
+Instance of_result_inj : Inj (=) (=) of_result.
+Proof. by intros ?? Hv; apply (inj Some); rewrite -2!to_of_result Hv /=. Qed.
+Lemma is_closed_to_result X e v : to_result e = Some v → is_closed X e.
+Proof. intros <-%of_to_result. apply is_closed_of_result. Qed.
 
 (* Lemma subst_is_closed X x es e :
   is_closed X es → is_closed (x::X) e → is_closed X (subst x es e).
@@ -150,22 +103,22 @@ Proof.
                   3 => LtOp | 4 => EqOp | _ => OffsetOp end) _); by intros [].
 Qed.
 
-Instance lit_eq_dec : EqDecision lit.
+Instance scalar_eq_dec : EqDecision scalar.
 Proof. solve_decision. Defined.
-Instance lit_countable : Countable lit.
+Instance scalar_countable : Countable scalar.
 Proof.
   refine (inj_countable
           (λ v, match v with
-              | LitPoison => inl (inl ())
-              | LitLoc l bor => inl (inr (l,bor))
-              | LitInt n => inr (inl n)
-              | LitFnPtr n => inr (inr n)
+              | ScPoison => inl (inl ())
+              | ScPtr l bor => inl (inr (l,bor))
+              | ScInt n => inr (inl n)
+              | ScFnPtr n => inr (inr n)
               end)
           (λ s, match s with
-              | inl (inl ()) => Some LitPoison
-              | inl (inr (l,bor)) => Some $ LitLoc l bor
-              | inr (inl n) => Some $ LitInt n
-              | inr (inr n) => Some $ LitFnPtr n
+              | inl (inl ()) => Some ScPoison
+              | inl (inr (l,bor)) => Some $ ScPtr l bor
+              | inr (inl n) => Some $ ScInt n
+              | inr (inr n) => Some $ ScFnPtr n
               end) _); by intros [].
 Qed.
 
@@ -197,7 +150,7 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
     end
   in
   match e, e' with
-  | Lit l, Lit l' => bool_decide (l = l')
+  | Val v, Val v' => bool_decide (v = v')
   | Var x, Var x' => bool_decide (x = x')
   | Case e el, Case e' el' | Call e el, Call e' el'
     (* | App e el, App e' el' *) => expr_beq e e' && expr_list_beq el el'
@@ -205,7 +158,6 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
       bool_decide (f = f') && bool_decide (xl = xl') && expr_beq e e' *)
   | BinOp op e1 e2, BinOp op' e1' e2' =>
       bool_decide (op = op') && expr_beq e1 e1' && expr_beq e2 e2'
-  | TVal el, TVal el' => expr_list_beq el el'
   | Place l bor T , Place l' bor' T' =>
       bool_decide (l = l') && bool_decide (bor = bor') && bool_decide (T = T')
   | Deref e T, Deref e' T' =>
@@ -232,15 +184,11 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
 Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
 Proof.
   revert e1 e2; fix FIX 1;
-    destruct e1 as [| |? el1| | |el1| | | | | | | | | | | | | |? el1],
-             e2 as [| |? el2| | |el2| | | | | | | | | | | | | |? el2];
+    destruct e1 as [| |? el1| | | | | | | | | | | | | | | |? el1],
+             e2 as [| |? el2| | | | | | | | | | | | | | | |? el2];
     simpl; try done;
     rewrite ?andb_True ?bool_decide_spec ?FIX;
     try (split; intro; [destruct_and?|split_and?]; congruence).
-  - match goal with |- context [?F el1 el2] => assert (F el1 el2 ↔ el1 = el2) end.
-    { revert el2. induction el1 as [|el1h el1q]; destruct el2; try done.
-      specialize (FIX el1h). naive_solver. }
-    clear FIX. naive_solver.
   - match goal with |- context [?F el1 el2] => assert (F el1 el2 ↔ el1 = el2) end.
     { revert el2. induction el1 as [|el1h el1q]; destruct el2; try done.
       specialize (FIX el1h). naive_solver. }
@@ -260,16 +208,15 @@ Proof.
   refine (inj_countable'
     (fix go e := match e with
       | Var x => GenNode 0 [GenLeaf $ inl $ inl $ inl $ inl x]
-      | Lit l => GenNode 1 [GenLeaf $ inl $ inl $ inl $ inr l]
+      | Val v => GenNode 1 [GenLeaf $ inl $ inl $ inl $ inr v]
       (* | Rec f xl e => GenNode 2 [GenLeaf $ inl $ inl $ inr $ inl f;
                                  GenLeaf $ inl $ inl $ inr $ inr xl; go e]
       | App e el => GenNode 3 (go e :: (go <$> el)) *)
       | Call e el => GenNode 2 (go e :: (go <$> el))
-      | InitCall e => GenNode 19 [go e]
-      | EndCall e => GenNode 3 [go e]
-      | BinOp op e1 e2 => GenNode 4 [GenLeaf $ inl $ inl $ inr $ inl op;
+      | InitCall e => GenNode 3 [go e]
+      | EndCall e => GenNode 4 [go e]
+      | BinOp op e1 e2 => GenNode 5 [GenLeaf $ inl $ inl $ inr $ inl op;
                                      go e1; go e2]
-      | TVal el => GenNode 5 (go <$> el)
       | Proj e1 e2 => GenNode 6 [go e1; go e2]
       | Conc e1 e2 => GenNode 7 [go e1; go e2]
       | Place l tag T => GenNode 8 [GenLeaf $ inl $ inl $ inr $ inr l;
@@ -290,15 +237,14 @@ Proof.
      end)
     (fix go s := match s with
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
-     | GenNode 1 [GenLeaf (inl (inl (inl (inr l))))] => Lit l
+     | GenNode 1 [GenLeaf (inl (inl (inl (inr v))))] => Val v
      | GenNode 2 (e :: el) => Call (go e) (go <$> el)
-     | GenNode 19 [e] => InitCall (go e)
-     | GenNode 3 [e] => EndCall (go e)
+     | GenNode 3 [e] => InitCall (go e)
+     | GenNode 4 [e] => EndCall (go e)
      (* | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
                   GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)
      | GenNode 3 (e :: el) => App (go e) (go <$> el) *)
-     | GenNode 4 [GenLeaf (inl (inl (inr (inl op)))); e1; e2] => BinOp op (go e1) (go e2)
-     | GenNode 5 el => TVal (go <$> el)
+     | GenNode 5 [GenLeaf (inl (inl (inr (inl op)))); e1; e2] => BinOp op (go e1) (go e2)
      | GenNode 6 [e1; e2] => Proj (go e1) (go e2)
      | GenNode 7 [e1; e2] => Conc (go e1) (go e2)
      | GenNode 8 [GenLeaf (inl (inl (inr (inr l))));
@@ -317,41 +263,38 @@ Proof.
      | GenNode 18 (e :: el) => Case (go e) (go <$> el)
      (* | GenNode 23 [e] => Fork (go e)
      | GenNode 24 [GenLeaf (inr (inr id))] => SysCall id *)
-     | _ => Lit LitPoison
+     | _ => (#[☠])%E
      end) _).
   fix FIX 1. intros []; f_equal=>//; revert el; clear -FIX.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
   - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
-  - fix FIX_INNER 1. intros []; [done|]. by simpl; f_equal.
 Qed.
 
-Instance val_dec_eq : EqDecision val.
+Instance result_dec_eq : EqDecision result.
 Proof.
-  refine (λ v1 v2, cast_if (decide (of_val v1 = of_val v2))); abstract naive_solver.
+  refine (λ v1 v2, cast_if (decide (of_result v1 = of_result v2))); abstract naive_solver.
 Defined.
-Instance val_countable : Countable val.
+Instance result_countable : Countable result.
 Proof.
   refine (inj_countable
     (λ v, match v with
-          | LitV v => inl $ inl v
-          | TValV vl => inl $ inr vl
-          | PlaceV l bor T => inr (l, bor, T)
+          | ValR v => inl v
+          | PlaceR l bor T => inr (l, bor, T)
           end)
     (λ x, match x with
-          | inl (inl v) => Some $ LitV $ v
-          | inl (inr vl) => Some $ TValV vl
-          | inr (l, bor, T) => Some $ PlaceV l bor T
+          | inl v => Some $ ValR $ v
+          | inr (l, bor, T) => Some $ PlaceR l bor T
           end) _).
   by intros [].
 Qed.
 
-Instance expr_inhabited : Inhabited expr := populate (Lit LitPoison).
-Instance val_inhabited : Inhabited val := populate (LitV LitPoison).
+Instance expr_inhabited : Inhabited expr := populate (#[☠])%E.
+Instance result_inhabited : Inhabited result := populate (ValR [☠%S]).
 Instance state_Inhabited : Inhabited state.
 Proof. do 2!econstructor; exact: inhabitant. Qed.
 
 Canonical Structure locC := leibnizC loc.
-Canonical Structure valC := leibnizC val.
+Canonical Structure resultC := leibnizC result.
 Canonical Structure exprC := leibnizC expr.
 Canonical Structure stateC := leibnizC state.
 
@@ -360,83 +303,57 @@ Canonical Structure stateC := leibnizC state.
 Instance fill_item_inj Ki : Inj (=) (=) (fill_item Ki).
 Proof. destruct Ki; intros ???; simplify_eq/=; auto with f_equal. Qed.
 
-Lemma to_lits_elem_Some vl vl' el e:
-  to_lits vl el = Some vl' → e ∈ el → is_Some (to_val e).
-Proof.
-  revert vl. induction el as [|e' ? IH]; intros vl; [by intros _ ?%elem_of_nil|].
-  rewrite to_lits_cons.
-  destruct (to_lit e') as [v'|] eqn:Eq'; [|done].
-  move => /= /IH In /elem_of_cons [->|/In //]. rewrite -(of_to_lit _ _ Eq').
-  by eexists.
-Qed.
+Lemma fill_item_result Ki e :
+  is_Some (to_result (fill_item Ki e)) → is_Some (to_result e).
+Proof. intros [r ?]. destruct Ki; simplify_option_eq; eauto. Qed.
 
-Lemma fill_item_val Ki e :
-  is_Some (to_val (fill_item Ki e)) → is_Some (to_val e).
-Proof.
-  intros [v ?]. destruct Ki; simplify_option_eq; eauto.
-  eapply to_lits_elem_Some; eauto. set_solver.
-Qed.
+Lemma fill_item_no_result Ki e :
+  to_result e = None → to_result (fill_item Ki e) = None.
+Proof. intros EqN. destruct Ki; simplify_option_eq; eauto. Qed.
 
-Lemma to_lits_elem_None vl el e:
-  to_val e = None → e ∈ el → to_lits vl el = None.
+Lemma list_expr_result_eq_inv rl1 rl2 e1 e2 el1 el2 :
+  to_result e1 = None → to_result e2 = None →
+  map of_result rl1 ++ e1 :: el1 = map of_result rl2 ++ e2 :: el2 →
+  rl1 = rl2 ∧ el1 = el2.
 Proof.
-  revert vl. induction el as [|e' ? IH]; intros vl; [by intros _ ?%elem_of_nil|].
-  rewrite to_lits_cons.
-  destruct (to_lit e') as [v'|] eqn:Eq'; [|done].
-  move => /= EqN /elem_of_cons [?|IN].
-  - subst. exfalso. move : Eq' EqN. by destruct e'.
-  - by apply IH.
-Qed.
-
-Lemma fill_item_no_val Ki e :
-  to_val e = None → to_val (fill_item Ki e) = None.
-Proof.
-  intros EqN. destruct Ki; simplify_option_eq; eauto.
-  rewrite (to_lits_elem_None _ _ e EqN) // elem_of_app.
-  by right; left.
-Qed.
-
-Lemma list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2 :
-  to_val e1 = None → to_val e2 = None →
-  map of_val vl1 ++ e1 :: el1 = map of_val vl2 ++ e2 :: el2 →
-  vl1 = vl2 ∧ el1 = el2.
-Proof.
-  revert vl2; induction vl1; destruct vl2; intros H1 H2; inversion 1.
+  revert rl2; induction rl1; destruct rl2; intros H1 H2; inversion 1.
   - done.
-  - subst. by rewrite to_of_val in H1.
-  - subst. by rewrite to_of_val in H2.
-  - destruct (IHvl1 vl2); auto. split; f_equal; auto. by apply (inj of_val).
+  - subst. by rewrite to_of_result in H1.
+  - subst. by rewrite to_of_result in H2.
+  - destruct (IHrl1 rl2); auto. split; f_equal; auto. by apply (inj of_result).
 Qed.
 
-Lemma fill_item_no_val_inj Ki1 Ki2 e1 e2 :
-  to_val e1 = None → to_val e2 = None →
+Lemma fill_item_no_result_inj Ki1 Ki2 e1 e2 :
+  to_result e1 = None → to_result e2 = None →
   fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
 Proof.
-  destruct Ki1 as [|v1 vl1 el1| | | |vl1 el1| | | | | | | | | | | | | |],
-           Ki2 as [|v2 vl2 el2| | | |vl2 el2| | | | | | | | | | | | | |];
+  destruct Ki1 as [|v1 vl1 el1| | | | | | | | | | | | | | | | |],
+           Ki2 as [|v2 vl2 el2| | | | | | | | | | | | | | | | |];
   intros He1 He2 EQ; try discriminate; simplify_eq/=;
     repeat match goal with
-    | H : to_val (of_val _) = None |- _ => by rewrite to_of_val in H
+    | H : to_result (of_result _) = None |- _ => by rewrite to_of_result in H
     end; auto;
-  destruct (list_expr_val_eq_inv vl1 vl2 e1 e2 el1 el2); auto; congruence.
+  destruct (list_expr_result_eq_inv vl1 vl2 e1 e2 el1 el2); auto; congruence.
 Qed.
 
-Lemma val_head_stuck e1 σ1 κ e2 σ2 efs :
-  head_step e1 σ1 κ e2 σ2 efs → to_val e1 = None.
+Lemma result_head_stuck e1 σ1 κ e2 σ2 efs :
+  head_step e1 σ1 κ e2 σ2 efs → to_result e1 = None.
 Proof. destruct 1; inversion ExprStep; naive_solver. Qed.
 
-Lemma head_ctx_step_val Ki e σ1 κ e2 σ2 efs :
-  head_step (fill_item Ki e) σ1 κ e2 σ2 efs → is_Some (to_val e).
+Lemma head_ctx_step_result Ki e σ1 κ e2 σ2 efs :
+  head_step (fill_item Ki e) σ1 κ e2 σ2 efs → is_Some (to_result e).
 Proof.
   destruct Ki; inversion_clear 1; inversion_clear ExprStep;
     simplify_option_eq; eauto.
-  eapply (Forall_forall (λ ei, is_Some (to_val ei))); eauto. set_solver.
+  eapply (Forall_forall (λ ei, is_Some (to_result ei))).
+  - eapply Forall_impl; eauto. by apply is_Some_to_value_result.
+  - set_solver.
 Qed.
 
-Lemma bor_lang_mixin : EctxiLanguageMixin of_val to_val fill_item head_step.
+Lemma bor_lang_mixin : EctxiLanguageMixin of_result to_result fill_item head_step.
 Proof.
-  split; apply _ || eauto using to_of_val, of_to_val, val_head_stuck,
-    fill_item_val, fill_item_no_val_inj, head_ctx_step_val.
+  split; apply _ || eauto using to_of_result, of_to_result, result_head_stuck,
+    fill_item_result, fill_item_no_result_inj, head_ctx_step_result.
 Qed.
 
 End bor_lang.

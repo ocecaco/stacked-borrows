@@ -13,7 +13,7 @@ Ltac inv_head_step :=
      try (is_var e; fail 1); (* inversion yields many goals if [e] is a variable
      and can thus better be avoided. *)
      inversion H ; subst; clear H
-  | H : mem_expr_step _ _ _ _ _ _ _ |- _ =>
+  | H : mem_expr_step _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
   end.
 
@@ -30,18 +30,18 @@ Lemma fill_bin_op_decompose K e op e1 e2:
   fill K e = BinOp op e1 e2 →
   K = [] ∧ e = BinOp op e1 e2 ∨
   (∃ K', K = K' ++ [BinOpLCtx op e2] ∧ fill K' e = e1) ∨
-  (∃ v1 K', K = K' ++ [BinOpRCtx op v1] ∧ fill K' e = e2 ∧ to_val e1 = Some v1).
+  (∃ v1 K', K = K' ++ [BinOpRCtx op v1] ∧ fill K' e = e2 ∧ to_result e1 = Some v1).
 Proof.
   revert e e1 e2.
   induction K as [|Ki K IH]; [by left|]. simpl.
   intros e e1 e2 EqK. right.
-  destruct (IH _ _ _ EqK) as [[? _]|[[K0 [? Eq0]]|[v1 [K' [? Eq']]]]].
+  destruct (IH _ _ _ EqK) as [[? _]|[[K0 [? Eq0]]|[r1 [K' [? Eq']]]]].
   - subst. simpl in *. destruct Ki; try done.
     + simpl in EqK. simplify_eq. left. exists []. naive_solver.
     + right. simpl in EqK. inversion EqK; subst.
-      exists v1, []. naive_solver eauto using to_of_val.
+      exists r1, []. naive_solver eauto using to_of_result.
   - subst K. left. by exists (Ki :: K0).
-  - subst K. right. by exists v1, (Ki :: K').
+  - subst K. right. by exists r1, (Ki :: K').
 Qed.
 
 Lemma tstep_bin_op_left_non_terminal op e1 e2 e' σ σ'
@@ -69,7 +69,7 @@ Proof.
   inv_tstep.
   move : TM => [v1 Eqv1].
   have Eq1: BinOp op e1 e2 = ectx_language.fill [BinOpRCtx op v1] e2.
-  { by rewrite /= -(of_to_val _ _ Eqv1). }
+  { by rewrite /= -(of_to_result _ _ Eqv1). }
   rewrite Eq1 in Eq.
   apply expr_terminal_False in NT.
   destruct (step_by_val _ _ _ _ _ _ _ _ _ Eq NT HS) as [K'' Eq'].
@@ -77,18 +77,18 @@ Proof.
   have Eq'' := fill_inj _ _ _ Eq.
   eexists. split.
   - econstructor. econstructor; [exact Eq''|..|exact HS]. eauto.
-  - by rewrite Eq' -fill_comp -(of_to_val _ _ Eqv1) /=.
+  - by rewrite Eq' -fill_comp -(of_to_result _ _ Eqv1) /=.
 Qed.
 
 Lemma tstep_bin_op_terminal op e1 e2 e' σ σ'
   (STEP: (BinOp op e1 e2, σ) ~t~> (e', σ'))
   (TM1: terminal e1) (TM2: terminal e2):
-  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(cst).(shp) op l1 l2 l ∧ e' = (TVal [Lit l]).
+  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(cst).(shp) op l1 l2 l ∧ e' = (#[l%S])%E.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
     as [[]|[[K' [? Eq']]|[v1 [K' [? [Eq' VAL]]]]]]; subst.
-  - clear Eq. simpl in HS. inv_head_step; [|by inversion ExprStep].
+  - clear Eq. simpl in HS. inv_head_step.
     inversion ExprStep; subst.
     split; [done|]. simpl. naive_solver.
   - apply fill_val in TM1. apply val_head_stuck in HS.
@@ -109,9 +109,9 @@ Proof.
   clear -H T1.
   move : T1 => [v1 Eqv1].
   rewrite (_: BinOp op e1 e2 = ectx_language.fill [BinOpRCtx op v1] e2);
-    last by rewrite /= -(of_to_val _ _ Eqv1).
+    last by rewrite /= -(of_to_result _ _ Eqv1).
   rewrite (_: BinOp op e1 e0 = ectx_language.fill [BinOpRCtx op v1] e0);
-    last by rewrite /= -(of_to_val _ _ Eqv1).
+    last by rewrite /= -(of_to_result _ _ Eqv1).
   inversion_clear H; simpl in PRIM.
   inversion_clear PRIM. subst.
   rewrite 2!fill_comp.
@@ -164,15 +164,14 @@ Qed.
 
 Lemma tstep_copy_terminal e e' σ σ'
   (STEP: (Copy e, σ) ~t~> (e', σ')) (TM: terminal e) :
-  ∃ l ltag T vl , e = Place l ltag T ∧ e' = of_val (TValV vl) ∧
-    read_mem l (tsize T) σ.(cst).(shp) = Some vl
+  ∃ l ltag T v , e = Place l ltag T ∧ e' = (Val v) ∧
+    read_mem l (tsize T) σ.(cst).(shp) = Some v
     (* not true: the stacked borrows may change, ∧ σ' = σ *).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_copy_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
   - clear Eq. simpl in HS. inv_head_step; [by inversion ExprStep|].
-    inversion ExprStep; subst.
-    by exists l, lbor, T, vl.
+    by exists l, lbor, T, v.
     (* TODO: about the state *)
   - apply fill_val in TM. apply val_head_stuck in HS.
     rewrite /= HS in TM. by destruct TM.

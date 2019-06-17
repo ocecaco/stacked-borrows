@@ -9,7 +9,8 @@ Set Default Proof Using "Type".
 
 Delimit Scope loc_scope with L.
 Delimit Scope expr_scope with E.
-Delimit Scope val_scope with V.
+Delimit Scope sc_scope with S.
+Delimit Scope result_scope with R.
 
 Open Scope Z_scope.
 
@@ -131,14 +132,15 @@ Inductive bin_op :=
   .
 
 (** Base values *)
-Inductive scalar := ScPoison | ScInt (n: Z) | ScPtr (l: loc) (tg: tag) | ScFnPtr (name: string).
-
-Definition value := ScV (sc: list scalar).
+Inductive scalar :=
+  ScPoison | ScInt (n: Z) | ScPtr (l: loc) (tg: tag) | ScFnPtr (name: string).
+Bind Scope sc_scope with scalar.
+Definition value := list scalar.
 
 (** Expressions *)
 Inductive expr :=
 (* base values *)
-| Lit (l: lit)
+| Val (v: value)
 (* variables *)
 | Var (x : string)
 (* | App (e : expr) (el: list expr) *)
@@ -148,9 +150,8 @@ Inductive expr :=
                                      arguments `el` *)
 | InitCall (e: expr)              (* Initializing a stack frame for e *)
 | EndCall (e: expr)               (* End the current call with value `e` *)
-(* temp values *)
-| TVal (el: list expr)
-| Proj (e1 e2 : expr)
+(* operations on value *)
+| Proj (e1 e2 : expr)             (* Projection out sub value *)
 | Conc (e1 e2: expr)
 (* bin op *)
 | BinOp (op : bin_op) (e1 e2 : expr)
@@ -188,12 +189,12 @@ Inductive expr :=
 
 Bind Scope expr_scope with expr.
 
+Arguments Val _%E.
 (* Arguments App _%E _%E. *)
 Arguments BinOp _ _%E _%E.
 Arguments Call _%E _%E.
 Arguments InitCall _%E.
 Arguments EndCall _%E.
-Arguments TVal _%E.
 Arguments Proj _%E _%E.
 Arguments Conc _%E _%E.
 Arguments Deref _%E _%T.
@@ -214,12 +215,11 @@ Arguments Case _%E _%E.
 (** Closedness *)
 Fixpoint is_closed (X : list string) (e : expr) : bool :=
   match e with
-  | Lit _ | Place _ _ _ | Alloc _ (* | SysCall _ *) => true
+  | Val _ | Place _ _ _ | Alloc _ (* | SysCall _ *) => true
   | Var x => bool_decide (x ∈ X)
   (* | Rec f xl e => is_closed (f :b: xl +b+ X) e *)
   | BinOp _ e1 e2 | (* AtomWrite e1 e2 | *) Write e1 e2
       | Conc e1 e2 | Proj e1 e2 => is_closed X e1 && is_closed X e2
-  | TVal el => forallb (is_closed X) el
   | Let x e1 e2 => is_closed X e1 && is_closed (x :b: X) e2
   | Case e el | Call e el (* | App e el  *)
       => is_closed X e && forallb (is_closed X) el
@@ -236,52 +236,52 @@ Instance closed_decision env e : Decision (Closed env e).
 Proof. rewrite /Closed. apply _. Qed.
 
 (** Irreducible (language values) *)
-Inductive val :=
-| LitV (v : lit)
-| TValV (vl : list lit)
-| PlaceV (l: loc) (tg: tag) (T: type)
+Inductive result :=
+| ValR (v : value)
+| PlaceR (l: loc) (tg: tag) (T: type)
 .
-Bind Scope val_scope with val.
+Bind Scope result_scope with result.
 
-Definition of_val (v : val) : expr :=
+Definition of_result (v : result) : expr :=
   match v with
-  | LitV v => Lit v
-  | TValV vl => TVal (Lit <$> vl)
-  | PlaceV l tag T => Place l tag T
+  | ValR v => Val v
+  | PlaceR l tag T => Place l tag T
   end.
 
-Definition to_lit (e: expr): option lit :=
+Definition to_result (e : expr) : option result :=
   match e with
-  | Lit l => Some l
+  | Val v => Some (ValR v)
+  | Place l T tag => Some (PlaceR l T tag)
   | _ => None
   end.
-Definition to_lits (vl : list lit) (el: list expr) : option (list lit) :=
-  foldl (λ acc e, vl ← acc; v ← to_lit e; Some (vl ++ [v])) (Some vl) el.
-Definition to_val (e : expr) : option val :=
+
+Definition to_value (e: expr) : option value :=
   match e with
-  | Lit v => Some (LitV v)
-  | Place l T tag => Some (PlaceV l T tag)
-  | TVal el => vl ← to_lits [] el; Some (TValV vl)
+  | Val v => Some v
   | _ => None
   end.
+
+Lemma is_Some_to_value_result (e: expr):
+  is_Some (to_value e) → is_Some (to_result e).
+Proof. destruct e; simpl; intros []; naive_solver. Qed.
 
 (** Global static function table *)
 Inductive function :=
 | FunV (xl : list binder) (e : expr) `{Closed (xl +b+ []) e}.
 Definition fn_env := gmap string function.
 
-(** Main state: a heap of literals. *)
-Definition mem := gmap loc lit.
+(** Main state: a heap of scalars. *)
+Definition mem := gmap loc scalar.
 
 (** Internal events *)
 Inductive event :=
 | AllocEvt (l : loc) (lbor: tag) (T: type)
 | DeallocEvt (l: loc) (lbor: tag) (T: type)
-| CopyEvt (l: loc) (lbor: tag) (T: type) (vl: list lit)
-| WriteEvt (l: loc) (lbor: tag) (T: type) (vl: list lit)
+| CopyEvt (l: loc) (lbor: tag) (T: type) (v: value)
+| WriteEvt (l: loc) (lbor: tag) (T: type) (v: value)
 | NewCallEvt (name: string)
 | InitCallEvt (c: call_id)
-| EndCallEvt (c: call_id)
+| EndCallEvt (c: call_id) (v: value)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)
 (* | SysCallEvt (id: nat) *)
 | SilentEvt

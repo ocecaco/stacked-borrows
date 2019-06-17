@@ -8,7 +8,7 @@ Definition new_place T (v: expr) : expr :=
 (* from https://www.ralfj.de/blog/2018/11/16/stacked-borrows-implementation.html *)
 Definition demo0 : expr :=
   (* let x = &mut 1u8; *)
-  let: "i" := new_place int #1 in
+  let: "i" := new_place int #[1] in
   let: "x" := new_place (&mut int) &"i" in
   (* stack of i   : [Uniq(?)], not frozen *)
   (* stack of x   : [Uniq(x)], not frozen *)
@@ -32,14 +32,14 @@ Definition demo0 : expr :=
   (* y now uses Uniq(1) for i *)
 
   (* *y = 5; *)
-  *{int} (Copy1 "y") <- #[ #5 ] ;;
+  *{int} (Copy1 "y") <- #[5] ;;
   (* Check read  y with Uniq(y): OK! *)
   (* Check deref i with Uniq(1): OK! because Uniq(1) in on the stack *)
   (* Check write i with Uniq(1): OK! *)
   (* stack of int: [Uniq(1); Uniq(0); Uniq(?)], not frozen *)
 
   (* *x = 3; *)
-  *{int} (Copy1 "x") <- #[ #3 ] ;;
+  *{int} (Copy1 "x") <- #[3] ;;
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! because Uniq(0) in on the stack *)
   (* Check write i with Uniq(0): OK! but pop Uniq(1) to reactivate Uniq(0) *)
@@ -60,7 +60,7 @@ Definition demo0 : expr :=
 (* DB *)
 Definition demo1 : expr :=
   (* let x = &mut 1u8; *)
-  let: "i" := new_place int #1 in
+  let: "i" := new_place int #[1] in
   let: "x" := new_place (&mut int) &"i" in
   (* stack of i : [Uniq(?)], not frozen *)
   (* stack of x : [Uniq(x)], not frozen *)
@@ -123,7 +123,7 @@ Definition demo1 : expr :=
 (* UB *)
 Definition demo2 : expr :=
   (* let x = &mut 1u8; *)
-  let: "i" := new_place int #1 in
+  let: "i" := new_place int #[1] in
   let: "x" := new_place (&mut int) &"i" in
   (* stack of i : [Uniq(?)], not frozen *)
   (* stack of x : [Uniq(x)], not frozen *)
@@ -160,7 +160,7 @@ Definition demo2 : expr :=
   (* stack of i: [Raw; Uniq(0); Uniq(?)], frozen_since(1) *)
   (* z now uses Alias(None) for the int *)
 
-  *{int} (Copy1 "z") <- #[ #3 ] ;;
+  *{int} (Copy1 "z") <- #[3] ;;
   (* Check read  z   with Uniq(z)    : OK! *)
   (* Check deref int with Alias(None): OK! because raw derefs are not checked. *)
   (* Check write int with Alias(None): OK! because there matches a Raw.
@@ -184,7 +184,7 @@ Definition demo2 : expr :=
 (* UB *)
 Definition demo4 : expr :=
   (*  let x = &mut 1u8; *)
-  let: "i" := new_place int #1 in
+  let: "i" := new_place int #[1] in
   let: "x" := new_place (&mut int) &"i" in
   (* stack of i : [Uniq(?)], not frozen *)
   (* stack of x : [Uniq(x)], not frozen *)
@@ -222,8 +222,8 @@ Definition demo4 : expr :=
   (*  *y1 = 3;
       *y2 = 5;
       *y2 = *y1; *)
-  *{int} (Copy1 "y1") <- #[ #3 ] ;;
-  *{int} (Copy1 "y2") <- #[ #5 ];;
+  *{int} (Copy1 "y1") <- #[3] ;;
+  *{int} (Copy1 "y2") <- #[5];;
   *{int} (Copy1 "y2") <- Copy *{int} (Copy1 "y1") ;;
   (* Checks for deref/read/write of y1 and y2 all pass because:
      * raw derefs are not checked
@@ -231,7 +231,7 @@ Definition demo4 : expr :=
   (* stack of i: [Raw; Uniq(0); Uniq(?)], not frozen *)
 
   (*  *x = 7; *)
-  *{int} (Copy1 "x") <- #7 ;;
+  *{int} (Copy1 "x") <- #[7] ;;
   (* Check read  x   with Uniq(x): OK! *)
   (* Check deref int with Uniq(0): OK! because Uniq(0) is on the stack *)
   (* Check write int with Uniq(0): OK! because Uniq(0) is on the stack *)

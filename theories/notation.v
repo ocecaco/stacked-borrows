@@ -1,8 +1,9 @@
 From stbor Require Export lang_base.
 
 (* Coercion App : expr >-> Funclass. *)
-Coercion of_val : val >-> expr.
+Coercion of_result : result >-> expr.
 Coercion Var : string >-> expr.
+(* Coercion ? : scalar >-> value. *)
 
 Notation "[ ]" := (@nil binder) : binder_scope.
 Notation "a :: b" := (@cons binder a%binder b%binder)
@@ -19,21 +20,19 @@ Notation "[ x1 ; x2 ; .. ; xn ]" :=
   (@cons expr x1%E (@cons expr x2%E
         (..(@cons expr xn%E (@nil expr))..))) : expr_scope.
 
-(** Rvalues *)
-Notation "#[ ]" := (TVal (@nil expr)) : expr_scope.
-Notation "#[ x ]" := (TVal (@cons expr x%E (@nil expr))) : expr_scope.
+(** Values *)
+Notation "#[ ]" := (Val (@nil scalar)) : expr_scope.
+Notation "#[ x ]" := (Val (@cons scalar x%S (@nil scalar))) : expr_scope.
 Notation "#[ x1 ; x2 ; .. ; xn ]" :=
-  (TVal (@cons expr x1%E (@cons expr x2%E
-        (..(@cons expr xn%E (@nil expr))..)))) : expr_scope.
+  (Val (@cons scalar x1%S (@cons scalar x2%S
+        (..(@cons scalar xn%S (@nil scalar))..)))) : expr_scope.
 
-(* No scope for the values, does not conflict and scope is often not inferred
-properly. *)
-Notation "# l" := (LitV l%Z%V%L) (at level 8, format "# l") : val_scope.
-Notation "# l" := (Lit l%Z%V%L) (at level 8, format "# l") : expr_scope.
+Notation "# l" := (ValR l%Z%S%R%L) (at level 8, format "# l") : result_scope.
+Notation "# l" := (Val l%Z%S%R%L) (at level 8, format "# l") : expr_scope.
 
 (** Some common types *)
-Notation int := (Scalar 1).
-Notation int_arr n := (Scalar n).
+Notation int := (FixedSize 1).
+Notation int_arr n := (FixedSize n).
 Notation "'&mut' T" := (Reference (RefPtr Mutable) T%T)
   (at level 8, format "&mut  T") : lrust_type.
 Notation "'&' T" := (Reference (RefPtr Immutable) T%T)
@@ -50,7 +49,7 @@ Notation "& e" := (Ref e%E) (at level 8, format "& e") : expr_scope.
 Notation "*{ T } e" := (Deref e%E T%T)
   (at level 9, format "*{ T }  e") : expr_scope.
 
-Notation "'Copy1' e" := (Proj (Copy e%E) #0) (at level 10) : expr_scope.
+Notation "'Copy1' e" := (Proj (Copy e%E) #[0]) (at level 10) : expr_scope.
 
 (** Syntax inspired by Coq/Ocaml. Constructions with higher precedence come
     first. *)
@@ -59,7 +58,7 @@ Notation "'case:' e0 'of' el" := (Case e0%E el%E)
   (at level 102, e0, el at level 150) : expr_scope.
 Notation "'if:' e0 'then' e1 'else' e2" := (Case e0%E [e2%E;e1%E])
   (only parsing, at level 102, e0, e1, e2 at level 150) : expr_scope.
-Notation "☠" := LitPoison : val_scope.
+Notation "☠" := ScPoison : sc_scope.
 
 (* Notation "! e" := (Read e%E) (at level 9, format "! e") : expr_scope. *)
 
@@ -84,10 +83,10 @@ Notation "'let:' x := e1 'in' e2" := (Let x%binder e1%E e2%E)
   (at level 102, x at level 1, e1, e2 at level 150) : expr_scope.
 Notation "e1 ;; e2" := (let: <> := e1 in e2)%E
   (at level 100, e2 at level 200, format "e1  ;;  e2") : expr_scope.
-Notation Skip := ((Lit LitPoison) ;; (Lit LitPoison)).
+Notation Skip := (#[☠] ;; #[☠])%E.
 
-(* These are not actually values, but we want them to be pretty-printed. *)
+(* These are not actually results, but we want them to be pretty-printed. *)
 Notation "'let:' x := e1 'in' e2" := (Let x%binder e1%E e2%E)
-  (at level 102, x at level 1, e1, e2 at level 150) : val_scope.
-Notation "e1 ;; e2" := (let: <> := e1 in e2)%V
-  (at level 100, e2 at level 200, format "e1  ;;  e2") : val_scope.
+  (at level 102, x at level 1, e1, e2 at level 150) : result_scope.
+Notation "e1 ;; e2" := (let: <> := e1 in e2)%R
+  (at level 100, e2 at level 200, format "e1  ;;  e2") : result_scope.
