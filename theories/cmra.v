@@ -29,3 +29,13 @@ Definition to_ptrmapUR (pm: ptrmap) : ptrmapUR :=
 Definition res := (ptrmap * cmap)%type.
 Definition resUR := prodUR ptrmapUR cmapUR.
 Definition to_resUR (r: res) : resUR := (to_ptrmapUR r.1, to_cmapUR r.2).
+
+Lemma tag_kind_incl_eq (k1 k2: tagKindR):
+  ✓ k2 → k1 ≼ k2 → k1 ≡ k2.
+Proof.
+  move => VAL /csum_included [? |[[? [? [? [? Eq]]]]|[? [? [? [? LE]]]]]];
+    subst; [done|..].
+  - exfalso. eapply exclusive_included; [..|apply Eq|apply VAL]. apply _.
+  - apply Cinr_equiv, agree_op_inv. apply agree_included in LE.
+    rewrite -LE. apply VAL.
+Qed.

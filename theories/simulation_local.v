@@ -1,3 +1,5 @@
+From Paco Require Import paco.
+
 From stbor Require Import cmra simulation_local_base.
 
 (** Public scalar relation *)
@@ -10,42 +12,64 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
       l1 = l2 ∧ tg1 = tg2 ∧
       match tg1 with
       | Untagged => True
-      | Tagged t => ∃ (h: mem), r.1 !! t ≡ Some (to_tagKindR tkPub, to_heapUR h)
+      | Tagged t => ∃ h, r.1 !! t ≡ Some (to_tagKindR tkPub, h)
       end
   | _, _ => False
   end.
 
+Fixpoint active_SRO (stk: stack) : gset ptr_id :=
+  match stk with
+  | [] => ∅
+  | it :: stk =>
+    match it.(perm) with
+    | SharedReadOnly => match it.(tg) with
+                        | Tagged t => {[t]} ∪ active_SRO stk
+                        | Untagged => active_SRO stk
+                        end
+    | _ => ∅
+    end
+  end.
+
 Definition ptrmap_inv (r: resUR) (σ: state) : Prop :=
-  ∀ (t: ptr_id) (k: tag_kind) (h: mem), r.1 !! t ≡ Some (to_tagKindR k, to_heapUR h) →
-  ∀ (l: loc) (s: scalar), h !! l = Some s →
+  ∀ (t: ptr_id) (k: tag_kind) h, r.1 !! t ≡ Some (to_tagKindR k, h) →
+  ∀ (l: loc) (s: scalar), h !! l ≡ Some (to_agree s) →
   ∀ (stk: stack), σ.(sst) !! l = Some stk →
   ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk →
-  σ.(shp) !! l = Some s (* ∧ ... *) .
+  (* as long as the tag [t] is in the stack [stk],
+    then its heaplet [h] agree with the state [σ] *)
+  σ.(shp) !! l = Some s ∧
+  (* If [k] is Unique, then [t] must be Unique at the top of [stk]. Otherwise
+    if [k] is Pub, then [t] can be among the top SRO items. *)
+  match k with
+  | tkUnique => ∃ stk' opro', stk = mkItem Unique (Tagged t) opro' :: stk'
+  | tkPub => t ∈ active_SRO stk
+  end.
 
 Definition cmap_inv (r: resUR) (σ: state) : Prop :=
-  ∀ (c: call_id) (cs: call_state), r.2 !! c ≡ Some (to_callStateR cs) →
+  ∀ (c: call_id) (cs: callStateR), r.2 !! c ≡ Some cs →
   c ∈ σ.(scs) ∧
   match cs with
   (* if c is a private call id *)
-  | csOwned T =>
+  | Cinl (GSet T) =>
       (* for any tag [t] owned by c *)
       ∀ (t: ptr_id), t ∈ T →
       (* that protects the heaplet [h] *)
-      ∀ k h, r.1 !! t ≡ Some (k, to_heapUR h) →
+      ∀ k h, r.1 !! t ≡ Some (k, h) →
       (* if [l] is in that heaplet [h] *)
       ∀ (l: loc), l ∈ dom (gset loc) h →
       (* then a c-protector must be in the stack of l *)
       ∃ stk pm, σ.(sst) !! l = Some stk ∧ mkItem pm (Tagged t) (Some c) ∈ stk
   (* if c is a public call id *)
-  | csPub => True
+  | Cinr _ => True
+  | _ => False
   end.
 
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
   ∃ (c: call_id) (T: gset ptr_id) h,
-  r.2 !! c ≡ Some (to_callStateR (csOwned T)) ∧ t ∈ T ∧
-  r.1 !! t = Some (to_tagKindR tkUnique, to_heapUR h) ∧ l ∈ dom (gset loc) h.
+  r.2 !! c ≡ Some (Cinl (GSet T)) ∧ t ∈ T ∧
+  r.1 !! t = Some (to_tagKindR tkUnique, h) ∧ l ∈ dom (gset loc) h.
 
 (** State relation *)
 Definition srel (r: resUR) (σs σt: state) : Prop :=
@@ -62,3 +86,91 @@ Definition wsat (r: resUR) (σs σt: state) : Prop :=
 Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
 Definition vrel_expr (r: resUR) (e1 e2: expr) :=
   ∃ v1 v2, e1 = Val v1 ∧ e2 = Val v2 ∧ vrel r v1 v2.
+
+(* TODO: I hate these cmra operations *)
+Lemma ptrmap_inv_downward_mono (r1 r2 : resUR) σ (VAL: ✓ r2) :
+  r1 ≼ r2 → ptrmap_inv r2 σ → ptrmap_inv r1 σ.
+Proof.
+  move => Le PI t k h Eqh l s Eqs stk Eqst pm opro IN.
+  have HL1: Some (to_tagKindR k, h) ≼ r2.1 !! t.
+  { rewrite -Eqh. by apply lookup_included, prod_included, Le. }
+  apply option_included in HL1 as [?|[? [[k' h'] [? [Eq1 INCL]]]]]; [done|].
+  simplify_eq.
+  have VL2: ✓ (k', h').
+  { apply (lookup_valid_Some _ t (k', h') (proj1 VAL)). by rewrite Eq1. }
+  assert (r2.1 !! t ≡ Some (to_tagKindR k, h') ∧ h ≼ h') as [Eq2 LE2].
+  { rewrite Eq1. move : INCL => [[/= EQ1 EQ2]|LE].
+    - by rewrite EQ1 EQ2.
+    - apply prod_included in LE as [Eq%tag_kind_incl_eq ?]; [|apply VL2].
+      simpl in Eq. by rewrite Eq. }
+  have EQL: h' !! l ≡ Some (to_agree s).
+  { move : LE2 => /lookup_included /(_ l). rewrite Eqs.
+    move => /option_included [//|[x [s' [? [EqL EqR]]]]]. simplify_eq.
+    rewrite EqL. move : EqR => [<-//|].
+    destruct (to_agree_uninj s') as [ss Eqss].
+    - apply (lookup_valid_Some h' l). apply VL2. by rewrite EqL.
+    - by rewrite -Eqss to_agree_included => ->. }
+  specialize (PI _ _ _ Eq2 _ _ EQL _ Eqst _ _ IN). naive_solver.
+Qed.
+
+Lemma cmap_inv_downward_mono (r1 r2 : resUR) σ (VAL: ✓ r2) :
+  r1 ≼ r2 → cmap_inv r2 σ → cmap_inv r1 σ.
+Proof.
+  move => Le CI c cs Eqcs.
+  have HL1: Some cs ≼ r2.2 !! c.
+  { rewrite -Eqcs. by apply lookup_included, prod_included, Le. }
+  apply option_included in HL1 as [?|[cs1 [cs2 [? [Eq1 INCL]]]]]; [done|].
+  simplify_eq.
+  destruct (CI c cs2) as [IN EQM]; [by rewrite Eq1|]. split; [done|].
+  have VL2: ✓ cs2.
+  { eapply (lookup_valid_Some r2.2 c). apply VAL. by rewrite Eq1. }
+  have VL1: ✓ cs1. { move : INCL => [-> //|]. by apply cmra_valid_included. }
+  destruct cs1 as [[T1|]| |]; [|done..].
+  assert (∃ T2, cs2 = Cinl (GSet T2) ∧ T1 ⊆ T2) as [T2 [Eq2 SUB]].
+  { destruct cs2 as [[T2|]| |]; [|done|..|done].
+    - exists T2. split; [done|].
+      destruct INCL as [INCL%Cinl_inj|INCL%csum_included]; [by inversion INCL|].
+      destruct INCL as [|[[? [? [?[? LE]]]]|]]; [done| |naive_solver].
+      simplify_eq. by eapply gset_disj_included.
+    - exfalso. clear -INCL.
+      destruct INCL as [INCL|INCL%csum_included]; [inversion INCL|naive_solver]. }
+  subst cs2. clear INCL.
+  intros t INt k h Eqh l InD.
+  have HL1: Some (k, h) ≼ r2.1 !! t.
+  { rewrite -Eqh. by apply lookup_included, prod_included, Le. }
+  apply option_included in HL1 as [?|[? [[k' h'] [? [Eq2 INCL]]]]]; [done|].
+  simplify_eq.
+  have VL3: ✓ (k', h').
+  { apply (lookup_valid_Some _ t (k', h') (proj1 VAL)). by rewrite Eq2. }
+  assert (r2.1 !! t ≡ Some (k, h') ∧ h ≼ h') as [Eq3 LE2].
+  { rewrite Eq2. move : INCL => [[/= EQ1 EQ2]|LE].
+    - by rewrite EQ1 EQ2.
+    - apply prod_included in LE as [Eq%tag_kind_incl_eq ?]; [|apply VL3].
+      simpl in Eq. by rewrite Eq. }
+  apply (EQM _ (SUB _ INt) k h' Eq3 l). eapply dom_included; eauto.
+Qed.
+
+Lemma priv_loc_downward_mono (r1 r2 : resUR) l t (VAL: ✓ r2) :
+  r1 ≼ r2 → priv_loc r2 l t → priv_loc r1 l t.
+Proof.
+  intros Le (c & T & h & EqT & INt & Eqh & INl).
+Abort.
+
+Lemma srel_downward_mono (r1 r2 : resUR) σs σt (VAL: ✓ r2) :
+  r1 ≼ r2 → srel r2 σs σt → srel r1 σs σt.
+Proof.
+  intros LE (? & ? & ? & ? & HL). repeat split; [done..|].
+  intros l st Eqst.
+  destruct (HL l st Eqst) as [[ss [Eqss AREL]]|[t PL]]; [left|].
+  - exists ss. split; [done|]. admit.
+  -
+Abort.
+
+Lemma wsat_downward_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → wsat r2 <2= wsat r1.
+Proof.
+  move => Le σs σt [PI [CI SREL]]. split; last split.
+  - eapply ptrmap_inv_downward_mono; eauto.
+  - eapply cmap_inv_downward_mono; eauto.
+  -
+Abort.
