@@ -9,10 +9,10 @@ Definition to_tagKindR (tk: tag_kind) : tagKindR :=
   match tk with tkUnique => Cinl (Excl ()) | tkPub => Cinr (to_agree ()) end.
 
 Inductive call_state := csOwned (T: gset ptr_id) | csPub.
-(* GsetDisj(ptr_id) + Ag() *)
-Definition callStateR := csumR (gset_disjR ptr_id) (agreeR unitC).
+(* Ex(ptr_id) + Ag() *)
+Definition callStateR := csumR (exclR (gsetC ptr_id)) (agreeR unitC).
 Definition to_callStateR (cs: call_state) : callStateR :=
-  match cs with csOwned T => Cinl (GSet T) | csPub => Cinr (to_agree ()) end.
+  match cs with csOwned T => Cinl (Excl T) | csPub => Cinr (to_agree ()) end.
 
 Definition cmap := gmap call_id call_state.
 (* call_id ⇀ CallState *)

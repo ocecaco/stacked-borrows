@@ -47,10 +47,10 @@ Definition ptrmap_inv (r: resUR) (σ: state) : Prop :=
 
 Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   ∀ (c: call_id) (cs: callStateR), r.2 !! c ≡ Some cs →
-  c ∈ σ.(scs) ∧
   match cs with
   (* if c is a private call id *)
-  | Cinl (GSet T) =>
+  | Cinl (Excl T) =>
+      c ∈ σ.(scs) ∧
       (* for any tag [t] owned by c *)
       ∀ (t: ptr_id), t ∈ T →
       (* that protects the heaplet [h] *)
@@ -68,8 +68,8 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
   ∃ (c: call_id) (T: gset ptr_id) h,
-  r.2 !! c ≡ Some (Cinl (GSet T)) ∧ t ∈ T ∧
-  r.1 !! t = Some (to_tagKindR tkUnique, h) ∧ l ∈ dom (gset loc) h.
+  r.2 !! c ≡ Some (Cinl (Excl T)) ∧ t ∈ T ∧
+  r.1 !! t ≡ Some (to_tagKindR tkUnique, h) ∧ l ∈ dom (gset loc) h.
 
 (** State relation *)
 Definition srel (r: resUR) (σs σt: state) : Prop :=
@@ -121,20 +121,16 @@ Proof.
   { rewrite -Eqcs. by apply lookup_included, prod_included, Le. }
   apply option_included in HL1 as [?|[cs1 [cs2 [? [Eq1 INCL]]]]]; [done|].
   simplify_eq.
-  destruct (CI c cs2) as [IN EQM]; [by rewrite Eq1|]. split; [done|].
+  specialize (CI c cs2 (ltac: (by rewrite Eq1))).
   have VL2: ✓ cs2.
   { eapply (lookup_valid_Some r2.2 c). apply VAL. by rewrite Eq1. }
   have VL1: ✓ cs1. { move : INCL => [-> //|]. by apply cmra_valid_included. }
-  destruct cs1 as [[T1|]| |]; [|done..].
-  assert (∃ T2, cs2 = Cinl (GSet T2) ∧ T1 ⊆ T2) as [T2 [Eq2 SUB]].
-  { destruct cs2 as [[T2|]| |]; [|done|..|done].
-    - exists T2. split; [done|].
-      destruct INCL as [INCL%Cinl_inj|INCL%csum_included]; [by inversion INCL|].
-      destruct INCL as [|[[? [? [?[? LE]]]]|]]; [done| |naive_solver].
-      simplify_eq. by eapply gset_disj_included.
-    - exfalso. clear -INCL.
-      destruct INCL as [INCL|INCL%csum_included]; [inversion INCL|naive_solver]. }
-  subst cs2. clear INCL.
+  destruct cs1 as [[T|]| |]; [|done..].
+  destruct INCL as [INCL|INCL]; last first.
+  { exfalso. apply (exclusive_included _ _ INCL VL2). }
+  destruct cs2 as [[T2|]| |]; [|done|by inversion INCL|done].
+  apply Cinl_inj, Excl_inj, leibniz_equiv_iff in INCL. subst T2.
+  destruct CI as [IN EQM]. split; [done|].
   intros t INt k h Eqh l InD.
   have HL1: Some (k, h) ≼ r2.1 !! t.
   { rewrite -Eqh. by apply lookup_included, prod_included, Le. }
@@ -147,13 +143,16 @@ Proof.
     - by rewrite EQ1 EQ2.
     - apply prod_included in LE as [Eq%tag_kind_incl_eq ?]; [|apply VL3].
       simpl in Eq. by rewrite Eq. }
-  apply (EQM _ (SUB _ INt) k h' Eq3 l). eapply dom_included; eauto.
+  apply (EQM _ INt k h' Eq3 l). eapply dom_included; eauto.
 Qed.
 
 Lemma priv_loc_downward_mono (r1 r2 : resUR) l t (VAL: ✓ r2) :
   r1 ≼ r2 → priv_loc r2 l t → priv_loc r1 l t.
 Proof.
   intros Le (c & T & h & EqT & INt & Eqh & INl).
+  have HL2: r1.2 !! c ≼ Some (Cinl (Excl T)).
+  { rewrite -EqT. apply (lookup_included r1.2 r2.2), prod_included, Le. }
+
 Abort.
 
 Lemma srel_downward_mono (r1 r2 : resUR) σs σt (VAL: ✓ r2) :
@@ -161,9 +160,7 @@ Lemma srel_downward_mono (r1 r2 : resUR) σs σt (VAL: ✓ r2) :
 Proof.
   intros LE (? & ? & ? & ? & HL). repeat split; [done..|].
   intros l st Eqst.
-  destruct (HL l st Eqst) as [[ss [Eqss AREL]]|[t PL]]; [left|].
-  - exists ss. split; [done|]. admit.
-  -
+  destruct (HL l st Eqst) as [[ss [Eqss AREL]]|[t PL]].
 Abort.
 
 Lemma wsat_downward_mono (r1 r2 : resUR) (VAL: ✓ r2) :
