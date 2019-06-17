@@ -288,12 +288,14 @@ Proof.
   by intros [].
 Qed.
 
+Instance scalar_inhabited : Inhabited scalar := populate ScPoison.
 Instance expr_inhabited : Inhabited expr := populate (#[☠])%E.
 Instance result_inhabited : Inhabited result := populate (ValR [☠%S]).
 Instance state_Inhabited : Inhabited state.
 Proof. do 2!econstructor; exact: inhabitant. Qed.
 
 Canonical Structure locC := leibnizC loc.
+Canonical Structure scalarC := leibnizC scalar.
 Canonical Structure resultC := leibnizC result.
 Canonical Structure exprC := leibnizC expr.
 Canonical Structure stateC := leibnizC state.

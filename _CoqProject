@@ -13,4 +13,7 @@ theories/steps_progress.v
 theories/steps_inversion.v
 theories/examples.v
 theories/simulation.v
+theories/simulation_local_base.v
+theories/cmra.v
+theories/simulation_local.v
 theories/adequacy.v
