@@ -3,7 +3,6 @@ From stbor.lang Require Export lang_base.
 (* Coercion App : expr >-> Funclass. *)
 Coercion of_result : result >-> expr.
 Coercion Var : string >-> expr.
-(* Coercion ? : scalar >-> value. *)
 
 Notation "[ ]" := (@nil binder) : binder_scope.
 Notation "a :: b" := (@cons binder a%binder b%binder)

@@ -46,8 +46,6 @@ Proof. done. Qed.
 
 (** Id to track calls *)
 Notation call_id := nat (only parsing).
-(* Protector tracker: track which call id has been used *)
-Definition protectors := gset call_id.
 (* Stack of active call ids *)
 Definition call_id_stack := list call_id.
 
@@ -133,8 +131,9 @@ Inductive bin_op :=
   .
 
 (** Base values *)
+Notation fn_id := string (only parsing).
 Inductive scalar :=
-  ScPoison | ScInt (n: Z) | ScPtr (l: loc) (tg: tag) | ScFnPtr (name: string).
+  ScPoison | ScInt (n: Z) | ScPtr (l: loc) (tg: tag) | ScFnPtr (fid: fn_id).
 Bind Scope sc_scope with scalar.
 Definition value := list scalar.
 
@@ -269,7 +268,7 @@ Proof. destruct e; simpl; intros []; naive_solver. Qed.
 (** Global static function table *)
 Inductive function :=
 | FunV (xl : list binder) (e : expr) `{Closed (xl +b+ []) e}.
-Definition fn_env := gmap string function.
+Definition fn_env := gmap fn_id function.
 
 (** Main state: a heap of scalars. *)
 Definition mem := gmap loc scalar.
@@ -280,7 +279,7 @@ Inductive event :=
 | DeallocEvt (l: loc) (lbor: tag) (T: type)
 | CopyEvt (l: loc) (lbor: tag) (T: type) (v: value)
 | WriteEvt (l: loc) (lbor: tag) (T: type) (v: value)
-| NewCallEvt (name: string)
+| NewCallEvt (fid: fn_id)
 | InitCallEvt (c: call_id)
 | EndCallEvt (c: call_id) (v: value)
 | RetagEvt (x: loc) (T: type) (kind: retag_kind)

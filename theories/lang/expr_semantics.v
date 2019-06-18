@@ -136,6 +136,7 @@ Definition sc_of_bool (b : bool) : scalar :=
 
 Coercion sc_of_bool : bool >-> scalar.
 Coercion ScInt : Z >-> scalar.
+Coercion ScFnPtr : fn_id >-> scalar.
 
 Implicit Type (h: mem).
 

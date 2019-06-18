@@ -13,15 +13,15 @@ Variable (fns_src fns_tgt: fn_env).
 
 (* TODO: encode what it means for the context to not contain our private tags! *)
 (* TODO: how do we know we're at the top of the stack? *)
-Inductive _sim_fn_body
-  (sim_fn_body : A → expr → state → expr → state → Prop)
+Inductive _sim_local_body
+  (sim_local_body : A → expr → state → expr → state → Prop)
   (r: A) : expr → state → expr → state → Prop :=
 (* If src is stuck, then anything is related *)
-| sim_fn_body_stuck e_src σ_src e_tgt σ_tgt
+| sim_local_body_stuck e_src σ_src e_tgt σ_tgt
     (STUCK: stuck e_src (mkConfig fns_src σ_src))
-    : _sim_fn_body sim_fn_body r e_src σ_src e_tgt σ_tgt
+    : _sim_local_body sim_local_body r e_src σ_src e_tgt σ_tgt
 (* If tgt makes 1 step, src can make some step *)
-| sim_fn_body_step e_src σ_src e_tgt σ_tgt
+| sim_local_body_step e_src σ_src e_tgt σ_tgt
     (STEP: ∀ r_f e_tgt' cfg_tgt',
       (* for any frame r_f that is compatible with our resource r and has world satisfaction *)
       ✓ (r_f ⋅ r) →
@@ -32,11 +32,11 @@ Inductive _sim_fn_body
       ∃ e_src' cfg_src' r',
         (e_src, (mkConfig fns_src σ_src)) ~t~>* (e_src', cfg_src') ∧
         ✓ (r_f ⋅ r') ∧ wsat (r_f ⋅ r') cfg_src'.(cst) cfg_tgt'.(cst) ∧
-        sim_fn_body r' e_src' cfg_src'.(cst) e_tgt' cfg_tgt'.(cst))
-    : _sim_fn_body sim_fn_body r e_src σ_src e_tgt σ_tgt
+        sim_local_body r' e_src' cfg_src'.(cst) e_tgt' cfg_tgt'.(cst))
+    : _sim_local_body sim_local_body r e_src σ_src e_tgt σ_tgt
 (* If tgt prepares to make a call to [name], src should be able to make the same
   call. Here we do not want to step into the call of [name], but to step over it. *)
-| sim_fn_body_step_over_call K_src K_tgt name e_src el_tgt σ_src σ_tgt
+| sim_local_body_step_over_call K_src K_tgt name e_src el_tgt σ_src σ_tgt
     (STEPOVER: ∀ r_f,
         (* for any frame r_f that is compatible with our resource r and has world satisfaction *)
         ✓ (r_f ⋅ r) → wsat (r_f ⋅ r) σ_src σ_tgt →
@@ -62,13 +62,13 @@ Inductive _sim_fn_body
           (* (* stack unchanged *)
           cfg_src'.(cst).(scs) = cfg_src.(cst).(scs) →
           cfg_tgt'.(cst).(scs) = σ_tgt.(scs) → *)
-          sim_fn_body (rc ⋅ r')
+          sim_local_body (rc ⋅ r')
                       (fill K_src (Val v_src)) cfg_src'.(cst)
                       (fill K_tgt (Val v_tgt)) cfg_tgt'.(cst)))
-    : _sim_fn_body sim_fn_body r e_src σ_src
+    : _sim_local_body sim_local_body r e_src σ_src
         (fill K_tgt (Call #[ScFnPtr name] el_tgt)) σ_tgt
 (* If tgt prepares to end, src also prepares to end *)
-| sim_fn_body_end_call v_src σ_src v_tgt σ_tgt
+| sim_local_body_end_call v_src σ_src v_tgt σ_tgt
     (GUAR: ∀ r_f cfg_tgt',
         ✓ (r_f ⋅ r) → wsat (r_f ⋅ r) σ_src σ_tgt →
         (* if tgt can end call *)
@@ -83,29 +83,29 @@ Inductive _sim_fn_body
         (* (* and call id stacks are restored *)
         cfg_src'.2.(cst).(scs) = cids_entry_src ∧
         cfg_tgt'.2.(cst).(scs) = cids_entry_tgt  *))
-    : _sim_fn_body sim_fn_body r (EndCall (Val v_src)) σ_src (EndCall (Val v_tgt)) σ_tgt
+    : _sim_local_body sim_local_body r (EndCall (Val v_src)) σ_src (EndCall (Val v_tgt)) σ_tgt
 .
 
-Lemma sim_fn_body_mono : monotone5 _sim_fn_body.
+Lemma sim_local_body_mono : monotone5 _sim_local_body.
 Proof.
   intros r es σs et σt R R' SIM LE; inversion SIM; subst.
-  - by eapply sim_fn_body_stuck; eauto.
-  - eapply sim_fn_body_step. naive_solver.
-  - eapply sim_fn_body_step_over_call; eauto. naive_solver.
-  - by eapply sim_fn_body_end_call; eauto.
+  - by eapply sim_local_body_stuck; eauto.
+  - eapply sim_local_body_step. naive_solver.
+  - eapply sim_local_body_step_over_call; eauto. naive_solver.
+  - by eapply sim_local_body_end_call; eauto.
 Qed.
 
-Definition sim_fn_body := paco5 _sim_fn_body bot5.
+Definition sim_local_body := paco5 _sim_local_body bot5.
 
-Lemma sim_fn_body_resource_mono r1 r2
+Lemma sim_local_body_resource_mono r1 r2
   (SAT_DOWNWARD: ∀ r1 r2, r1 ≼ r2 → wsat r2 <2= wsat r1) :
-  r1 ≼ r2 → sim_fn_body r1 <4= sim_fn_body r2.
+  r1 ≼ r2 → sim_local_body r1 <4= sim_local_body r2.
 Proof.
   revert r1 r2. pcofix CIH. intros r1 r2 LE es σs et σt SIM.
-  pfold. punfold SIM; [|apply sim_fn_body_mono].
+  pfold. punfold SIM; [|apply sim_local_body_mono].
   inversion SIM; subst.
-  - by eapply sim_fn_body_stuck.
-  - eapply sim_fn_body_step.
+  - by eapply sim_local_body_stuck.
+  - eapply sim_local_body_step.
     intros r_f et' ct' VL2 WS2 STEPT.
     have VL1: ✓ (r_f ⋅ r1).
     { eapply cmra_valid_included; [exact VL2|by apply cmra_mono_l]. }
@@ -114,7 +114,7 @@ Proof.
     destruct (STEP _ _ _ VL1 WS1 STEPT) as (es' & cs' & r' & STEPS' & VL' & WS' & SIM').
     exists es', cs', r'. do 3 (split; [done|]).
     right. eapply CIH; eauto. by inversion SIM'.
-  - eapply sim_fn_body_step_over_call; eauto.
+  - eapply sim_local_body_step_over_call; eauto.
     intros r_f VL2 WS2 FAT.
     have VL1: ✓ (r_f ⋅ r1).
     { eapply cmra_valid_included; [exact VL2|by apply cmra_mono_l]. }
@@ -126,7 +126,7 @@ Proof.
     intros r_f' r' vs vt cs' ct' VL' WS' VREL'.
     specialize (HK _ _ _ _ _ _ VL' WS' VREL').
     right. eapply CIH; [eauto|by inversion HK].
-  - eapply sim_fn_body_end_call.
+  - eapply sim_local_body_end_call.
     intros r_f ct' VL2 WS2 STEPT.
     have VL1: ✓ (r_f ⋅ r1).
     { eapply cmra_valid_included; [exact VL2|by apply cmra_mono_l]. }
@@ -136,7 +136,7 @@ Proof.
 Qed.
 
 (* Simulating functions: assuming the calls have been initialized. *)
-Definition sim_local_fn (fn_src fn_tgt : function) : Prop :=
+Definition sim_local_fun (fn_src fn_tgt : function) : Prop :=
   ∀ r e_src e_tgt el_src el_tgt σ_src σ_tgt
     (VALS: Forall (λ ei, is_Some (to_value ei)) el_src)
     (VALT: Forall (λ ei, is_Some (to_value ei)) el_tgt)
@@ -147,12 +147,12 @@ Definition sim_local_fn (fn_src fn_tgt : function) : Prop :=
     (EQT: match fn_tgt with
           | FunV xl e => subst_l xl el_tgt e = Some e_tgt
           end),
-    sim_fn_body r (InitCall e_src) σ_src (InitCall e_tgt) σ_tgt.
+    sim_local_body r (InitCall e_src) σ_src (InitCall e_tgt) σ_tgt.
 
-Definition sim_local_fns : Prop :=
+Definition sim_local_funs : Prop :=
   ∀ name fn_src, fns_src !! name = Some fn_src → ∃ fn_tgt,
-    fns_tgt !! name = Some fn_tgt ∧ sim_local_fn fn_src fn_tgt.
+    fns_tgt !! name = Some fn_tgt ∧ sim_local_fun fn_src fn_tgt.
 
 End local.
 
-Hint Resolve sim_fn_body_mono : paco.
+Hint Resolve sim_local_body_mono : paco.

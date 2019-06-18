@@ -15,5 +15,6 @@ theories/lang/examples.v
 theories/sim/global.v
 theories/sim/local_base.v
 theories/sim/cmra.v
+theories/sim/invariant.v
 theories/sim/local.v
 theories/sim/adequacy.v
