@@ -67,16 +67,25 @@ Lemma sim_local_body_InitCall_aux (fns_s fns_t: fn_env) r (es et: expr) σs σt 
 Proof.
 Abort.
 
+From iris.algebra Require Import updates local_updates.
 
 Lemma sim_body_InitCall fns_s fns_t r es et σs σt :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
-  sim_body fns_s fns_t (r) es σs' et σt' →
+  let r'  : resUR := (∅, {[σt.(snc) := to_callStateR (csOwned ∅)]}) in
+  sim_body fns_s fns_t (r ⋅ r') es σs' et σt' →
   sim_body fns_s fns_t r (InitCall es) σs (InitCall et) σt.
 Proof.
-  intros σt' σs' SIM.
-  pfold. apply sim_local_body_step.
-  intros r_f et2 cf2 VL1 WS1.
+  intros σs' σt' r' SIM. pfold. apply sim_local_body_step.
+  intros. exists es, (mkConfig fns_s σs'), (r ⋅ r').
+  have ?: e_tgt' = et. { admit. }
+  have ?: cfg_tgt' = mkConfig fns_t σt'. { admit. }
+  subst e_tgt' cfg_tgt'. simpl in *.
+  split; last split; last split.
+  - admit.
+  - rewrite cmra_assoc. apply cmra_discrete_update. admit.
+  - rewrite cmra_assoc. admit.
+  - by punfold SIM.
 Admitted.
 
 Lemma foo_sim_fun fns_src fns_tgt : sim_fun fns_src fns_tgt foo_s foo_t.

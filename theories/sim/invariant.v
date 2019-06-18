@@ -180,3 +180,35 @@ Lemma vrel_expr_mono (r1 r2 : resUR) (VAL: ✓ r2) :
 Proof.
   move => Le v1 v2 [? [? [? [? /(vrel_mono _ _ VAL Le) ?]]]]. do 2 eexists. eauto.
 Qed.
+
+Instance ptrmap_inv_proper : Proper ((≡) ==> (=) ==> iff) ptrmap_inv.
+Proof.
+  intros r1 r2 Eqr ? σ ?. subst. rewrite /ptrmap_inv. by setoid_rewrite Eqr.
+Qed.
+
+Instance cmap_inv_proper : Proper ((≡) ==> (=) ==> iff) cmap_inv.
+Proof.
+  intros r1 r2 Eqr ? σ ?. subst. rewrite /cmap_inv. setoid_rewrite Eqr.
+  split; intros EQ ?? Eq; specialize (EQ _ _ Eq); destruct cs as [[]| |]; eauto;
+    [by setoid_rewrite <- Eqr|by setoid_rewrite Eqr].
+Qed.
+
+Instance arel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) arel.
+Proof. solve_proper. Qed.
+
+Instance priv_loc_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) priv_loc.
+Proof. solve_proper. Qed.
+
+Instance srel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) srel.
+Proof.
+  intros r1 r2 Eqr ??????. subst. rewrite /srel.
+  split; move => [-> [-> [-> [-> PV]]]]; repeat split; intros l s Eqs;
+    (destruct (PV _ _ Eqs) as [[ss ?]|[t ?]]; [left|right]; [exists ss|exists t]).
+  - by rewrite -Eqr.
+  - by rewrite -Eqr.
+  - by rewrite Eqr.
+  - by rewrite Eqr.
+Qed.
+
+Instance wsat_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
+Proof. solve_proper. Qed.
