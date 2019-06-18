@@ -83,7 +83,7 @@ Proof.
   subst e_tgt' cfg_tgt'. simpl in *.
   split; last split; last split.
   - admit.
-  - rewrite cmra_assoc. apply cmra_discrete_update. admit.
+  - rewrite cmra_assoc. admit.
   - rewrite cmra_assoc. admit.
   - by punfold SIM.
 Admitted.
