@@ -1,6 +1,6 @@
 From iris.program_logic Require Export language ectx_language ectxi_language.
 
-From stbor Require Export expr_semantics bor_semantics.
+From stbor.lang Require Export expr_semantics bor_semantics.
 
 Set Default Proof Using "Type".
 

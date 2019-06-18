@@ -1,6 +1,8 @@
 From iris.algebra Require Export cmra gmap gset csum agree excl.
 
-From stbor Require Export lang.
+From stbor.lang Require Export lang.
+
+Set Default Proof Using "Type".
 
 Inductive tag_kind := tkUnique | tkPub.
 (* Ex() + Ag() *)

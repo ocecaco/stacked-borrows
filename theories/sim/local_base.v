@@ -1,7 +1,9 @@
 From Paco Require Import paco.
 From iris.algebra Require Import cmra gmap csum agree excl.
 
-From stbor Require Import simulation.
+From stbor.lang Require Import defs.
+
+Set Default Proof Using "Type".
 
 Section local.
 Context {A: ucmraT}.

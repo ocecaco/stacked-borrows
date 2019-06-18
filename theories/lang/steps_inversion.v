@@ -1,6 +1,6 @@
 Require Import Coq.Program.Equality.
 
-From stbor Require Export properties steps_wf.
+From stbor.lang Require Export defs steps_wf.
 
 Set Default Proof Using "Type".
 

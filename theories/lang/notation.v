@@ -1,4 +1,4 @@
-From stbor Require Export lang_base.
+From stbor.lang Require Export lang_base.
 
 (* Coercion App : expr >-> Funclass. *)
 Coercion of_result : result >-> expr.

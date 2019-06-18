@@ -1,7 +1,7 @@
 From Equations Require Import Equations.
 From stdpp Require Export gmap.
 
-From stbor Require Export lang_base notation.
+From stbor.lang Require Export lang_base notation.
 
 Set Default Proof Using "Type".
 

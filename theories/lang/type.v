@@ -1,7 +1,7 @@
 From Coq Require Import Program ssreflect.
 From stdpp Require Export list countable.
 
-From stbor Require Export helpers.
+From stbor.lang Require Export helpers.
 
 Set Default Proof Using "Type".
 

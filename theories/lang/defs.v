@@ -1,4 +1,4 @@
-From stbor Require Export lang.
+From stbor.lang Require Export lang.
 
 Set Default Proof Using "Type".
 

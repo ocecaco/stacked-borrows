@@ -1,4 +1,4 @@
-From stbor Require Import lang.
+From stbor.lang Require Import lang.
 
 (* Allocate a place of type [T] and initialize it with a value [v] *)
 Definition new_place T (v: expr) : expr :=

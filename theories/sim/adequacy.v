@@ -1,6 +1,9 @@
 From Paco Require Import paco.
 
-From stbor Require Import simulation steps_wf.
+From stbor.lang Require Import steps_wf.
+From stbor.sim Require Import global.
+
+Set Default Proof Using "Type".
 
 (** Behaviors ----------------------------------------------------------------*)
 

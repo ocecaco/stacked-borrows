@@ -1,6 +1,8 @@
 From Paco Require Import paco.
 
-From stbor Require Import cmra simulation_local_base.
+From stbor.sim Require Import cmra local_base.
+
+Set Default Proof Using "Type".
 
 (** Public scalar relation *)
 (* No case for poison *)

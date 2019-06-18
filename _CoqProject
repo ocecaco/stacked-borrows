@@ -1,19 +1,19 @@
 -Q theories stbor
 -arg -w -arg -notation-overridden,-projection-no-head-constant,-redundant-canonical-projection
-theories/helpers.v
-theories/type.v
-theories/lang_base.v
-theories/notation.v
-theories/expr_semantics.v
-theories/bor_semantics.v
-theories/lang.v
-theories/properties.v
-theories/steps_wf.v
-theories/steps_progress.v
-theories/steps_inversion.v
-theories/examples.v
-theories/simulation.v
-theories/simulation_local_base.v
-theories/cmra.v
-theories/simulation_local.v
-theories/adequacy.v
+theories/lang/helpers.v
+theories/lang/type.v
+theories/lang/lang_base.v
+theories/lang/notation.v
+theories/lang/expr_semantics.v
+theories/lang/bor_semantics.v
+theories/lang/lang.v
+theories/lang/defs.v
+theories/lang/steps_wf.v
+theories/lang/steps_progress.v
+theories/lang/steps_inversion.v
+theories/lang/examples.v
+theories/sim/global.v
+theories/sim/local_base.v
+theories/sim/cmra.v
+theories/sim/local.v
+theories/sim/adequacy.v

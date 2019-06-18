@@ -1,6 +1,6 @@
 From Paco Require Import paco.
 
-From stbor Require Export properties.
+From stbor.lang Require Export defs.
 
 CoInductive diverges
   (step: expr * config → expr * config → Prop)

@@ -1,5 +1,5 @@
-From stbor Require Import helpers.
-From stbor Require Export properties.
+From stbor.lang Require Import helpers.
+From stbor.lang Require Export defs.
 
 Set Default Proof Using "Type".
 

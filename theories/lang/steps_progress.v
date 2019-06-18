@@ -1,4 +1,4 @@
-From stbor Require Export steps_wf.
+From stbor.lang Require Export steps_wf.
 
 Set Default Proof Using "Type".
 
