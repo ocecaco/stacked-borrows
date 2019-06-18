@@ -1,5 +1,9 @@
 From stbor.lang Require Import defs.
-From stbor.sim Require Import local.
+From stbor.sim Require Import local invariant.
+
+Definition sim_body := sim_local_body wsat vrel_expr.
+Definition sim_fun := sim_local_fun wsat vrel_expr.
+Definition sim_funs := sim_local_funs wsat vrel_expr.
 
 Definition foo_s : function :=
   fun: [],
@@ -67,7 +71,7 @@ Abort.
 Lemma sim_body_InitCall fns_s fns_t r es et σs σt :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
-  sim_body fns_s fns_t r es σs' et σt' →
+  sim_body fns_s fns_t (r) es σs' et σt' →
   sim_body fns_s fns_t r (InitCall es) σs (InitCall et) σt.
 Proof.
   intros σt' σs' SIM.
@@ -82,5 +86,4 @@ Proof.
 
   (* InitCall *)
   apply sim_body_InitCall.
-
 Abort.
