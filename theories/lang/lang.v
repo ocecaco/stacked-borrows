@@ -28,19 +28,7 @@ Record config := mkConfig {
   cst : state;
 }.
 
-Implicit Type (σ: config).
-
-Inductive head_step :
-  expr → config → list event → expr → config → list expr → Prop :=
-  | HeadPureS σ e e' ev
-      (ExprStep: pure_expr_step σ.(cfn) σ.(cst).(shp) e ev e')
-    : head_step e σ [ev] e' σ []
-  | HeadImpureS σ e e' ev h0 h' α' cids' nxtp' nxtc'
-      (ExprStep : mem_expr_step σ.(cst).(shp) e ev h0 e')
-      (InstrStep: bor_step h0 σ.(cst).(sst) σ.(cst).(scs) σ.(cst).(snp) σ.(cst).(snc)
-                           ev h' α' cids' nxtp' nxtc')
-    : head_step e σ [ev] e' (mkConfig σ.(cfn) (mkState h' α' cids' nxtp' nxtc')) [].
-
+Implicit Type (σ: state).
 
 (** BASIC LANGUAGE PROPERTIES ------------------------------------------------*)
 (** Closed expressions *)
@@ -338,6 +326,21 @@ Proof.
   destruct (list_expr_result_eq_inv vl1 vl2 e1 e2 el1 el2); auto; congruence.
 Qed.
 
+Section head_step.
+
+Variable (fns: fn_env).
+
+Inductive head_step :
+  expr → state → list event → expr → state → list expr → Prop :=
+  | HeadPureS σ e e' ev
+      (ExprStep: pure_expr_step fns σ.(shp) e ev e')
+    : head_step e σ [ev] e' σ []
+  | HeadImpureS σ e e' ev h0 h' α' cids' nxtp' nxtc'
+      (ExprStep : mem_expr_step σ.(shp) e ev h0 e')
+      (InstrStep: bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+                           ev h' α' cids' nxtp' nxtc')
+    : head_step e σ [ev] e' (mkState h' α' cids' nxtp' nxtc') [].
+
 Lemma result_head_stuck e1 σ1 κ e2 σ2 efs :
   head_step e1 σ1 κ e2 σ2 efs → to_result e1 = None.
 Proof. destruct 1; inversion ExprStep; naive_solver. Qed.
@@ -357,13 +360,14 @@ Proof.
   split; apply _ || eauto using to_of_result, of_to_result, result_head_stuck,
     fill_item_result, fill_item_no_result_inj, head_ctx_step_result.
 Qed.
+End head_step.
 
 End bor_lang.
 
 (** Language *)
-Canonical Structure bor_ectxi_lang := EctxiLanguage bor_lang.bor_lang_mixin.
-Canonical Structure bor_ectx_lang := EctxLanguageOfEctxi bor_ectxi_lang.
-Canonical Structure bor_lang := LanguageOfEctx bor_ectx_lang.
+Canonical Structure bor_ectxi_lang fns := EctxiLanguage (bor_lang.bor_lang_mixin fns).
+Canonical Structure bor_ectx_lang fns := EctxLanguageOfEctxi (bor_ectxi_lang fns).
+Canonical Structure bor_lang fns := LanguageOfEctx (bor_ectx_lang fns).
 
 Export bor_lang.
 

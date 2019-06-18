@@ -9,7 +9,7 @@ Ltac inv_head_step :=
   | H : to_val _ = Some _ |- _ => apply of_to_val in H
   | H : _ = of_val ?v |- _ =>
      is_var v; destruct v; first[discriminate H|injection H as H]
-  | H : head_step ?e _ _ _ _ _ |- _ =>
+  | H : head_step _ ?e _ _ _ _ _ |- _ =>
      try (is_var e; fail 1); (* inversion yields many goals if [e] is a variable
      and can thus better be avoided. *)
      inversion H ; subst; clear H
@@ -19,11 +19,14 @@ Ltac inv_head_step :=
 
 Ltac inv_tstep :=
   repeat match goal with
-  | H : tstep _ _ |- _ => inversion_clear H
+  | H : tstep _ _ _ |- _ => inversion_clear H
   | H : prim_step _ _ _ _ _ _ |- _ =>
       simpl in H; inversion_clear H as [??? Eq ? HS]; subst
   end.
 
+Section inv.
+Variable (fns: fn_env).
+Implicit Type (e: ectx_language.expr (bor_ectx_lang fns)).
 (** InitCall *)
 
 (** BinOp *)
@@ -47,9 +50,9 @@ Proof.
 Qed.
 
 Lemma tstep_bin_op_left_non_terminal op e1 e2 e' σ σ'
-  (STEP: (BinOp op e1 e2, σ) ~t~> (e', σ'))
+  (STEP: (BinOp op e1 e2, σ) ~{fns}~> (e', σ'))
   (NT: ¬ terminal e1):
-  ∃ e1', (e1, σ) ~t~> (e1', σ') ∧ e' = BinOp op e1' e2.
+  ∃ e1', (e1, σ) ~{fns}~> (e1', σ') ∧ e' = BinOp op e1' e2.
 Proof.
   inv_tstep.
   have Eq1: BinOp op e1 e2 = ectx_language.fill [BinOpLCtx op e2] e1 by done.
@@ -64,9 +67,9 @@ Proof.
 Qed.
 
 Lemma tstep_bin_op_right_non_terminal op e1 e2 e' σ σ'
-  (STEP: (BinOp op e1 e2, σ) ~t~> (e', σ'))
+  (STEP: (BinOp op e1 e2, σ) ~{fns}~> (e', σ'))
   (TM: terminal e1) (NT: ¬ terminal e2):
-  ∃ e2', (e2, σ) ~t~> (e2', σ') ∧ e' = BinOp op e1 e2'.
+  ∃ e2', (e2, σ) ~{fns}~> (e2', σ') ∧ e' = BinOp op e1 e2'.
 Proof.
   inv_tstep.
   move : TM => [v1 Eqv1].
@@ -83,9 +86,9 @@ Proof.
 Qed.
 
 Lemma tstep_bin_op_terminal op e1 e2 e' σ σ'
-  (STEP: (BinOp op e1 e2, σ) ~t~> (e', σ'))
+  (STEP: (BinOp op e1 e2, σ) ~{fns}~> (e', σ'))
   (TM1: terminal e1) (TM2: terminal e2):
-  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(cst).(shp) op l1 l2 l ∧ e' = (#[l%S])%E.
+  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(shp) op l1 l2 l ∧ e' = (#[l%S])%E.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
@@ -101,8 +104,8 @@ Qed.
 
 Lemma tstep_bin_op_red_r e1 σ1 e2 e2' σ2 op:
   terminal e1 →
-  (e2, σ1) ~t~>* (e2', σ2) →
-  (BinOp op e1 e2, σ1) ~t~>* (BinOp op e1 e2', σ2).
+  (e2, σ1) ~{fns}~>* (e2', σ2) →
+  (BinOp op e1 e2, σ1) ~{fns}~>* (BinOp op e1 e2', σ2).
 Proof.
   intros T1 S2.
   dependent induction S2 generalizing e2 σ1; first by constructor.
@@ -112,17 +115,18 @@ Proof.
   move : T1 => [v1 Eqv1].
   rewrite (_: BinOp op e1 e2 = ectx_language.fill [BinOpRCtx op v1] e2);
     last by rewrite /= -(of_to_result _ _ Eqv1).
-  rewrite (_: BinOp op e1 e0 = ectx_language.fill [BinOpRCtx op v1] e0);
-    last by rewrite /= -(of_to_result _ _ Eqv1).
   inversion_clear H; simpl in PRIM.
   inversion_clear PRIM. subst.
+  rewrite (_: BinOp op e1 (ectx_language.fill K e2') =
+                ectx_language.fill [BinOpRCtx op v1] (ectx_language.fill K e2'));
+    last by rewrite /= -(of_to_result _ _ Eqv1).
   rewrite 2!fill_comp.
   econstructor. econstructor; eauto.
 Qed.
 
 Lemma tstep_bin_op_red_l e1 σ1 e1' σ1' e2 op:
-  (e1, σ1) ~t~>* (e1', σ1') →
-  (BinOp op e1 e2, σ1) ~t~>* (BinOp op e1' e2, σ1').
+  (e1, σ1) ~{fns}~>* (e1', σ1') →
+  (BinOp op e1 e2, σ1) ~{fns}~>* (BinOp op e1' e2, σ1').
 Proof.
   intros S1.
   dependent induction S1 generalizing e1 σ1 e2; first by constructor.
@@ -131,18 +135,19 @@ Proof.
   clear -H.
   rewrite (_: BinOp op e1 e2 = ectx_language.fill [BinOpLCtx op e2] e1);
     last done.
-  rewrite (_: BinOp op e0 e2 = ectx_language.fill [BinOpLCtx op e2] e0);
-    last done.
   inversion_clear H; simpl in PRIM.
   inversion_clear PRIM. subst.
+  rewrite (_: BinOp op (ectx_language.fill K e2') e2 =
+    ectx_language.fill [BinOpLCtx op e2] (ectx_language.fill K e2'));
+    last done.
   rewrite 2!fill_comp.
   econstructor. econstructor; eauto.
 Qed.
 
 Lemma tstep_bin_op_red e1 σ1 e1' σ1' e2 e2' σ2' op:
-  (e1, σ1) ~t~>* (e1', σ1') → terminal e1' →
-  (e2, σ1') ~t~>* (e2', σ2') →
-  (BinOp op e1 e2, σ1) ~t~>* (BinOp op e1' e2', σ2').
+  (e1, σ1) ~{fns}~>* (e1', σ1') → terminal e1' →
+  (e2, σ1') ~{fns}~>* (e2', σ2') →
+  (BinOp op e1 e2, σ1) ~{fns}~>* (BinOp op e1' e2', σ2').
 Proof.
   intros S1 T1 S2. etrans.
   - clear S2 T1. by eapply tstep_bin_op_red_l.
@@ -165,9 +170,9 @@ Proof.
 Qed.
 
 Lemma tstep_copy_terminal e e' σ σ'
-  (STEP: (Copy e, σ) ~t~> (e', σ')) (TM: terminal e) :
+  (STEP: (Copy e, σ) ~{fns}~> (e', σ')) (TM: terminal e) :
   ∃ l ltag T v , e = Place l ltag T ∧ e' = (Val v) ∧
-    read_mem l (tsize T) σ.(cst).(shp) = Some v
+    read_mem l (tsize T) σ.(shp) = Some v
     (* not true: the stacked borrows may change, ∧ σ' = σ *).
 Proof.
   inv_tstep. symmetry in Eq.
@@ -180,8 +185,8 @@ Proof.
 Qed.
 
 Lemma tstep_copy_non_terminal e e' σ σ'
-  (STEP: (Copy e, σ) ~t~> (e', σ')) (NT: ¬ terminal e):
-  ∃ e1, (e, σ) ~t~> (e1, σ') ∧ e' = Copy e1.
+  (STEP: (Copy e, σ) ~{fns}~> (e', σ')) (NT: ¬ terminal e):
+  ∃ e1, (e, σ) ~{fns}~> (e1, σ') ∧ e' = Copy e1.
 Proof.
   inv_tstep.
   rewrite (_: Copy e = ectx_language.fill [CopyCtx] e) in Eq; [|done].
@@ -193,3 +198,5 @@ Proof.
   - econstructor. econstructor; [exact Eq''|..|exact HS]. eauto.
   - by rewrite Eq' -fill_comp.
 Qed.
+
+End inv.

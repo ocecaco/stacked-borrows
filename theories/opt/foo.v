@@ -57,7 +57,7 @@ Proof.
   subst el. simpl in Eq. by simplify_eq.
 Qed.
 
-Lemma sim_local_body_InitCall_aux (fns_s fns_t: fn_env) r (es et: expr) σs σt et' ct'
+(* Lemma sim_local_body_InitCall_aux (fns_s fns_t: fn_env) r (es et: expr) σs σt et' ct'
   (VL: ✓ r) (WS: wsat r σs σt)
   (ST: (InitCall et, (mkConfig fns_t σt)) ~t~> (et', ct')) :
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
@@ -65,22 +65,22 @@ Lemma sim_local_body_InitCall_aux (fns_s fns_t: fn_env) r (es et: expr) σs σt 
   et' = et ∧ ct' = mkConfig fns_t σt' ∧
   (InitCall es, (mkConfig fns_s σs)) ~t~>* (es, mkConfig fns_s σs').
 Proof.
-Abort.
+Abort. *)
 
 From iris.algebra Require Import updates local_updates.
 
-Lemma sim_body_InitCall fns_s fns_t r es et σs σt :
+Lemma sim_body_InitCall fns fnt r es et σs σt :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
   let r'  : resUR := (∅, {[σt.(snc) := to_callStateR (csOwned ∅)]}) in
-  sim_body fns_s fns_t (r ⋅ r') es σs' et σt' →
-  sim_body fns_s fns_t r (InitCall es) σs (InitCall et) σt.
+  sim_body fns fnt (r ⋅ r') es σs' et σt' →
+  sim_body fns fnt r (InitCall es) σs (InitCall et) σt.
 Proof.
   intros σs' σt' r' SIM. pfold. apply sim_local_body_step.
-  intros. exists es, (mkConfig fns_s σs'), (r ⋅ r').
+  intros. exists es, σs', (r ⋅ r').
   have ?: e_tgt' = et. { admit. }
-  have ?: cfg_tgt' = mkConfig fns_t σt'. { admit. }
-  subst e_tgt' cfg_tgt'. simpl in *.
+  have ?: σ_tgt' = σt'. { admit. }
+  subst e_tgt' σ_tgt'. simpl in *.
   split; last split; last split.
   - admit.
   - rewrite cmra_assoc. admit.
@@ -88,7 +88,7 @@ Proof.
   - by punfold SIM.
 Admitted.
 
-Lemma foo_sim_fun fns_src fns_tgt : sim_fun fns_src fns_tgt foo_s foo_t.
+Lemma foo_sim_fun fns fnt : sim_fun fns fnt foo_s foo_t.
 Proof.
   move => r es et els elt σs σt _ _ _ /subst_l_nil_is_Some ? /subst_l_nil_is_Some ?.
   subst es et. clear els elt.

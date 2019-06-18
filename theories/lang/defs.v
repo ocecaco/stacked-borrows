@@ -40,24 +40,25 @@ Record state_wf' (s: state) := {
 
 Instance state_wf : Wellformed state :=  state_wf'.
 Instance config_wf : Wellformed config := λ cfg, Wf cfg.(cst).
-Notation terminal e := (is_Some (to_val e)).
+Notation terminal e := (is_Some (to_result e)).
 
 Lemma expr_terminal_False (e: expr) : ¬ terminal e ↔ to_result e = None.
 Proof.
   split.
-  - destruct (to_val e) eqn:Eqv; [|done].
+  - destruct (to_result e) eqn:Eqv; [|done].
     intros TERM. exfalso. apply TERM. by eexists.
-  - intros Eq1 [? Eq2]. by rewrite /to_val /= Eq1 in Eq2.
+  - intros Eq1 [? Eq2]. by rewrite Eq1 in Eq2.
 Qed.
 
 (** Thread steps *)
-Inductive tstep (eσ1 eσ2 : expr * config) : Prop :=
+Inductive tstep (fns: fn_env) (eσ1 eσ2 : expr * state) : Prop :=
 | ThreadStep ev efs
-    (PRIM: prim_step eσ1.1 eσ1.2 ev eσ2.1 eσ2.2 efs)
+    (PRIM: prim_step (Λ:= bor_ectx_lang fns) eσ1.1 eσ1.2 ev eσ2.1 eσ2.2 efs)
 .
 
-Infix "~t~>" := tstep (at level 70).
-Infix "~t~>*" := (rtc tstep) (at level 70).
+Notation "x ~{ fn }~> y" := (tstep fn x y) (at level 70, format "x  ~{ fn }~>  y").
+Notation "x ~{ fn }~>* y" := (rtc (tstep fn) x y)
+  (at level 70, format "x  ~{ fn }~>*  y").
 
 (*=================================== UNUSED =================================*)
 (* Implicit Type (ρ: cfg bor_lang). *)

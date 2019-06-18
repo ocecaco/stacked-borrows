@@ -862,8 +862,8 @@ Proof.
   inversion IS; clear IS; simplify_eq; apply WF.
 Qed. *)
 
-Lemma head_step_wf σ σ' e e' obs efs :
-  head_step e σ obs e' σ' efs → Wf σ.(cst) → Wf σ'.(cst).
+Lemma head_step_wf fns σ σ' e e' obs efs :
+  head_step fns e σ obs e' σ' efs → Wf σ → Wf σ'.
 Proof.
   intros HS WF. inversion HS; [by subst|]. simplify_eq. destruct ev.
   - eapply alloc_step_wf; eauto.
@@ -877,14 +877,14 @@ Proof.
   - by inversion ExprStep.
   (* - eapply syscall_step_wf; eauto. *)
 Qed.
-Lemma tstep_wf eσ1 eσ2 :
-  eσ1 ~t~> eσ2 → Wf eσ1.2.(cst) → Wf eσ2.2.(cst).
-Proof. inversion 1. inversion PRIM. by eapply head_step_wf. Qed.
-Lemma rtc_tstep_wf eσ1 eσ2 :
-  eσ1 ~t~>* eσ2 → Wf eσ1.2.(cst) → Wf eσ2.2.(cst).
+Lemma tstep_wf fns eσ1 eσ2 :
+  eσ1 ~{fns}~> eσ2 → Wf eσ1.2 → Wf eσ2.2.
+Proof. inversion 1. inversion PRIM. by eapply (head_step_wf fns). Qed.
+Lemma rtc_tstep_wf fns eσ1 eσ2 :
+  eσ1 ~{fns}~>* eσ2 → Wf eσ1.2 → Wf eσ2.2.
 Proof.
   intros SS. induction SS; [done|]. intros WF1. apply IHSS. revert WF1.
-  by apply tstep_wf.
+  by apply (tstep_wf fns).
 Qed.
 
 Lemma retag_nxtp_mono h α nxtp cids c l kind T h' α' nxtp' :
@@ -931,8 +931,8 @@ Proof.
   - naive_solver.
 Qed.
 
-Lemma head_step_nxtp_mono σ σ' e e' obs efs :
-  head_step e σ obs e' σ' efs → (σ.(cst).(snp) ≤ σ'.(cst).(snp))%nat.
+Lemma head_step_nxtp_mono fns σ σ' e e' obs efs :
+  head_step fns e σ obs e' σ' efs → (σ.(snp) ≤ σ'.(snp))%nat.
 Proof.
   intros HS. inversion HS; [done|]. simplify_eq.
   inversion InstrStep; simplify_eq; simpl; try done; [lia|].
@@ -961,16 +961,3 @@ Proof.
     + exists false. by rewrite lookup_insert.
     + exists b. by rewrite lookup_insert_ne.
 Qed. *)
-
-
-Lemma head_step_funs_static σ σ' e e' obs efs :
-  head_step e σ obs e' σ' efs → σ.(cfn) = σ'.(cfn).
-Proof. by inversion 1. Qed.
-Lemma tstep_funs_static eσ1 eσ2 :
-  eσ1 ~t~> eσ2 → eσ1.2.(cfn) = eσ2.2.(cfn).
-Proof. inversion 1. inversion PRIM. by eapply head_step_funs_static. Qed.
-Lemma rtc_tstep_funs_static eσ1 eσ2 :
-  eσ1 ~t~>* eσ2 → eσ1.2.(cfn) = eσ2.2.(cfn).
-Proof.
-  intros SS. induction SS; [done|]. erewrite tstep_funs_static; eauto.
-Qed.
