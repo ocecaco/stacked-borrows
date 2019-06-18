@@ -16,7 +16,7 @@ Proof.
   - move => e1 e2 e3 S1 S2 v3 /S2 /S1 //.
 Qed.
 
-Notation SIM_CONFIG := (expr * state → expr * state → Prop)%type.
+Notation SIM_CONFIG := (nat -> expr * state → expr * state → Prop)%type.
 
 (* This is a simulation between two expressions without any interference.
   It corresponds to a sequential simulation. *)
@@ -24,7 +24,7 @@ Notation SIM_CONFIG := (expr * state → expr * state → Prop)%type.
 Section sim.
 Variable (fns fnt: fn_env).
 
-Record sim_base (sim: SIM_CONFIG) (eσ1_src eσ1_tgt: expr * state) : Prop := mkSimBase {
+Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state) : Prop := mkSimBase {
   (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
   sim_stuck :
     stuck (Λ:= bor_lang fnt) eσ1_tgt.1 eσ1_tgt.2 → ∃ eσ2_src,
@@ -38,31 +38,26 @@ Record sim_base (sim: SIM_CONFIG) (eσ1_src eσ1_tgt: expr * state) : Prop := mk
   (* (4) If [eσ1_tgt] steps to [eσ2_tgt] with 1 step,
        then exists [eσ2_src] s.t. [eσ1_src] steps to [eσ2_src] with * step. *)
   sim_step :
-    ∀ eσ2_tgt, eσ1_tgt ~{fnt}~> eσ2_tgt → ∃ eσ2_src,
-      eσ1_src ~{fns}~>* eσ2_src ∧ sim eσ2_src eσ2_tgt;
+    ∀ eσ2_tgt, eσ1_tgt ~{fnt}~> eσ2_tgt → ∃ idx2 eσ2_src,
+      (eσ1_src ~{fns}~>+ eσ2_src \/ ((idx2 < idx1)%nat /\ eσ1_src = eσ2_src))
+      ∧ sim idx2 eσ2_src eσ2_tgt;
 }.
-
-Definition no_UB (eσ: expr * state) : Prop :=
-  ¬ (∀ eσ', eσ ~{fns}~>* eσ' → stuck (Λ:= bor_lang fns) eσ'.1 eσ'.2).
 
 (* Generator for the actual simulation *)
 Definition _sim
-  (sim : SIM_CONFIG) (eσ1_src eσ1_tgt: expr * state) : Prop :=
-  Wf eσ1_src.2 → Wf eσ1_tgt.2 →
-  (* If [eσ1_src] gets UB, we can have UB in the target, thus any [eσ1_tgt] is
-      acceptable. Otherwise ... *)
-  no_UB eσ1_src → sim_base sim eσ1_src eσ1_tgt.
+  (sim : SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state) : Prop :=
+  Wf eσ1_src.2 → Wf eσ1_tgt.2 → sim_base sim idx1 eσ1_src eσ1_tgt.
 
-Lemma _sim_mono : monotone2 (_sim).
+Lemma _sim_mono : monotone3 (_sim).
 Proof.
-  intros eσ_src eσ_tgt r r' TS LE WF1 WF2 NUB.
-  destruct (TS WF1 WF2 NUB) as [SU (* DI *) TE ST]. repeat split; auto.
-  intros eσ2_tgt ONE. destruct (ST _ ONE) as (eσ2_src & STEP1 & Hr).
-  exists eσ2_src. split; [done|]. by apply LE.
+  intros idx1 eσ_src eσ_tgt r r' TS LE WF1 WF2.
+  destruct (TS WF1 WF2) as [SU (* DI *) TE ST]. repeat split; auto.
+  intros eσ2_tgt ONE. destruct (ST _ ONE) as (idx2 & eσ2_src & STEP1 & Hr).
+  exists idx2, eσ2_src. split; [done|]. by apply LE.
 Qed.
 
 (* Global simulation *)
-Definition sim : SIM_CONFIG := paco2 _sim bot2.
+Definition sim : SIM_CONFIG := paco3 _sim bot3.
 
 End sim.
 

@@ -59,6 +59,8 @@ Inductive tstep (fns: fn_env) (eσ1 eσ2 : expr * state) : Prop :=
 Notation "x ~{ fn }~> y" := (tstep fn x y) (at level 70, format "x  ~{ fn }~>  y").
 Notation "x ~{ fn }~>* y" := (rtc (tstep fn) x y)
   (at level 70, format "x  ~{ fn }~>*  y").
+Notation "x ~{ fn }~>+ y" := (tc (tstep fn) x y)
+  (at level 70, format "x  ~{ fn }~>+  y").
 
 (*=================================== UNUSED =================================*)
 (* Implicit Type (ρ: cfg bor_lang). *)

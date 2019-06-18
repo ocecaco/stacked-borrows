@@ -13,8 +13,10 @@ theories/lang/steps_progress.v
 theories/lang/steps_inversion.v
 theories/lang/examples.v
 theories/sim/global.v
+theories/sim/global_adequacy.v
 theories/sim/cmra.v
 theories/sim/invariant.v
 theories/sim/local.v
-theories/sim/adequacy.v
+theories/sim/local_adequacy.v
+theories/sim/sflib.v
 theories/opt/foo.v
