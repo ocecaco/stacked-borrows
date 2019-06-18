@@ -89,7 +89,7 @@ Definition vrel_expr (r: resUR) (e1 e2: expr) :=
   ∃ v1 v2, e1 = Val v1 ∧ e2 = Val v2 ∧ vrel r v1 v2.
 
 (* TODO: I hate these cmra operations *)
-Lemma ptrmap_inv_downward_mono (r1 r2 : resUR) σ (VAL: ✓ r2) :
+Lemma ptrmap_inv_down_mono (r1 r2 : resUR) σ (VAL: ✓ r2) :
   r1 ≼ r2 → ptrmap_inv r2 σ → ptrmap_inv r1 σ.
 Proof.
   move => Le PI t k h Eqh l s Eqs stk Eqst pm opro IN.
@@ -114,7 +114,7 @@ Proof.
   specialize (PI _ _ _ Eq2 _ _ EQL _ Eqst _ _ IN). naive_solver.
 Qed.
 
-Lemma cmap_inv_downward_mono (r1 r2 : resUR) σ (VAL: ✓ r2) :
+Lemma cmap_inv_down_mono (r1 r2 : resUR) σ (VAL: ✓ r2) :
   r1 ≼ r2 → cmap_inv r2 σ → cmap_inv r1 σ.
 Proof.
   move => Le CI c cs Eqcs.
@@ -145,4 +145,38 @@ Proof.
     - apply prod_included in LE as [Eq%tag_kind_incl_eq ?]; [|apply VL3].
       simpl in Eq. by rewrite Eq. }
   apply (EQM _ INt k h' Eq3 l). eapply dom_included; eauto.
+Qed.
+
+Lemma arel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
+Proof.
+  intros Le s1 s2. rewrite /arel.
+  destruct s1 as [| |l1 t1|], s2 as [| |l2 t2|]; auto.
+  intros [Eql [Eqt PV]]. subst. repeat split.
+  destruct t2 as [t2|]; [|done].
+  destruct PV as [h HL].
+  have HL1: Some (to_tagKindR tkPub, h) ≼ r2.1 !! t2.
+  { rewrite -HL. by apply lookup_included, prod_included, Le. }
+  apply option_included in HL1 as [?|[th1 [[tk2 h2] [? [Eq1 INCL]]]]]; [done|].
+  simplify_eq. exists h2. rewrite Eq1 (_: tk2 ≡ to_tagKindR tkPub) //.
+  apply tag_kind_incl_eq; [done|].
+  move : INCL => [[/=<- _//]|/prod_included [/= /csum_included Eq _]].
+  - apply csum_included. naive_solver.
+  - have VL2: ✓ tk2.
+    { apply (pair_valid tk2 h2). rewrite -pair_valid.
+      apply (lookup_valid_Some r2.1 t2); [apply VAL|]. by rewrite Eq1. }
+    destruct Eq as [|[|Eq]]; [by subst|naive_solver|].
+    destruct Eq as [?[ag[? [? ?]]]]. simplify_eq.
+    apply to_agree_uninj in VL2 as [[] Eq]. rewrite -Eq.
+    apply csum_included. naive_solver.
+Qed.
+
+Lemma vrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ v1 v2, vrel r1 v1 v2 → vrel r2 v1 v2.
+Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qed.
+
+Lemma vrel_expr_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ v1 v2, vrel_expr r1 v1 v2 → vrel_expr r2 v1 v2.
+Proof.
+  move => Le v1 v2 [? [? [? [? /(vrel_mono _ _ VAL Le) ?]]]]. do 2 eexists. eauto.
 Qed.
