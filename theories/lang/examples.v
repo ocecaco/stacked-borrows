@@ -1,9 +1,5 @@
 From stbor.lang Require Import lang.
 
-(* Allocate a place of type [T] and initialize it with a value [v] *)
-Definition new_place T (v: expr) : expr :=
-   let: "x" := Alloc T in "x" <- v ;; "x".
-
 (* UB *)
 (* from https://www.ralfj.de/blog/2018/11/16/stacked-borrows-implementation.html *)
 Definition demo0 : expr :=

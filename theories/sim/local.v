@@ -1,6 +1,6 @@
-From Paco Require Import paco.
+From Paco Require Export paco.
 
-From stbor.sim Require Import invariant local_base.
+From stbor.sim Require Export invariant local_base.
 
 Set Default Proof Using "Type".
 

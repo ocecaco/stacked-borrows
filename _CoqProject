@@ -18,3 +18,4 @@ theories/sim/cmra.v
 theories/sim/invariant.v
 theories/sim/local.v
 theories/sim/adequacy.v
+theories/opt/foo.v

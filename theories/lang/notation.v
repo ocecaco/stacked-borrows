@@ -89,3 +89,13 @@ Notation "'let:' x := e1 'in' e2" := (Let x%binder e1%E e2%E)
   (at level 102, x at level 1, e1, e2 at level 150) : result_scope.
 Notation "e1 ;; e2" := (let: <> := e1 in e2)%R
   (at level 100, e2 at level 200, format "e1  ;;  e2") : result_scope.
+
+Notation "fun: xl , e" := (FunV xl%binder e%E)
+  (at level 102, xl at level 1, e at level 200).
+
+Ltac solve_closed :=
+  match goal with
+  | |- Closed ?X ?e =>
+      (vm_compute; exact I) || (rewrite /= bool_decide_true; set_solver)
+  end.
+Hint Extern 0 (Closed _ _) => solve_closed : typeclass_instances.

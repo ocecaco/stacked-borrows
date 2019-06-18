@@ -24,6 +24,8 @@ Ltac inv_tstep :=
       simpl in H; inversion_clear H as [??? Eq ? HS]; subst
   end.
 
+(** InitCall *)
+
 (** BinOp *)
 
 Lemma fill_bin_op_decompose K e op e1 e2:

@@ -366,3 +366,7 @@ Canonical Structure bor_ectx_lang := EctxLanguageOfEctxi bor_ectxi_lang.
 Canonical Structure bor_lang := LanguageOfEctx bor_ectx_lang.
 
 Export bor_lang.
+
+(* Allocate a place of type [T] and initialize it with a value [v] *)
+Definition new_place T (v: expr) : expr :=
+   let: "x" := Alloc T in "x" <- v ;; "x".
