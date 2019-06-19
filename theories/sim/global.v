@@ -7,9 +7,11 @@ CoInductive diverges
   (cfg: expr * config) : Prop :=
 | DivergeStep cfg' (STEP: step cfg cfg') (DIV: diverges step cfg') .
 
-(* TODO: we want to state that the terminal expression should be [value], but
+(* We would want to state that the terminal expression should be [value], but
   that comes from the invariant that all functions return [value]'s, which is
-  not visible here. So we instead use [result]. *)
+  not visible here. Furthermore, we want to state that terminal means ``not
+  reducible but safe'', so we cannot exclude Place from terminal.
+  Consequently, we use [result]. *)
 Definition sim_expr_terminal (e1 e2: expr) :=
   ∀ v2, to_result e2 = Some v2 → to_result e1 = Some v2.
 Instance sim_expr_terminal_po : PreOrder sim_expr_terminal.
@@ -19,7 +21,7 @@ Proof.
   - move => e1 e2 e3 S1 S2 v3 /S2 /S1 //.
 Qed.
 
-Notation SIM_CONFIG := (nat -> expr * state → expr * state → Prop)%type.
+Notation SIM_CONFIG := (nat → expr * state → expr * state → Prop)%type.
 
 (* This is a simulation between two expressions without any interference.
   It corresponds to a sequential simulation. *)
@@ -27,6 +29,7 @@ Notation SIM_CONFIG := (nat -> expr * state → expr * state → Prop)%type.
 Section sim.
 Variable (fns fnt: fn_env).
 
+(* We use step-indexing to account for divergence. TODO: explain more. *)
 Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
   : Prop := mkSimBase {
   (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)

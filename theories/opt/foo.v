@@ -69,19 +69,19 @@ Abort. *)
 
 From iris.algebra Require Import updates local_updates.
 
-Lemma sim_body_InitCall fns fnt r es et σs σt :
+Lemma sim_body_InitCall fns fnt r n es et σs σt :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
   let r'  : resUR := (∅, {[σt.(snc) := to_callStateR (csOwned ∅)]}) in
-  sim_body fns fnt (r ⋅ r') es σs' et σt' →
-  sim_body fns fnt r (InitCall es) σs (InitCall et) σt.
+  sim_body fns fnt (r ⋅ r') n es σs' et σt' →
+  sim_body fns fnt r n (InitCall es) σs (InitCall et) σt.
 Proof.
   intros σs' σt' r' SIM. pfold. apply sim_local_body_step.
   intros. exists es, σs', (r ⋅ r').
   have ?: e_tgt' = et. { admit. }
   have ?: σ_tgt' = σt'. { admit. }
   subst e_tgt' σ_tgt'. simpl in *.
-  split; last split; last split.
+  exists n. split; last split; last split.
   - admit.
   - rewrite cmra_assoc. admit.
   - rewrite cmra_assoc. admit.
@@ -94,5 +94,5 @@ Proof.
   subst es et. clear els elt.
 
   (* InitCall *)
-  apply sim_body_InitCall.
+  exists 1%nat. apply sim_body_InitCall.
 Abort.
