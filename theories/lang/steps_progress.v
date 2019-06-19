@@ -6,11 +6,10 @@ Set Default Proof Using "Type".
 Lemma alloc_head_step fns σ T :
   let l := (fresh_block σ.(shp), 0) in
   let t := σ.(snp) in
-  ∃ σ',
+  let σ' := mkState (init_mem l (tsize T) σ.(shp))
+                    (init_stacks σ.(sst) l (tsize T) (Tagged t)) σ.(scs) (S t) σ.(snc) in
   head_step fns (Alloc T) σ [AllocEvt l (Tagged t) T] (Place l (Tagged t) T) σ' [].
-Proof.
-  eexists. by econstructor; econstructor.
-Qed.
+Proof. by econstructor; econstructor. Qed.
 
 Lemma find_granting_is_Some stk kind bor
   (BOR: ∃ it, it ∈ stk ∧ it.(tg) = bor ∧ it.(perm) ≠ Disabled ∧
@@ -337,14 +336,17 @@ Lemma copy_head_step fns (σ: state) l bor T
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(shp))
   (BOR: ∀ m stk, (m < tsize T)%nat → σ.(sst) !! (l +ₗ m) = Some stk →
         access1_read_pre σ.(scs) stk bor) :
-  ∃ σ' v,
+  ∃ v α,
+  read_mem l (tsize T) σ.(shp) = Some v ∧
+  memory_read σ.(sst) σ.(scs) l bor (tsize T) = Some α ∧
+  let σ' := mkState σ.(shp) α σ.(scs) σ.(snp) σ.(snc) in
   head_step fns (Copy (Place l bor T)) σ
             [CopyEvt l bor T v] (Val v) σ' [].
 Proof.
   destruct (read_mem_is_Some _ _ _ BLK) as [v RM].
   destruct (memory_read_is_Some σ.(sst) σ.(scs) l bor (tsize T));[|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
-  do 2 eexists. econstructor; econstructor; [done..|].
+  do 2 eexists. do 2 (split; [done|]). econstructor; econstructor; [done..|].
   move => l1 bor1 /elem_of_list_lookup [i Eqi].
   apply (state_wf_mem_tag _ WF (l +ₗ i) l1).
   destruct (read_mem_values _ _ _ _ RM) as [Eq1 Eq2].
@@ -381,41 +383,40 @@ Lemma write_head_step fns (σ: state) l bor T v
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(shp))
   (STK: ∀ m stk, (m < tsize T)%nat → σ.(sst) !! (l +ₗ m) = Some stk →
         access1_write_pre σ.(scs) stk bor) :
-  ∃ σ',
+  ∃ α,
+  memory_written σ.(sst) σ.(scs) l bor (tsize T) = Some α ∧
+  let σ' := mkState (write_mem l v σ.(shp)) α σ.(scs) σ.(snp) σ.(snc) in
   head_step fns (Write (Place l bor T) (Val v)) σ
             [WriteEvt l bor T v] #[☠] σ' [].
 Proof.
   destruct (memory_written_is_Some σ.(sst) σ.(scs) l bor (tsize T)); [|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
-  eexists. econstructor; econstructor; [done|by rewrite LEN|done..].
+  eexists. split; [done|]. econstructor; econstructor; [done|by rewrite LEN|done..].
 Qed.
 
 Lemma call_head_step fns σ name el xl e HC e' :
   fns !! name = Some (@FunV xl e HC) →
   Forall (λ ei, is_Some (to_value ei)) el →
   subst_l xl el e = Some e' →
-  ∃ σ', head_step fns (Call #[ScFnPtr name] el) σ
-                  [NewCallEvt name]
-                  (InitCall e')
-                 σ' [].
-Proof. eexists. by econstructor; econstructor. Qed.
+  head_step fns (Call #[ScFnPtr name] el) σ [NewCallEvt name] (InitCall e') σ [].
+Proof. by econstructor; econstructor. Qed.
 
 Lemma initcall_head_step fns σ e :
   let c := σ.(snc) in
-  ∃ σ', head_step fns (InitCall e) σ
-                  [InitCallEvt c]
-                  (EndCall e)
-                 σ' [].
-Proof. eexists. by econstructor; econstructor. Qed.
+  let σ' := mkState σ.(shp) σ.(sst) (σ.(snc) :: σ.(scs)) σ.(snp) (S σ.(snc)) in
+  head_step fns (InitCall e) σ [InitCallEvt c] (EndCall e) σ' [].
+Proof. by econstructor; econstructor. Qed.
 
 Lemma endcall_head_step fns (σ: state) c v
   (WF: Wf σ)
   (BAR: c ∈ σ.(scs)) :
-  ∃ σ' c', head_step fns (EndCall #v) σ [EndCallEvt c' v] #v σ' [].
+  ∃ c' cids', σ.(scs) = c' :: cids' ∧
+  let σ' := mkState σ.(shp) σ.(sst) cids' σ.(snp) σ.(snc) in
+  head_step fns (EndCall #v) σ [EndCallEvt c' v] #v σ' [].
 Proof.
   destruct σ as [h α cids nxtp nxtc]; simpl in *.
   destruct cids as [|c' cids']; [exfalso; move : BAR; apply not_elem_of_nil|].
-  exists (mkState h α cids' nxtp nxtc), c'.
+  exists c', cids'. split; [done|].
   by econstructor; econstructor.
 Qed.
 
@@ -1173,7 +1174,10 @@ Lemma retag1_head_step fns σ x xbor pk T kind
   (BAR: ∃ c, c ∈ σ.(scs))
   (LOC: valid_location σ.(shp) σ.(sst) σ.(scs) x pk T)
   (WF: Wf σ) :
-  ∃ σ',
+  ∃ c' cids' h' α' nxtp',
+  σ.(scs) = c' :: cids' ∧
+  retag σ.(shp) σ.(sst) σ.(snp) σ.(scs) c' x kind (Reference pk T) = Some (h', α', nxtp') ∧
+  let σ' := mkState h' α' σ.(scs) nxtp' σ.(snc) in
   head_step fns (Retag (Place x xbor (Reference pk T)) kind) σ
             [RetagEvt x (Reference pk T) kind] #[☠] σ' [].
 Proof.
@@ -1181,7 +1185,7 @@ Proof.
   destruct cids as [|c cids']; [exfalso; move : BAR => [?]; apply not_elem_of_nil|].
   destruct (retag1_is_freeze_is_Some h α nxtp (c::cids') c x kind pk T) as [[[h' α'] nxtp'] Eq];
     [apply WF|by destruct kind..|done|].
-  exists (mkState h' α' (c::cids') nxtp' nxtc).
+  exists c, cids', h', α' , nxtp'. do 2 (split; [done|]).
   econstructor. { econstructor; eauto. } simpl.
   econstructor; eauto.
 Qed.
@@ -1193,3 +1197,10 @@ Proof.
   { eexists. split. econstructor; econstructor. by destruct σ. }
   destruct EE as [? [? ?]]. by subst.
 Qed. *)
+
+Lemma head_step_tstep fns
+  (K: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
+  e σ e' σ' ev efs :
+  head_step fns e σ ev e' σ' efs →
+  tstep fns (fill K e, σ) (fill K e', σ').
+Proof. intros ?. by econstructor; econstructor. Qed.

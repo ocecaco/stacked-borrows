@@ -1,6 +1,6 @@
-Require Import Coq.Program.Equality.
+(* Require Import Coq.Program.Equality. *)
 
-From stbor.lang Require Export defs steps_wf.
+From stbor.lang Require Import defs steps_wf.
 
 Set Default Proof Using "Type".
 
@@ -9,11 +9,19 @@ Ltac inv_head_step :=
   | H : to_val _ = Some _ |- _ => apply of_to_val in H
   | H : _ = of_val ?v |- _ =>
      is_var v; destruct v; first[discriminate H|injection H as H]
-  | H : head_step _ ?e _ _ _ _ _ |- _ =>
+  | H : head_step _ ?e _ _ _ _ _ |- _  =>
+     try (is_var e; fail 1); (* inversion yields many goals if [e] is a variable
+     and can thus better be avoided. *)
+     inversion H ; subst; clear H
+  | H : ectx_language.head_step ?e _ _ _ _ _ |- _  =>
      try (is_var e; fail 1); (* inversion yields many goals if [e] is a variable
      and can thus better be avoided. *)
      inversion H ; subst; clear H
   | H : mem_expr_step _ _ _ _ _ |- _ =>
+      inversion H ; subst; clear H
+  | H : pure_expr_step _ _ _ _ _ |- _ =>
+      inversion H ; subst; clear H
+  | H : bor_step _ _ _ _ _ _ _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
   end.
 
@@ -27,7 +35,25 @@ Ltac inv_tstep :=
 Section inv.
 Variable (fns: fn_env).
 Implicit Type (e: ectx_language.expr (bor_ectx_lang fns)).
+
 (** InitCall *)
+Lemma fill_init_call_decompose K e e' :
+  fill K e = InitCall e' →
+  K = [] ∧ e = InitCall e'.
+Proof.
+  revert e. induction K as [|Ki K IH]; [naive_solver|].
+  intros e EqK. destruct (IH _ EqK) as [_ EqKi].
+  by destruct Ki.
+Qed.
+
+Lemma tstep_init_call_inv e σ e' σ':
+  (InitCall e, σ) ~{fns}~> (e', σ') →
+  e' = EndCall e ∧ σ' = mkState σ.(shp) σ.(sst) (σ.(snc) :: σ.(scs)) σ.(snp) (S σ.(snc)).
+Proof.
+  intros ?. inv_tstep.
+  symmetry in Eq. apply fill_init_call_decompose in Eq as [??]. subst.
+  by inv_head_step.
+Qed.
 
 (** BinOp *)
 
@@ -93,9 +119,7 @@ Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
     as [[]|[[K' [? Eq']]|[v1 [K' [? [Eq' VAL]]]]]]; subst.
-  - clear Eq. simpl in HS. inv_head_step.
-    inversion ExprStep; subst.
-    split; [done|]. simpl. naive_solver.
+  - clear Eq. simpl in HS. inv_head_step. naive_solver.
   - apply fill_val in TM1. apply val_head_stuck in HS.
     rewrite /= HS in TM1. by destruct TM1.
   - apply fill_val in TM2. apply val_head_stuck in HS.
@@ -107,8 +131,9 @@ Lemma tstep_bin_op_red_r e1 σ1 e2 e2' σ2 op:
   (e2, σ1) ~{fns}~>* (e2', σ2) →
   (BinOp op e1 e2, σ1) ~{fns}~>* (BinOp op e1 e2', σ2).
 Proof.
-  intros T1 S2.
-  dependent induction S2 generalizing e2 σ1; first by constructor.
+  intros T1 S2. remember (e2, σ1) as x. remember (e2', σ2) as y.
+  revert x y S2 e2 σ1 Heqx Heqy.
+  induction 1; intros; simplify_eq; first by constructor.
   destruct y as [e0 σ0].
   etrans; last apply IHS2; [|eauto..]. apply rtc_once.
   clear -H T1.
@@ -128,20 +153,19 @@ Lemma tstep_bin_op_red_l e1 σ1 e1' σ1' e2 op:
   (e1, σ1) ~{fns}~>* (e1', σ1') →
   (BinOp op e1 e2, σ1) ~{fns}~>* (BinOp op e1' e2, σ1').
 Proof.
-  intros S1.
-  dependent induction S1 generalizing e1 σ1 e2; first by constructor.
-  destruct y as [e0 σ0].
+  intros S1. remember (e1, σ1) as x. remember (e1', σ1') as y.
+  revert x y S1 e1 σ1 e2 Heqx Heqy.
+  induction 1; intros; simplify_eq; first by constructor.
+  destruct y as [e σ].
   etrans; last apply IHS1; [|eauto..]. apply rtc_once.
   clear -H.
   rewrite (_: BinOp op e1 e2 = ectx_language.fill [BinOpLCtx op e2] e1);
     last done.
-  inversion_clear H; simpl in PRIM.
-  inversion_clear PRIM. subst.
+  inv_tstep.
   rewrite (_: BinOp op (ectx_language.fill K e2') e2 =
     ectx_language.fill [BinOpLCtx op e2] (ectx_language.fill K e2'));
     last done.
-  rewrite 2!fill_comp.
-  econstructor. econstructor; eauto.
+  rewrite 2!fill_comp. econstructor. econstructor; eauto.
 Qed.
 
 Lemma tstep_bin_op_red e1 σ1 e1' σ1' e2 e2' σ2' op:
@@ -177,7 +201,7 @@ Lemma tstep_copy_terminal e e' σ σ'
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_copy_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
-  - clear Eq. simpl in HS. inv_head_step; [by inversion ExprStep|].
+  - clear Eq. simpl in HS. inv_head_step.
     by exists l, lbor, T, v.
     (* TODO: about the state *)
   - apply fill_val in TM. apply val_head_stuck in HS.
