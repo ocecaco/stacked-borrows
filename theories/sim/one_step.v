@@ -85,3 +85,14 @@ Proof.
       case (decide (σt.(snc) ∈ dom (gset nat) (r_f ⋅ r).2))
         => [//|/not_elem_of_dom Eq1]. rewrite Eq1 in PRI. by inversion PRI. }
 Qed.
+
+Lemma sim_body_end_call fns fnt r n es et σs σt :
+  sim_body fns fnt r n es σs et σt →
+  sim_body fns fnt r n (EndCall es) σs (EndCall et) σt.
+Proof.
+  revert r n es et σs σt. pcofix CIH. rename r into R.
+  intros r n es et σs σt PR.
+  punfold PR. pfold. inversion PR; subst.
+  - constructor 1. admit.
+  - constructor 2. intros.
+Abort.
