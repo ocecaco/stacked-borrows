@@ -19,4 +19,5 @@ theories/sim/invariant.v
 theories/sim/local.v
 theories/sim/local_adequacy.v
 theories/sim/sflib.v
+theories/sim/one_step.v
 theories/opt/foo.v

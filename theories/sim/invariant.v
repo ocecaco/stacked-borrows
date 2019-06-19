@@ -79,8 +79,16 @@ Definition srel (r: resUR) (σs σt: state) : Prop :=
   ∀ (l: loc) st, σt.(shp) !! l = Some st →
   (∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st) ∨ (∃ (t: ptr_id), priv_loc r l t).
 
+
+Record wf_res (r: resUR) (σ: state) : Prop := {
+  wf_res_call_id:
+    ∀ (c: call_id), c ∈ dom (gset call_id) r.2 → (c < σ.(snc))%nat;
+  wf_res_ptr_id :
+    ∀ (t: ptr_id), t ∈ dom (gset ptr_id) r.1 → (t < σ.(snp))%nat;
+}.
+
 Definition wsat (r: resUR) (σs σt: state) : Prop :=
-  ptrmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
+  wf_res r σt ∧ ptrmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
 
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)
@@ -179,6 +187,13 @@ Lemma vrel_expr_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ v1 v2, vrel_expr r1 v1 v2 → vrel_expr r2 v1 v2.
 Proof.
   move => Le v1 v2 [? [? [? [? /(vrel_mono _ _ VAL Le) ?]]]]. do 2 eexists. eauto.
+Qed.
+
+Instance wf_res_proper : Proper ((≡) ==> (=) ==> iff) wf_res.
+Proof.
+  intros r1 r2 Eqr ???. subst.
+  split; intros [H1 H2]; (split; intros ? IN; [apply H1|apply H2]);
+    revert IN; apply dom_included; rewrite Eqr //.
 Qed.
 
 Instance ptrmap_inv_proper : Proper ((≡) ==> (=) ==> iff) ptrmap_inv.

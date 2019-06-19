@@ -64,6 +64,25 @@ Proof.
   revert vsl. induction xl=>/= vsl; inv_vec vsl=>//=v vsl. by rewrite -IHxl.
 Qed.
 
+Lemma subst_l_is_Some_length xl el e e' :
+  subst_l xl el e = Some e' → length xl = length el.
+Proof.
+  revert e' el. induction xl as [|x xl IH] => e' el; [by destruct el|].
+  destruct el as [|e1 el]; [done|].
+  rewrite /= /subst'. intros Eq. f_equal.
+  destruct (subst_l xl el e) as [e2|] eqn:Eqs; [|done]. simplify_option_eq.
+  by apply (IH _ _ Eqs).
+Qed.
+
+Lemma subst_l_nil_is_Some el e e' :
+  subst_l [] el e = Some e' → e' = e.
+Proof.
+  intros Eq.
+  have EqN: el = [].
+  { apply nil_length_inv. by rewrite -(subst_l_is_Some_length _ _ _ _ Eq). }
+  subst el. simpl in Eq. by simplify_eq.
+Qed.
+
 (** Evaluation contexts *)
 Inductive ectx_item :=
 (* | AppLCtx (el : list expr) *)
