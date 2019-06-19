@@ -7,8 +7,11 @@ CoInductive diverges
   (cfg: expr * config) : Prop :=
 | DivergeStep cfg' (STEP: step cfg cfg') (DIV: diverges step cfg') .
 
+(* TODO: we want to state that the terminal expression should be [value], but
+  that comes from the invariant that all functions return [value]'s, which is
+  not visible here. So we instead use [result]. *)
 Definition sim_expr_terminal (e1 e2: expr) :=
-  ∀ v2, to_value e2 = Some v2 → to_value e1 = Some v2.
+  ∀ v2, to_result e2 = Some v2 → to_result e1 = Some v2.
 Instance sim_expr_terminal_po : PreOrder sim_expr_terminal.
 Proof.
   constructor.
@@ -24,23 +27,22 @@ Notation SIM_CONFIG := (nat -> expr * state → expr * state → Prop)%type.
 Section sim.
 Variable (fns fnt: fn_env).
 
-Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state) : Prop := mkSimBase {
+Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
+  : Prop := mkSimBase {
   (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
   sim_stuck :
     stuck (Λ:= bor_lang fnt) eσ1_tgt.1 eσ1_tgt.2 → ∃ eσ2_src,
     eσ1_src ~{fns}~>* eσ2_src ∧ stuck (Λ:= bor_lang fns) eσ2_src.1 eσ2_src.2 ;
-  (* (2) If [eσ1_tgt] diverges, then [eσ1_src] diverges. *)
-  (* sim_diverges : diverges tstep eσ1_tgt → diverges tstep eσ1_src ; *)
-  (* (3) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
+  (* (2) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
   sim_terminal :
-    terminal eσ1_tgt.1 → ∃ eσ2_src,
-    eσ1_src ~{fns}~>* eσ2_src ∧ terminal eσ2_src.1 ∧ sim_expr_terminal eσ2_src.1 eσ1_tgt.1;
-  (* (4) If [eσ1_tgt] steps to [eσ2_tgt] with 1 step,
+    terminal eσ1_tgt.1 → ∃ eσ2_src, eσ1_src ~{fns}~>* eσ2_src ∧
+      terminal eσ2_src.1 ∧ sim_expr_terminal eσ2_src.1 eσ1_tgt.1 ;
+  (* (3) If [eσ1_tgt] steps to [eσ2_tgt] with 1 step,
        then exists [eσ2_src] s.t. [eσ1_src] steps to [eσ2_src] with * step. *)
   sim_step :
     ∀ eσ2_tgt, eσ1_tgt ~{fnt}~> eσ2_tgt → ∃ idx2 eσ2_src,
-      (eσ1_src ~{fns}~>+ eσ2_src \/ ((idx2 < idx1)%nat /\ eσ1_src = eσ2_src))
-      ∧ sim idx2 eσ2_src eσ2_tgt;
+      (eσ1_src ~{fns}~>+ eσ2_src ∨ ((idx2 < idx1)%nat ∧ eσ1_src = eσ2_src)) ∧
+      sim idx2 eσ2_src eσ2_tgt;
 }.
 
 (* Generator for the actual simulation *)
@@ -51,7 +53,7 @@ Definition _sim
 Lemma _sim_mono : monotone3 (_sim).
 Proof.
   intros idx1 eσ_src eσ_tgt r r' TS LE WF1 WF2.
-  destruct (TS WF1 WF2) as [SU (* DI *) TE ST]. repeat split; auto.
+  destruct (TS WF1 WF2) as [SU TE ST]. repeat split; auto.
   intros eσ2_tgt ONE. destruct (ST _ ONE) as (idx2 & eσ2_src & STEP1 & Hr).
   exists idx2, eσ2_src. split; [done|]. by apply LE.
 Qed.

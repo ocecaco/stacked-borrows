@@ -63,10 +63,10 @@ Hint Resolve behave_mon: paco.
 Definition init_expr := (Call #["main"] []).
 Definition init_state := (mkState ∅ ∅ [] O O).
 
-Definition term (prog:fn_env) (s:expr * state) (v:value): Prop :=
-  to_result s.1 = Some (ValR v).
+Definition term (prog:fn_env) (s:expr * state) (v:result): Prop :=
+  to_result s.1 = Some v.
 
-Definition behave_prog (prog:fn_env) (obs:@observation value): Prop :=
+Definition behave_prog (prog:fn_env) (obs:@observation result): Prop :=
   behave tstep term prog (init_expr, init_state) obs.
 
 (* TODO: move *)
@@ -90,6 +90,17 @@ Proof.
   induction m.
   - i. nia.
   - i. apply lt_le_S in H. inv H; eauto.
+Qed.
+
+Lemma stuck_terminal prog (eσ: expr * state):
+  stuck (Λ:=bor_lang prog) eσ.1 eσ.2 ↔ (∀ r, ¬ term prog eσ r) ∧ ∀ eσ', ¬ eσ ~{prog}~> eσ'.
+Proof.
+ split => [[NT NS]|[NT NS]]; split.
+ - rewrite /term. move => ?. by rewrite NT.
+ - move => eσ' ST. inversion ST. eapply (NS _ eσ'.1 eσ'.2); eauto.
+ - destruct (language.to_val eσ.1) as [v|] eqn:Eqv; [|done]. exfalso.
+   apply (NT v Eqv).
+ - intros ???? PRIM. apply (NS (e', σ')). by econstructor; eauto.
 Qed.
 
 Lemma adequacy
@@ -124,14 +135,13 @@ Proof.
     { admit. (* WF *) }
     clear SIM. intro SIM. inv SIM. inv MAT.
     + exploit sim_stuck; eauto.
-      { admit. (* property of stuck *) }
+      { by apply stuck_terminal. }
       i. des.
       pfold. econs; eauto.
-      admit. (* property of stuck *)
+      constructor 1; by apply stuck_terminal.
     + exploit sim_terminal; eauto. i. des.
       pfold. econs; eauto.
-      econs 2.
-      admit. (* property of terminal *)
+      econs 2. rename x2 into SE. by apply SE.
     + pclearbot. exploit sim_step; eauto. i. des.
       * inv x1; ss.
         exploit CIH; eauto. i.
