@@ -36,27 +36,9 @@ Section inv.
 Variable (fns: fn_env).
 Implicit Type (e: ectx_language.expr (bor_ectx_lang fns)).
 
-(** InitCall *)
-Lemma fill_init_call_decompose K e e' :
-  fill K e = InitCall e' →
-  K = [] ∧ e = InitCall e'.
-Proof.
-  revert e. induction K as [|Ki K IH]; [naive_solver|].
-  intros e EqK. destruct (IH _ EqK) as [_ EqKi].
-  by destruct Ki.
-Qed.
-
-Lemma tstep_init_call_inv e σ e' σ':
-  (InitCall e, σ) ~{fns}~> (e', σ') →
-  e' = EndCall e ∧ σ' = mkState σ.(shp) σ.(sst) (σ.(snc) :: σ.(scs)) σ.(snp) (S σ.(snc)).
-Proof.
-  intros ?. inv_tstep.
-  symmetry in Eq. apply fill_init_call_decompose in Eq as [??]. subst.
-  by inv_head_step.
-Qed.
+(** PURE STEP ----------------------------------------------------------------*)
 
 (** BinOp *)
-
 Lemma fill_bin_op_decompose K e op e1 e2:
   fill K e = BinOp op e1 e2 →
   K = [] ∧ e = BinOp op e1 e2 ∨
@@ -75,7 +57,7 @@ Proof.
   - subst K. right. by exists r1, (Ki :: K').
 Qed.
 
-Lemma tstep_bin_op_left_non_terminal op e1 e2 e' σ σ'
+Lemma tstep_bin_op_left_non_terminal_inv op e1 e2 e' σ σ'
   (STEP: (BinOp op e1 e2, σ) ~{fns}~> (e', σ'))
   (NT: ¬ terminal e1):
   ∃ e1', (e1, σ) ~{fns}~> (e1', σ') ∧ e' = BinOp op e1' e2.
@@ -92,7 +74,7 @@ Proof.
   - by rewrite Eq' -fill_comp.
 Qed.
 
-Lemma tstep_bin_op_right_non_terminal op e1 e2 e' σ σ'
+Lemma tstep_bin_op_right_non_terminal_inv op e1 e2 e' σ σ'
   (STEP: (BinOp op e1 e2, σ) ~{fns}~> (e', σ'))
   (TM: terminal e1) (NT: ¬ terminal e2):
   ∃ e2', (e2, σ) ~{fns}~> (e2', σ') ∧ e' = BinOp op e1 e2'.
@@ -111,7 +93,7 @@ Proof.
   - by rewrite Eq' -fill_comp -(of_to_result _ _ Eqv1) /=.
 Qed.
 
-Lemma tstep_bin_op_terminal op e1 e2 e' σ σ'
+Lemma tstep_bin_op_terminal_inv op e1 e2 e' σ σ'
   (STEP: (BinOp op e1 e2, σ) ~{fns}~> (e', σ'))
   (TM1: terminal e1) (TM2: terminal e2):
   σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(shp) op l1 l2 l ∧ e' = (#[l%S])%E.
@@ -178,8 +160,73 @@ Proof.
   - clear S1. by eapply tstep_bin_op_red_r.
 Qed.
 
-(** Copy *)
+(** MEM STEP -----------------------------------------------------------------*)
 
+(** InitCall *)
+Lemma fill_init_call_decompose K e e' :
+  fill K e = InitCall e' →
+  K = [] ∧ e = InitCall e'.
+Proof.
+  revert e. induction K as [|Ki K IH]; [naive_solver|].
+  intros e EqK. destruct (IH _ EqK) as [_ EqKi].
+  by destruct Ki.
+Qed.
+
+Lemma tstep_init_call_inv e σ e' σ':
+  (InitCall e, σ) ~{fns}~> (e', σ') →
+  e' = EndCall e ∧ σ' = mkState σ.(shp) σ.(sst) (σ.(snc) :: σ.(scs)) σ.(snp) (S σ.(snc)).
+Proof.
+  intros ?. inv_tstep.
+  symmetry in Eq. apply fill_init_call_decompose in Eq as [??]. subst.
+  by inv_head_step.
+Qed.
+
+(** EndCall *)
+Lemma fill_end_call_decompose K e e':
+  fill K e = EndCall e' →
+  K = [] ∧ e = EndCall e' ∨
+  (∃ K', K = K' ++ [EndCallCtx] ∧ fill K' e = e').
+Proof.
+  revert e e'.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e' EqK. right.
+  destruct (IH _ _ EqK) as [[? _]|[K0 [? Eq0]]].
+  - subst. simpl in *. destruct Ki; try done.
+    simpl in EqK. simplify_eq. exists []. naive_solver.
+  - subst K. by exists (Ki :: K0).
+Qed.
+
+Lemma tstep_end_call_non_terminal_inv e e' σ σ'
+  (STEP: (EndCall e, σ) ~{fns}~> (e', σ'))
+  (NT: ¬ terminal e):
+  ∃ e1', (e, σ) ~{fns}~> (e1', σ') ∧ e' = EndCall e1'.
+Proof.
+  inv_tstep.
+  rewrite (_: EndCall e =  ectx_language.fill [EndCallCtx] e) in Eq; [|done].
+  apply expr_terminal_False in NT.
+  destruct (step_by_val _ _ _ _ _ _ _ _ _ Eq NT HS) as [K'' Eq'].
+  rewrite Eq' -fill_comp in Eq.
+  have Eq'' := fill_inj _ _ _ Eq.
+  eexists. split.
+  - econstructor. econstructor; [exact Eq''|..|exact HS]. eauto.
+  - by rewrite Eq' -fill_comp.
+Qed.
+
+Lemma tstep_end_call_terminal_inv v e' σ σ'
+  (STEP: (EndCall (Val v), σ) ~{fns}~> (e', σ')) :
+  e' = Val v ∧ ∃ c cids, σ.(scs) = c :: cids ∧
+  σ' = mkState σ.(shp) σ.(sst) cids σ.(snp) σ.(snc).
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_end_call_decompose _ _ _ Eq)
+    as [[]|[K' [? Eq']]]; subst.
+  - clear Eq. simpl in HS. inv_head_step. naive_solver.
+  - apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + eexists. rewrite /ectx_language.fill /= Eq' //.
+    + by rewrite /= HS in Eq1'.
+Qed.
+
+(** Copy *)
 Lemma fill_copy_decompose K e e':
   fill K e = Copy e' →
   K = [] ∧ e = Copy e' ∨ (∃ K', K = K' ++ [CopyCtx] ∧ fill K' e = e').
@@ -193,9 +240,9 @@ Proof.
   - subst K. by exists (Ki :: K0).
 Qed.
 
-Lemma tstep_copy_terminal e e' σ σ'
+Lemma tstep_copy_terminal_inv e e' σ σ'
   (STEP: (Copy e, σ) ~{fns}~> (e', σ')) (TM: terminal e) :
-  ∃ l ltag T v , e = Place l ltag T ∧ e' = (Val v) ∧
+  ∃ l ltag T v, e = Place l ltag T ∧ e' = (Val v) ∧
     read_mem l (tsize T) σ.(shp) = Some v
     (* not true: the stacked borrows may change, ∧ σ' = σ *).
 Proof.
@@ -203,12 +250,12 @@ Proof.
   destruct (fill_copy_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
   - clear Eq. simpl in HS. inv_head_step.
     by exists l, lbor, T, v.
-    (* TODO: about the state *)
+    (* TODO: about the state σ' *)
   - apply fill_val in TM. apply val_head_stuck in HS.
     rewrite /= HS in TM. by destruct TM.
 Qed.
 
-Lemma tstep_copy_non_terminal e e' σ σ'
+Lemma tstep_copy_non_terminal_inv e e' σ σ'
   (STEP: (Copy e, σ) ~{fns}~> (e', σ')) (NT: ¬ terminal e):
   ∃ e1, (e, σ) ~{fns}~> (e1, σ') ∧ e' = Copy e1.
 Proof.

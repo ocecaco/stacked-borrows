@@ -23,7 +23,7 @@ Proof.
   by rewrite !elem_of_dom Eq.
 Qed.
 
-Lemma sim_body_InitCall fns fnt r n es et σs σt :
+Lemma sim_body_init_call fns fnt r n es et σs σt :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
   let r'  : resUR := (∅, {[σt.(snc) := to_callStateR (csOwned ∅)]}) in
@@ -66,8 +66,10 @@ Proof.
   { intros c cs.
     rewrite /= (comm _ (r_f.2 ⋅ r.2)) -insert_singleton_op //.
     case (decide (c = σt.(snc))) => [->|NE].
-    rewrite lookup_insert.
-    - admit.
+    - rewrite lookup_insert. intros Eqcs%Some_equiv_inj.
+      inversion Eqcs as [?? Eq| |]; subst. inversion Eq as [?? Eq2|] ; subst.
+      split; [by left|]. intros ? IN. exfalso. move : IN.
+      by rewrite -Eq2 elem_of_empty.
     - rewrite lookup_insert_ne // => /CINV. destruct cs as [[]| |]; [|done..].
       intros [? Ht]. split; [by right|]. intros ????. rewrite right_id. by apply Ht. }
   { destruct SREL as (?&?&?&?&SREL).
@@ -82,4 +84,4 @@ Proof.
       apply (lt_irrefl σt.(snc)), WF.
       case (decide (σt.(snc) ∈ dom (gset nat) (r_f ⋅ r).2))
         => [//|/not_elem_of_dom Eq1]. rewrite Eq1 in PRI. by inversion PRI. }
-Admitted.
+Qed.
