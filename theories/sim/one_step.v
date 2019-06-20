@@ -88,12 +88,10 @@ Proof.
         => [//|/not_elem_of_dom Eq1]. rewrite Eq1 in PRI. by inversion PRI. }
 Qed.
 
-Lemma fill_stuck fns K (e : ectx_language.expr (bor_ectx_lang fns)) σ :
+Lemma stuck_fill fns K (e : ectx_language.expr (bor_ectx_lang fns)) σ :
   stuck e σ → stuck (fill K e) σ.
 Proof.
-  revert e. induction K as [|Ki K]; [done|]. intros e ST. simpl.
-  apply IHK. clear -ST. destruct ST as [NT NS].
-  destruct Ki; (split; [done| by apply irreducible_fill]).
+  intros ST. split; [by apply fill_not_val, ST|apply irreducible_fill; apply ST].
 Qed.
 
 Lemma sim_body_end_call fns fnt r n es et σs σt :
@@ -103,7 +101,7 @@ Proof.
   revert r n es et σs σt. pcofix CIH. rename r into R.
   intros r n es et σs σt PR.
   punfold PR. pfold. inversion PR; subst.
-  { constructor 1. by apply (fill_stuck _ [EndCallCtx]). }
+  { constructor 1. by apply (stuck_fill _ [EndCallCtx]). }
   constructor 2. intros.
   destruct (STEP _ VALID WSAT WFS WFT) as [TE ST]. split; [by intros []|].
   constructor 1. intros.
