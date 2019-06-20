@@ -407,8 +407,13 @@ Lemma initcall_head_step fns σ e :
   head_step fns (InitCall e) σ [InitCallEvt c] (EndCall e) σ' [].
 Proof. by econstructor; econstructor. Qed.
 
-Lemma endcall_head_step fns (σ: state) c v
-  (WF: Wf σ)
+Lemma end_call_head_step fns (σ: state) c cids v :
+  σ.(scs) = c :: cids →
+  let σ' := mkState σ.(shp) σ.(sst) cids σ.(snp) σ.(snc) in
+  head_step fns (EndCall #v) σ [EndCallEvt c v] #v σ' [].
+Proof. intros. by econstructor; econstructor. Qed.
+
+Lemma end_call_head_step' fns (σ: state) c v
   (BAR: c ∈ σ.(scs)) :
   ∃ c' cids', σ.(scs) = c' :: cids' ∧
   let σ' := mkState σ.(shp) σ.(sst) cids' σ.(snp) σ.(snc) in
@@ -416,8 +421,7 @@ Lemma endcall_head_step fns (σ: state) c v
 Proof.
   destruct σ as [h α cids nxtp nxtc]; simpl in *.
   destruct cids as [|c' cids']; [exfalso; move : BAR; apply not_elem_of_nil|].
-  exists c', cids'. split; [done|].
-  by econstructor; econstructor.
+  exists c', cids'. split; [done|]. by apply end_call_head_step.
 Qed.
 
 Lemma unsafe_action_is_Some_weak {A} (GI: A → nat → Prop)

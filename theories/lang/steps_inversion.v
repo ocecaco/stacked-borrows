@@ -212,17 +212,20 @@ Proof.
   - by rewrite Eq' -fill_comp.
 Qed.
 
-Lemma tstep_end_call_terminal_inv v e' σ σ'
-  (STEP: (EndCall (Val v), σ) ~{fns}~> (e', σ')) :
-  e' = Val v ∧ ∃ c cids, σ.(scs) = c :: cids ∧
+Lemma tstep_end_call_terminal_inv vr e' σ σ'
+  (TERM: terminal vr)
+  (STEP: (EndCall vr, σ) ~{fns}~> (e', σ')) :
+  ∃ v, to_result vr = Some (ValR v) ∧ e' = Val v ∧
+  ∃ c cids, σ.(scs) = c :: cids ∧
   σ' = mkState σ.(shp) σ.(sst) cids σ.(snp) σ.(snc).
 Proof.
+  destruct TERM as [v Eqvr].
   inv_tstep. symmetry in Eq.
   destruct (fill_end_call_decompose _ _ _ Eq)
     as [[]|[K' [? Eq']]]; subst.
   - clear Eq. simpl in HS. inv_head_step. naive_solver.
   - apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
-    + eexists. rewrite /ectx_language.fill /= Eq' //.
+    + by eexists.
     + by rewrite /= HS in Eq1'.
 Qed.
 

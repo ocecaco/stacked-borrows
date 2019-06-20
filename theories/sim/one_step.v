@@ -30,8 +30,10 @@ Lemma sim_body_init_call fns fnt r n es et σs σt :
   sim_body fns fnt (r ⋅ r') n (EndCall es) σs' (EndCall et) σt' →
   sim_body fns fnt r n (InitCall es) σs (InitCall et) σt.
 Proof.
-  intros σs' σt' r' SIM. pfold. apply sim_local_body_step.
-  intros. exists (EndCall es), σs', (r ⋅ r').
+  intros σs' σt' r' SIM. pfold.
+  constructor 2. intros. split; [by intros []|]. constructor 1.
+  intros.
+  exists (EndCall es), σs', (r ⋅ r').
   destruct (tstep_init_call_inv _ _ _ _ _ STEPT).
   subst e_tgt' σ_tgt'.
   have STEPS: (InitCall es, σs) ~{fns}~> (EndCall es, σs').
@@ -86,6 +88,14 @@ Proof.
         => [//|/not_elem_of_dom Eq1]. rewrite Eq1 in PRI. by inversion PRI. }
 Qed.
 
+Lemma fill_stuck fns K (e : ectx_language.expr (bor_ectx_lang fns)) σ :
+  stuck e σ → stuck (fill K e) σ.
+Proof.
+  revert e. induction K as [|Ki K]; [done|]. intros e ST. simpl.
+  apply IHK. clear -ST. destruct ST as [NT NS].
+  destruct Ki; (split; [done| by apply irreducible_fill]).
+Qed.
+
 Lemma sim_body_end_call fns fnt r n es et σs σt :
   sim_body fns fnt r n es σs et σt →
   sim_body fns fnt r n (EndCall es) σs (EndCall et) σt.
@@ -93,6 +103,14 @@ Proof.
   revert r n es et σs σt. pcofix CIH. rename r into R.
   intros r n es et σs σt PR.
   punfold PR. pfold. inversion PR; subst.
-  - constructor 1. admit.
-  - constructor 2. intros.
+  { constructor 1. by apply (fill_stuck _ [EndCallCtx]). }
+  constructor 2. intros.
+  destruct (STEP _ VALID WSAT WFS WFT) as [TE ST]. split; [by intros []|].
+  constructor 1. intros.
+  case (decide (terminal et)) => [Tet|NTet].
+  - destruct (tstep_end_call_terminal_inv _ _ _ _ _ Tet STEPT)
+      as (vt & Eqvt & Eqet & c & cids & EQC & EQS). subst.
+    destruct (TE Tet) as
+      (es' & σs1 & r1 & STEPS1 & Tes1 & VALID1 & WSAT1 & WFS1 & RREL1).
+    exists es, (mkState σs1.(shp) σs1.(sst) cids σs1.(snp) σs1.(snc)).
 Abort.

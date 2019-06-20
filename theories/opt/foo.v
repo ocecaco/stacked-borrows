@@ -42,5 +42,5 @@ Proof.
   subst es et. clear els elt.
 
   (* InitCall *)
-  exists 1%nat. apply sim_body_InitCall.
+  exists 1%nat. apply sim_body_init_call.
 Abort.
