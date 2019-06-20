@@ -29,7 +29,7 @@ Notation SIM_CONFIG := (nat → expr * state → expr * state → Prop)%type.
 Section sim.
 Variable (fns fnt: fn_env).
 
-(* We use step-indexing to account for divergence. TODO: explain more. *)
+(* We use index to account for divergence. TODO: explain more. *)
 Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
   : Prop := mkSimBase {
   (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
