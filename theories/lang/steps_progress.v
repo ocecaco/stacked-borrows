@@ -347,7 +347,7 @@ Proof.
   destruct (memory_read_is_Some σ.(sst) σ.(scs) l bor (tsize T));[|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
   do 2 eexists. do 2 (split; [done|]). econstructor; econstructor; [done..|].
-  move => l1 bor1 /elem_of_list_lookup [i Eqi].
+  move => l1 [t1|//] /elem_of_list_lookup [i Eqi].
   apply (state_wf_mem_tag _ WF (l +ₗ i) l1).
   destruct (read_mem_values _ _ _ _ RM) as [Eq1 Eq2].
   rewrite Eq2; [done|]. rewrite -Eq1. by eapply lookup_lt_Some.
@@ -379,7 +379,7 @@ Qed.
 Lemma write_head_step fns (σ: state) l bor T v
   (WF: Wf σ)
   (LEN: length v = tsize T)
-  (LOCVAL: v <<b σ.(snp))
+  (LOCVAL: v <<t σ.(snp))
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(shp))
   (STK: ∀ m stk, (m < tsize T)%nat → σ.(sst) !! (l +ₗ m) = Some stk →
         access1_write_pre σ.(scs) stk bor) :
@@ -1129,10 +1129,6 @@ Proof.
   - clear. intros h x _ _ _ _ _ Ts Eq0 _ SUM _ _.
     destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. by rewrite shift_loc_0_nat Eq0.
-(*   - clear. intros h x l tag _ _ _ _ _ Ts Eq0 _ SUM _ _.
-    destruct (SUM Ts O) as [i [Eq ?]]; [by apply sub_sum_types_O_elem_of|].
-    move : Eq. by rewrite shift_loc_0_nat Eq0.
- *)
   - clear. intros h x n α nxtp cids c kind Ts IH Eq0 REF SUM WF.
     destruct (SUM Ts O) as [i [Eq [Ge0 Lt]]]; [by apply sub_sum_types_O_elem_of|].
     move : Eq. rewrite shift_loc_0_nat Eq0. intros Eq. inversion Eq. subst.

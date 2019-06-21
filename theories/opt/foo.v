@@ -35,7 +35,7 @@ Definition foo_t : function :=
   Free "y"
   .
 
-Lemma foo_sim_fun fns fnt : sim_fun fns fnt foo_s foo_t.
+Lemma foo_sim_fun fs ft : ⊨{fs,ft} foo_s ≤ᶠ foo_t.
 Proof.
   move => r es et els elt σs σt _ _ _
           /subst_l_nil_is_Some ? /subst_l_nil_is_Some ?.

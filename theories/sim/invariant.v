@@ -3,6 +3,8 @@ From stbor.sim Require Export cmra.
 
 Set Default Proof Using "Type".
 
+(* TODO: define viewshift *)
+
 (** Public scalar relation *)
 (* No case for poison *)
 Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
@@ -89,6 +91,7 @@ Record wf_res (r: resUR) (σ: state) : Prop := {
 Definition wsat (r: resUR) (σs σt: state) : Prop :=
   (* Wellformedness *)
   Wf σs ∧ Wf σt ∧ wf_res r σt ∧ ✓ r ∧
+  (* Invariants *)
   ptrmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
 
 (** Value relation for function arguments/return values *)

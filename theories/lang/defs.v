@@ -7,7 +7,7 @@ Class Wellformed A := Wf : A → Prop.
 Existing Class Wf.
 
 Definition wf_mem_tag (h: mem) (nxtp: ptr_id) :=
-  ∀ l l' bor, h !! l = Some (ScPtr l' bor) → bor <b nxtp.
+  ∀ l l' pid, h !! l = Some (ScPtr l' (Tagged pid)) → (pid < nxtp)%nat.
 
 Definition stack_item_included (stk: stack) (nxtp: ptr_id) (nxtc: call_id) :=
   ∀ si, si ∈ stk → match si.(tg) with

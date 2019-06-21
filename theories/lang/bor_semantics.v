@@ -330,20 +330,20 @@ Definition reborrow h α cids l (old_tag: tag) T (kind: ref_kind)
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
-Definition retag_ref h α cids (clk: ptr_id) l (old_tag: tag) T
+Definition retag_ref h α cids (nxtp: ptr_id) l (old_tag: tag) T
   (kind: ref_kind) (protector: option call_id)
   : option (tag * stacks * ptr_id) :=
   match tsize T with
   | O => (* Nothing to do for zero-sized types *)
-      Some (old_tag, α, clk)
+      Some (old_tag, α, nxtp)
   | _ =>
       let new_tag := match kind with
                      | RawRef _ => Untagged
-                     | _ => Tagged clk
+                     | _ => Tagged nxtp
                      end in
       (* reborrow old_tag with new_tag *)
       α' ← reborrow h α cids l old_tag T kind new_tag protector;
-      Some (new_tag, α', S clk)
+      Some (new_tag, α', S nxtp)
   end.
 
 Definition adding_protector (kind: retag_kind) (c: call_id) : option call_id :=
@@ -352,12 +352,12 @@ Definition adding_protector (kind: retag_kind) (c: call_id) : option call_id :=
 (* This implements EvalContextExt::retag *)
 (* Assumption: ct ∈ cids *)
 Equations retag
-  (h: mem) α (clk: ptr_id) (cids: call_id_stack) (ct: call_id) (x: loc) (kind: retag_kind) T :
+  (h: mem) α (nxtp: ptr_id) (cids: call_id_stack) (ct: call_id) (x: loc) (kind: retag_kind) T :
   option (mem * stacks * ptr_id) :=
-  retag h α clk cids ct x kind (FixedSize _)         := Some (h, α, clk) ;
-  retag h α clk cids ct x kind (Union _)          := Some (h, α, clk) ;
-  retag h α clk cids ct x kind (Unsafe T)         := retag h α clk cids ct x kind T ;
-  retag h α clk cids ct x kind (Reference pk Tr) with h !! x :=
+  retag h α nxtp cids ct x kind (FixedSize _)         := Some (h, α, nxtp) ;
+  retag h α nxtp cids ct x kind (Union _)          := Some (h, α, nxtp) ;
+  retag h α nxtp cids ct x kind (Unsafe T)         := retag h α nxtp cids ct x kind T ;
+  retag h α nxtp cids ct x kind (Reference pk Tr) with h !! x :=
   { | Some (ScPtr l otag) :=
         let qualify : option (ref_kind * option call_id) :=
           match pk, kind with
@@ -375,20 +375,20 @@ Equations retag
           end in
         match qualify with
         | Some (rkind, protector) =>
-            bac ← retag_ref h α cids clk l otag Tr rkind protector ;
+            bac ← retag_ref h α cids nxtp l otag Tr rkind protector ;
             Some (<[x := ScPtr l bac.1.1]>h, bac.1.2, bac.2)
-        | None => Some (h, α, clk)
+        | None => Some (h, α, nxtp)
         end ;
     | _ := None } ;
-  retag h α clk cids ct x kind (Product Ts)       := visit_LR h α clk x Ts
+  retag h α nxtp cids ct x kind (Product Ts)       := visit_LR h α nxtp x Ts
     (* left-to-right visit to retag *)
-    where visit_LR h α (clk: ptr_id) (x: loc) (Ts: list type)
+    where visit_LR h α (nxtp: ptr_id) (x: loc) (Ts: list type)
       : option (mem * stacks * ptr_id) :=
-      { visit_LR h α clk x []         := Some (h, α, clk) ;
-        visit_LR h α clk x (T :: Ts)  :=
-          hac ← retag h α clk cids ct x kind T ;
+      { visit_LR h α nxtp x []         := Some (h, α, nxtp) ;
+        visit_LR h α nxtp x (T :: Ts)  :=
+          hac ← retag h α nxtp cids ct x kind T ;
           visit_LR hac.1.1 hac.1.2 hac.2 (x +ₗ (tsize T)) Ts } ;
-  retag h α clk cids ct x kind (Sum Ts) with h !! x :=
+  retag h α nxtp cids ct x kind (Sum Ts) with h !! x :=
   { | Some (ScInt i) :=
         if decide (O ≤ i < length Ts)
         then (* the discriminant is well-defined, visit with the
@@ -397,30 +397,30 @@ Equations retag
         else None
         where visit_lookup (Ts: list type) (i: nat) : option (mem * stacks * ptr_id) :=
         { visit_lookup [] i             := None ;
-          visit_lookup (T :: Ts) O      := retag h α clk cids ct (x +ₗ 1) kind T ;
+          visit_lookup (T :: Ts) O      := retag h α nxtp cids ct (x +ₗ 1) kind T ;
           visit_lookup (T :: Ts) (S i)  := visit_lookup Ts i } ;
     | _ := None }
   .
 
-Definition tag_included (tg: tag) (clk: ptr_id) : Prop :=
+Definition tag_included (tg: tag) (nxtp: ptr_id) : Prop :=
   match tg with
-  | Tagged t => (t < clk)%nat
+  | Tagged t => (t < nxtp)%nat
   | _ => True
   end.
-Infix "<b" := tag_included (at level 60, no associativity).
-Definition tag_values_included (v: value) clk :=
-  ∀ l tg, ScPtr l tg ∈ v → tg <b clk.
-Infix "<<b" := tag_values_included (at level 60, no associativity).
+Infix "<t" := tag_included (at level 60, no associativity).
+Definition tag_values_included (v: value) nxtp :=
+  ∀ l tg, ScPtr l tg ∈ v → tg <t nxtp.
+Infix "<<t" := tag_values_included (at level 60, no associativity).
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
 Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
   event → mem → stacks → call_id_stack → ptr_id → call_id → Prop :=
 (* | SysCallIS id :
-    bor_step h α β clk (SysCallEvt id) h α β clk *)
+    bor_step h α β nxtp (SysCallEvt id) h α β nxtp *)
 (* This implements EvalContextExt::new_allocation. *)
 | AllocIS x T :
-    (* Tagged clk is the first borrow of the variable x,
+    (* Tagged nxtp is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     bor_step h α cids nxtp nxtc
               (AllocEvt x (Tagged nxtp) T) h
@@ -429,13 +429,13 @@ Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
 | CopyIS α' l lbor T vl
     (ACC: memory_read α cids l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
-    (BOR: vl <<b nxtp):
+    (BOR: vl <<t nxtp):
     bor_step h α cids nxtp nxtc (CopyEvt l lbor T vl) h α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_written. *)
 | WriteIS α' l lbor T vl
     (ACC: memory_written α cids l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
-    (BOR: vl <<b nxtp) :
+    (BOR: vl <<t nxtp) :
     bor_step h α cids nxtp nxtc (WriteEvt l lbor T vl) h α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor T

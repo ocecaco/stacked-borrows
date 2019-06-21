@@ -51,7 +51,7 @@ Qed.
 
 Lemma wf_mem_tag_mono h :
   Proper ((≤)%nat ==> impl) (wf_mem_tag h).
-Proof. move => ??? WF ??[?|] /WF /=; [lia|done]. Qed.
+Proof. move => ??? WF ??? /WF /=. lia. Qed.
 
 (** Alloc *)
 Lemma alloc_step_wf (σ σ': state) e e' h0 l bor T:
@@ -330,7 +330,7 @@ Lemma copy_step_wf σ σ' e e' h0 l bor T vl :
   bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                     (CopyEvt l bor T vl)
                   σ'.(shp) σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
-  Wf σ → Wf σ' ∧ vl <<b σ'.(snp).
+  Wf σ → Wf σ' ∧ vl <<t σ'.(snp).
 Proof.
   destruct σ as [h α cids nxtp nxtc].
   destruct σ' as [h' α' cids' nxtp' nxtc']. simpl.
@@ -401,7 +401,7 @@ Proof.
       { rewrite /shift_loc -Eq1. destruct l0; simpl. f_equal. by lia. }
       case (decide (0 ≤ l0.2 - l.2 < length vl)) => [[Le Lt]|NLe].
       * rewrite Eql0 -(Z2Nat.id _ Le) IN.
-        intros ?%elem_of_list_lookup_2. by eapply BOR.
+        intros Eq%elem_of_list_lookup_2. apply (BOR _ _ Eq).
         rewrite -(Nat2Z.id (length vl)) -Z2Nat.inj_lt; [done|lia..].
       * rewrite OUT; [by apply (state_wf_mem_tag _ WF)|].
         move => i Lt Eq. rewrite Eql0 in Eq. apply shift_loc_inj in Eq.
@@ -478,7 +478,7 @@ Qed.
 
 Lemma retag_ref_nxtp_bor_mono h α cids nxtp l bor T kind bar bor' α' nxtp' :
   retag_ref h α cids nxtp l bor T kind bar = Some (bor', α', nxtp') →
-  bor <b nxtp → bor' <b nxtp'.
+  bor <t nxtp → bor' <t nxtp'.
 Proof.
   rewrite /retag_ref.
   case tsize => ?; [by intros; simplify_eq|].
@@ -602,7 +602,7 @@ Qed.
 
 Lemma for_each_grant_stack_item α nxtc cids nxtp l n bor new α'
   (PR: match new.(protector) with Some c => (c < nxtc)%nat | _ => True end)
-  (TG: new.(tg) <b nxtp) :
+  (TG: new.(tg) <t nxtp) :
   for_each α l n false (λ stk, grant stk bor new cids) = Some α' →
   wf_stack_item α nxtp nxtc → wf_stack_item α' nxtp nxtc.
 Proof.
@@ -615,7 +615,7 @@ Qed.
 
 Lemma reborrowN_wf_stack α nxtc cids nxtp l n old new pm bar α'
   (PR: match bar with Some c => (c < nxtc)%nat | _ => True end)
-  (TG: new <b nxtp) :
+  (TG: new <t nxtp) :
   reborrowN α cids l n old new pm bar = Some α' →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
@@ -715,7 +715,7 @@ Proof.
 Qed.
 
 Lemma reborrow_wf_stack h α nxtc cids nxtp l old T kind new bar α'
-  (INCL: new <b nxtp)
+  (INCL: new <t nxtp)
   (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end) :
   reborrow h α cids l old T kind new bar = Some α' →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
@@ -746,11 +746,12 @@ Lemma retag_ref_wf_stack h α nxtc cids nxtp x l old T kind bar bor' α' nxtp'
 Proof.
   intros RE WF1 WF2 WF3. split; last split.
   { symmetry; apply dom_map_insert_is_Some; by eexists. }
-  { intros  x' l' bor1. case (decide (x' = x)) => ?; [subst x'|].
+  { intros  x' l' t'. case (decide (x' = x)) => ?; [subst x'|].
     - rewrite lookup_insert => ?. simplify_eq.
-      by eapply retag_ref_nxtp_bor_mono; eauto.
+      move : RE => /retag_ref_nxtp_bor_mono LT. apply LT.
+      destruct old; [by eapply WF1|done].
     - rewrite lookup_insert_ne; [|done].
-      move => /WF1. apply tag_value_included_trans.
+      move => /WF1. apply (tag_value_included_trans (Tagged t')).
       by eapply retag_ref_nxtp_mono. }
   move : RE WF2 WF3.
   rewrite /retag_ref. case tsize eqn:Eq; [by intros; simplify_eq|].
@@ -938,26 +939,3 @@ Proof.
   inversion InstrStep; simplify_eq; simpl; try done; [lia|].
   by eapply retag_nxtp_mono.
 Qed.
-
-(* Definition future_protector (nxtc nxtc': protectors) :=
-  ∀ c b, nxtc !! c = Some b → ∃ b', nxtc' !! c = Some b' ∧ (b = false → b' = false).
-
-Instance future_state_preorder: PreOrder future_protector.
-Proof.
-  constructor.
-  - intros ???. naive_solver.
-  - move => ??? H1 H2 ?? /H1 [? [/H2 ?]]. naive_solver.
-Qed.
-
-Lemma head_step_protectors_mono σ σ' e e' obs efs :
-  head_step e σ obs e' σ' efs → future_protector σ.(cst).(snc) σ'.(cst).(snc).
-Proof.
-  intros HS. inversion HS; [done|]. simplify_eq.
-  inversion InstrStep; simplify_eq; simpl; try done.
-  - intros c b Eq. exists b. split; [|done]. rewrite lookup_insert_ne; [done|].
-    intros ?. subst c. apply (elem_of_dom_2 (D:= gset nat)) in Eq.
-    move : Eq. apply is_fresh.
-  - intros c' b Eq. case (decide (c' = call)) => ?; [subst c'|].
-    + exists false. by rewrite lookup_insert.
-    + exists b. by rewrite lookup_insert_ne.
-Qed. *)
