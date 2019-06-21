@@ -1,4 +1,4 @@
-From stbor.lang Require Export lang.
+From stbor.lang Require Export defs.
 From stbor.sim Require Export cmra.
 
 Set Default Proof Using "Type".
@@ -79,7 +79,6 @@ Definition srel (r: resUR) (σs σt: state) : Prop :=
   ∀ (l: loc) st, σt.(shp) !! l = Some st →
   (∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st) ∨ (∃ (t: ptr_id), priv_loc r l t).
 
-
 Record wf_res (r: resUR) (σ: state) : Prop := {
   wf_res_call_id:
     ∀ (c: call_id), c ∈ dom (gset call_id) r.2 → (c < σ.(snc))%nat;
@@ -88,7 +87,9 @@ Record wf_res (r: resUR) (σ: state) : Prop := {
 }.
 
 Definition wsat (r: resUR) (σs σt: state) : Prop :=
-  wf_res r σt ∧ ptrmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
+  (* Wellformedness *)
+  Wf σs ∧ Wf σt ∧ wf_res r σt ∧ ✓ r ∧
+  ptrmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
 
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)

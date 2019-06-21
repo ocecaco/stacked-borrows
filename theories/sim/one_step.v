@@ -23,6 +23,14 @@ Proof.
   by rewrite !elem_of_dom Eq.
 Qed.
 
+(* Lemma sim_body_head_step fns fnt r n
+  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
+  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt))) es et σs σt
+  r' es' et' σs' σt' :
+  sim_body fns fnt r n (fill Ks es') σs' (fill Kt et') σt' →
+  sim_body fns fnt r n (fill Ks es) σs (fill Kt et) σt.
+Proof. *)
+
 Lemma sim_body_init_call fns fnt r n es et σs σt :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
@@ -40,32 +48,35 @@ Proof.
   { by eapply (head_step_tstep _ []), initcall_head_step. }
   have FRESH: (r_f ⋅ r).2 !! σt.(snc) = None.
   { destruct ((r_f ⋅ r).2 !! σt.(snc)) as [cs|] eqn:Eqcs; [|done].
-    exfalso. destruct WSAT as [WF _].
-    by apply (lt_irrefl σt.(snc)), WF, (elem_of_dom_2 _ _ _ Eqcs). }
+    exfalso. destruct WSAT as (WFS & WFT & WFR & _).
+    by apply (lt_irrefl σt.(snc)), WFR, (elem_of_dom_2 _ _ _ Eqcs). }
   have LOCAL: (r_f ⋅ r ⋅ ε, ε) ~l~> (r_f ⋅ r ⋅ r', r').
   { apply prod_local_update_2.
     rewrite /= right_id (comm _ (_ ⋅ _)) -insert_singleton_op //.
     by apply alloc_singleton_local_update. }
-  exists n. split; last split; last split; last split; last split; cycle 3.
-  { (* WF src *)    by apply (tstep_wf _ _ _ STEPS WFS). }
-  { (* WF tgt *)    by apply (tstep_wf _ _ _ STEPT WFT). }
+  exists n. split; last split; cycle 2.
   { (* sim cont *)  by punfold SIM. }
   { (* STEP src *)  left. by apply tc_once. }
-  { (* VALID new *)
-    rewrite assoc.
+  (* WSAT new *)
+  destruct WSAT as (WFS & WFT & WFR & VALID & PINV & CINV & SREL).
+  rewrite assoc.
+  split; last split; last split; last split; last split; last split.
+  { (* WF src *)    by apply (tstep_wf _ _ _ STEPS WFS). }
+  { (* WF tgt *)    by apply (tstep_wf _ _ _ STEPT WFT). }
+  { (* WF res *)
+    constructor.
+    - intros c.
+      rewrite /= comm -insert_singleton_op // dom_insert
+              elem_of_union elem_of_singleton.
+      move => [->|/(wf_res_call_id _ _ WFR)]; lia.
+    - intros ?. rewrite /= right_id. apply WFR. }
+  { (* VALID *)
     apply (local_update_discrete_valid_frame (r_f ⋅ r) ε r'); [|done].
     by rewrite right_id. }
-  (* WSAT new *)
-  destruct WSAT as (WF & PINV & CINV & SREL).
-  rewrite assoc. split; last split; last split.
-  { constructor.
-    - intros c.
-      rewrite /= (comm _ (r_f.2 ⋅ r.2)) -insert_singleton_op // dom_insert
-              elem_of_union elem_of_singleton.
-      move => [->|/(wf_res_call_id _ _ WF)]; lia.
-    - intros ?. rewrite /= right_id. apply WF. }
-  { move => t k h /=. rewrite right_id. apply PINV. }
-  { intros c cs.
+  { (* ptrmap_inv *)
+    move => t k h /=. rewrite right_id. apply PINV. }
+  { (* cmap_inv *)
+    intros c cs.
     rewrite /= (comm _ (r_f.2 ⋅ r.2)) -insert_singleton_op //.
     case (decide (c = σt.(snc))) => [->|NE].
     - rewrite lookup_insert. intros Eqcs%Some_equiv_inj.
@@ -74,7 +85,8 @@ Proof.
       by rewrite -Eq2 elem_of_empty.
     - rewrite lookup_insert_ne // => /CINV. destruct cs as [[]| |]; [|done..].
       intros [? Ht]. split; [by right|]. intros ????. rewrite right_id. by apply Ht. }
-  { destruct SREL as (?&?&?&?&SREL).
+  { (* srel *)
+    destruct SREL as (?&?&?&?&SREL).
     do 2 (split; [done|]). do 2 (split; [simpl; by f_equal|]).
     move => l s /= /SREL [[ss [? PUB]]|[t [c [T [h [PRI [? ?]]]]]]]; [left|right].
     - exists ss. split; [done|]. move : PUB. rewrite /arel /=.
@@ -83,7 +95,7 @@ Proof.
     - exists t, c, T, h. rewrite /= right_id. split; [|done].
       rewrite (comm _ (r_f.2 ⋅ r.2)) -insert_singleton_op //.
       rewrite lookup_insert_ne // => Eqc. subst c.
-      apply (lt_irrefl σt.(snc)), WF.
+      apply (lt_irrefl σt.(snc)), WFR.
       case (decide (σt.(snc) ∈ dom (gset nat) (r_f ⋅ r).2))
         => [//|/not_elem_of_dom Eq1]. rewrite Eq1 in PRI. by inversion PRI. }
 Qed.
@@ -103,12 +115,12 @@ Proof.
   punfold PR. pfold. inversion PR; subst.
   { constructor 1. by apply (stuck_fill _ [EndCallCtx]). }
   constructor 2. intros.
-  destruct (STEP _ VALID WSAT WFS WFT) as [TE ST]. split; [by intros []|].
+  destruct (STEP _ WSAT) as [TE ST]. split; [by intros []|].
   constructor 1. intros.
   case (decide (terminal et)) => [Tet|NTet].
   - destruct (tstep_end_call_terminal_inv _ _ _ _ _ Tet STEPT)
       as (vt & Eqvt & Eqet & c & cids & EQC & EQS). subst.
     destruct (TE Tet) as
-      (es' & σs1 & r1 & STEPS1 & Tes1 & VALID1 & WSAT1 & WFS1 & RREL1).
+      (es' & σs1 & r1 & STEPS1 & Tes1 & WSAT1).
     exists es, (mkState σs1.(shp) σs1.(sst) cids σs1.(snp) σs1.(snc)).
 Abort.
