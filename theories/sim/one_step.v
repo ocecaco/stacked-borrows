@@ -132,19 +132,69 @@ Proof.
     clear ST. intros vt Eqvt.
     destruct (fill_result _ Kt et) as [Tt ?]; [by eexists|].
     subst Kt. simpl in *.
-    destruct (TM _ Eqvt) as (vs' & σs' & r' & SS' & WSAT' & idx' & CONT).
+    destruct (TM _ Eqvt) as (vs' & σs' & r' & idx' & SS' & WSAT' & CONT).
     punfold CONT.
-    have STEPK := (fill_tstep fs Ks _ _ _ _ SS').
+    have STEPK: (fill (Λ:=bor_ectxi_lang fs) Ks es, σs)
+                ~{fs}~>* (fill (Λ:=bor_ectxi_lang fs) Ks vs', σs').
+    { apply (fill_tstep fs Ks es). destruct SS' as [|[? Eq]]. by apply tc_rtc.
+      clear -Eq. simplify_eq. constructor 1. }
     have NT3:= never_stuck_step _ _ _ _ _ STEPK NT.
     destruct (CONT NT3 _ WSAT') as [TM' ST'].
-    destruct (TM' vt) as (vs2 & σs2 & r2 & SS2 & ?);
+    destruct (TM' vt) as (vs2 & σs2 & r2 & idx2 & SS2 & ?);
       [by apply to_of_result|].
-    exists vs2, σs2, r2. split; [|done]. etrans; eauto. }
+    exists vs2, σs2, r2, idx2. split; [|done].
+    destruct SS2 as [|[Lt Eq]].
+    - left. eapply tc_rtc_l; eauto.
+    - clear -SS' Eq Lt. inversion Eq as [Eq1]. clear Eq. subst. rewrite Eq1.
+      clear vs2 Eq1. destruct SS' as [SS'|[? SS']].
+      + left. by apply fill_tstep_tc.
+      + simplify_eq. right. split; [|done]. lia. }
   (* et makes a step *)
   inversion_clear ST as [|Ks1 Kt1].
   { (* step into *)
-    constructor 1. intros.
-    admit. }
+   destruct (to_result et) as [vt|] eqn:Eqvt.
+    - (* et is value *)
+      have ? : et = of_result vt. { symmetry. by apply of_to_result. }
+      subst et. clear Eqvt.
+      destruct (TM _ eq_refl) as (vs' & σs' & r' & idx' & SS' & WSAT' & CONT').
+      clear TM.
+      have STEPK: (fill (Λ:=bor_ectxi_lang fs) Ks es, σs)
+                  ~{fs}~>* (fill (Λ:=bor_ectxi_lang fs) Ks vs', σs').
+      { apply (fill_tstep fs Ks es). destruct SS' as [|[? Eq]]. by apply tc_rtc.
+        clear -Eq. simplify_eq. constructor 1. }
+      have NT3:= never_stuck_step _ _ _ _ _ STEPK NT.
+      punfold CONT'.
+      destruct (CONT' NT3 _ WSAT') as [TM' ST']. clear CONT' WSAT' STEP.
+      inversion ST' as [|Ks1 Kt1].
+      + constructor 1. intros.
+        destruct (STEP _ _ STEPT) as (es2 & σs2 & r2 & idx2 & SS2 & WSAT2 & CONT2).
+        exists es2, σs2, r2, idx2. split; last split; [|done|].
+        { clear -SS2 SS' STEPK.
+          destruct SS2 as [|[]]; [|destruct SS' as [|[]]].
+          - left. eapply tc_rtc_l; eauto.
+          - simplify_eq. left. by apply fill_tstep_tc.
+          - simplify_eq. right. split; [|done]. lia. }
+        { pclearbot. left. eapply paco7_mon_bot; eauto. }
+      + apply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
+            Ks1 Kt1 fid el_tgt); [done|].
+        intros FAT. destruct (STEPOVER FAT) as
+          (els & σs3 & rc3 & rv3 & SS3 & FAS3 & WSAT3 & VREL3 & CONT3).
+        exists els, σs3, rc3, rv3. split.
+        { clear -SS3 STEPK. etrans; eauto. }
+        do 3 (split; [done|]).
+        intros r_f4 vs4 vt4 σs4 σt4 VREL4.
+        destruct (CONT3 _ _ _ σs4 σt4 VREL4) as [idx4 CONT4].
+        exists idx4. pclearbot. left.  eapply paco7_mon_bot; eauto.
+    - (* et makes a step *)
+      constructor 1. intros.
+      destruct (fill_tstep_inv _ _ _ _ _ _ Eqvt STEPT) as [et2 [? STEP2]].
+      subst et'.
+      destruct (STEP _ _ STEP2) as (es' & σs' & r' & idx' & SS' & WSAT' & CONT').
+      exists (fill Ks es'), σs', r', idx'. split; last split; [|done|].
+      + clear -SS'. destruct SS' as [|[]].
+        * left. by apply fill_tstep_tc.
+        * simplify_eq. right. split; [|done]. lia.
+      + pclearbot. right. by apply CIH. }
   { (* step over call *)
     apply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|].
@@ -157,7 +207,7 @@ Proof.
     intros. destruct (CONT _ _ _ σs' σt' VRET) as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH. }
-Abort.
+Qed.
 
 (* Lemma sim_body_end_call fns fnt r n es et σs σt :
   sim_body fns fnt r n es σs et σt →

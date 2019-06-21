@@ -55,6 +55,32 @@ Proof.
   inv_tstep. rewrite 2!fill_comp. econstructor. by econstructor.
 Qed.
 
+Lemma fill_tstep_inv K e1' σ1 e2 σ2 :
+  to_result e1' = None →
+  (fill K e1', σ1) ~{fns}~> (e2, σ2) →
+  ∃ e2', e2 = fill K e2' ∧ (e1', σ1) ~{fns}~> (e2', σ2).
+Proof.
+  revert e1' e2 σ2.
+  induction K as [|Ki K IH] ; [naive_solver|]; simpl; intros e1' e2 σ2 NT ST.
+  destruct (IH _ _ _ (fill_item_no_result Ki _ NT) ST) as [e2' [Eq' ST']].
+  inversion ST'; subst. simpl in PRIM.
+  apply fill_step_inv in PRIM as [e3 [? PRIM]]; [|done]. subst.
+  exists e3. split; [done|]. by econstructor.
+Qed.
+
+Lemma fill_tstep_tc K e σ e' σ' :
+  (e, σ) ~{fns}~>+ (e', σ') →
+  (fill K e, σ) ~{fns}~>+ (fill K e', σ').
+Proof.
+  intros ST. remember (e, σ) as x. remember (e', σ') as y.
+  revert x y ST e σ Heqx Heqy.
+  induction 1 as [|? [e1 σ1] ? S1 ? IH]; intros e σ H1 H2; subst.
+  - constructor 1. inv_tstep.
+    rewrite 2!fill_comp. econstructor. by econstructor.
+  - econstructor 2; last by apply IH. inv_tstep.
+    rewrite 2!fill_comp. econstructor. by econstructor.
+Qed.
+
 (** PURE STEP ----------------------------------------------------------------*)
 
 (** BinOp *)

@@ -6,14 +6,14 @@ Set Default Proof Using "Type".
 
 Inductive tag_kind := tkUnique | tkPub.
 (* Ex() + Ag() *)
-Definition tagKindR := csumR (exclR unitC) (agreeR unitC).
+Definition tagKindR := csumR (exclR unitO) (agreeR unitO).
 
 Definition to_tagKindR (tk: tag_kind) : tagKindR :=
   match tk with tkUnique => Cinl (Excl ()) | tkPub => Cinr (to_agree ()) end.
 
 Inductive call_state := csOwned (T: gset ptr_id) | csPub.
 (* Ex(ptr_id) + Ag() *)
-Definition callStateR := csumR (exclR (gsetC ptr_id)) (agreeR unitC).
+Definition callStateR := csumR (exclR (gsetO ptr_id)) (agreeR unitO).
 
 Definition to_callStateR (cs: call_state) : callStateR :=
   match cs with csOwned T => Cinl (Excl T) | csPub => Cinr (to_agree ()) end.

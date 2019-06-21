@@ -73,9 +73,11 @@ Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
     (* if tgt is terminal *)
     ∀ vt (TERM: to_result et = Some vt),
       (* then src can get terminal *)
-      ∃ vs' σs' r', (es, σs) ~{fns}~>* (of_result vs', σs') ∧
+      ∃ vs' σs' r' idx',
+        ((es, σs) ~{fns}~>+ (of_result vs', σs') ∨
+         ((idx' < idx)%nat ∧ (of_result vs', σs') = (es, σs))) ∧
         (* and re-establish wsat *)
-        wsat (r_f ⋅ r') σs' σt ∧ ∃ idx', Φ r' idx' vs' σs' vt σt ;
+        wsat (r_f ⋅ r') σs' σt ∧ Φ r' idx' vs' σs' vt σt ;
   sim_local_body_step :
       _sim_local_body_step r_f sim_local_body r idx es σs et σt Φ
 }.

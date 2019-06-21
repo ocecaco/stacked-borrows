@@ -282,11 +282,11 @@ Instance result_inhabited : Inhabited result := populate (ValR [☠%S]).
 Instance state_Inhabited : Inhabited state.
 Proof. do 2!econstructor; exact: inhabitant. Qed.
 
-Canonical Structure locC := leibnizC loc.
-Canonical Structure scalarC := leibnizC scalar.
-Canonical Structure resultC := leibnizC result.
-Canonical Structure exprC := leibnizC expr.
-Canonical Structure stateC := leibnizC state.
+Canonical Structure locC := leibnizO loc.
+Canonical Structure scalarC := leibnizO scalar.
+Canonical Structure resultC := leibnizO result.
+Canonical Structure exprC := leibnizO expr.
+Canonical Structure stateC := leibnizO state.
 
 (** Basic properties about the language *)
 
