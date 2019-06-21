@@ -27,14 +27,6 @@ Proof.
   apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
 Qed.
 
-(* Lemma sim_body_head_step fns fnt r n
-  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
-  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt))) es et σs σt
-  r' es' et' σs' σt' :
-  sim_body fns fnt r n (fill Ks es') σs' (fill Kt et') σt' →
-  sim_body fns fnt r n (fill Ks es) σs (fill Kt et) σt.
-Proof. *)
-
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
@@ -43,12 +35,11 @@ Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   r ⊨{n,fs,ft} (InitCall es, σs) ≤ (InitCall et, σt) : Φ.
 Proof.
   intros σs' σt1 r' SIM. pfold.
-  constructor 2. intros. split; [by intros []|]. constructor 1.
-  intros.
+  intros NT. intros. split; [by intros []|]. constructor 1. intros.
   exists (EndCall es), σs', (r ⋅ r').
   destruct (tstep_init_call_inv _ _ _ _ _ STEPT). subst et' σt'.
   have STEPS: (InitCall es, σs) ~{fs}~> (EndCall es, σs').
-  { by eapply (head_step_tstep _ []), initcall_head_step. }
+  { by eapply (head_step_fill_tstep _ []), initcall_head_step. }
   have FRESH: (r_f ⋅ r).2 !! σt.(snc) = None.
   { destruct ((r_f ⋅ r).2 !! σt.(snc)) as [cs|] eqn:Eqcs; [|done].
     exfalso. destruct WSAT as (WFS & WFT & WFR & _).
@@ -103,11 +94,70 @@ Proof.
         => [//|/not_elem_of_dom Eq1]. rewrite Eq1 in PRI. by inversion PRI. }
 Qed.
 
-Lemma stuck_fill fns K (e : ectx_language.expr (bor_ectx_lang fns)) σ :
-  stuck e σ → stuck (fill K e) σ.
+Lemma never_stuck_fill_inv fs
+  (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
+  never_stuck fs (fill K e) σ → never_stuck fs e σ.
 Proof.
-  intros ST. split; [by apply fill_not_val, ST|apply irreducible_fill; apply ST].
+  intros NT e' σ' STEP. specialize (NT _ _ (fill_tstep fs K _ _ _ _ STEP)).
+  destruct (to_result e') as [v'|] eqn:Eq'; [left; by eexists|right].
+  destruct NT as [NT|RED].
+  { exfalso. move : NT => [?]. apply (fill_no_result _ K) in Eq'. by rewrite Eq'. }
+  move : RED. by apply reducible_fill.
 Qed.
+
+Lemma never_stuck_step fs e σ e' σ':
+  (e, σ) ~{fs}~>* (e', σ') → never_stuck fs e σ → never_stuck fs e' σ'.
+Proof.
+  intros ST. remember (e, σ) as x. remember (e', σ') as y.
+  revert x y ST e σ e' σ' Heqx Heqy.
+  induction 1 as [|? [e1 σ1] ? S1 ? IH];
+    intros e σ e' σ' H1 H2; subst; simplify_eq; [done|].
+  intros NT. eapply IH; eauto. clear IH ST e' σ'.
+  intros e' σ' STEP. apply NT. etrans; [by apply rtc_once|exact STEP].
+Qed.
+
+Lemma sim_body_bind fs ft r n
+  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
+  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft))) es et σs σt Φ :
+  r ⊨{n,fs,ft} (es, σs) ≤ (et, σt)
+    : (λ r' n' es' σs' et' σt',
+        r' ⊨{n',fs,ft} (fill Ks es', σs') ≤ (fill Kt et', σt') : Φ) →
+  r ⊨{n,fs,ft} (fill Ks es, σs) ≤ (fill Kt et, σt) : Φ.
+Proof.
+  revert r n Ks Kt es et σs σt Φ. pcofix CIH.
+  intros r1 n Ks Kt es et σs σt Φ SIM. pfold. punfold SIM. intros NT ??.
+  have NT2 := never_stuck_fill_inv _ _ _ _ NT.
+  destruct (SIM NT2 _ WSAT) as [TM ST]. clear SIM. split.
+  { (* et is terminal *)
+    clear ST. intros vt Eqvt.
+    destruct (fill_result _ Kt et) as [Tt ?]; [by eexists|].
+    subst Kt. simpl in *.
+    destruct (TM _ Eqvt) as (vs' & σs' & r' & SS' & WSAT' & idx' & CONT).
+    punfold CONT.
+    have STEPK := (fill_tstep fs Ks _ _ _ _ SS').
+    have NT3:= never_stuck_step _ _ _ _ _ STEPK NT.
+    destruct (CONT NT3 _ WSAT') as [TM' ST'].
+    destruct (TM' vt) as (vs2 & σs2 & r2 & SS2 & ?);
+      [by apply to_of_result|].
+    exists vs2, σs2, r2. split; [|done]. etrans; eauto. }
+  (* et makes a step *)
+  inversion_clear ST as [|Ks1 Kt1].
+  { (* step into *)
+    constructor 1. intros.
+    admit. }
+  { (* step over call *)
+    apply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
+            (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|].
+    intros FAT.
+    destruct (STEPOVER FAT) as (els & σ1s & rc &rv & SS & FAS & WSAT1 & FAV & CONT).
+    clear STEPOVER.
+    exists els, σ1s, rc, rv. split.
+    { rewrite fill_app. by apply fill_tstep. }
+    do 3 (split; [done|]).
+    intros. destruct (CONT _ _ _ σs' σt' VRET) as [idx' CONT2]. clear CONT.
+    exists idx'. rewrite 2!fill_app.
+    pclearbot. right. by apply CIH. }
+Abort.
 
 (* Lemma sim_body_end_call fns fnt r n es et σs σt :
   sim_body fns fnt r n es σs et σt →

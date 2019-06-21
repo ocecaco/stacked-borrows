@@ -371,6 +371,29 @@ Canonical Structure bor_lang fns := LanguageOfEctx (bor_ectx_lang fns).
 
 Export bor_lang.
 
+(* TODO: move to Iris *)
+Lemma stuck_fill fns K (e : ectx_language.expr (bor_ectx_lang fns)) σ :
+  stuck e σ → stuck (fill K e) σ.
+Proof.
+  intros ST. split; [by apply fill_not_val, ST|apply irreducible_fill; apply ST].
+Qed.
+
+Lemma fill_result fns K (e : ectx_language.expr (bor_ectx_lang fns)) :
+  is_Some (to_result (fill K e)) → is_Some (to_result e) ∧ K = [].
+Proof.
+  revert e. induction K as [|Ki K IH]; intros e; [done|].
+  move => /= /IH [Eq ?]. subst. split.
+  - by eapply fill_item_result.
+  - destruct Eq. by destruct Ki.
+Qed.
+
+Lemma fill_no_result fns K (e : ectx_language.expr (bor_ectx_lang fns))  :
+  to_result e = None → to_result (fill K e) = None.
+Proof.
+  revert e. induction K as [|Ki K IH]; intros; [done|].
+  by apply IH, fill_item_no_result.
+Qed.
+
 (* Allocate a place of type [T] and initialize it with a value [v] *)
 Definition new_place T (v: expr) : expr :=
    let: "x" := Alloc T in "x" <- v ;; "x".

@@ -1197,10 +1197,3 @@ Proof.
   { eexists. split. econstructor; econstructor. by destruct σ. }
   destruct EE as [? [? ?]]. by subst.
 Qed. *)
-
-Lemma head_step_tstep fns
-  (K: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
-  e σ e' σ' ev efs :
-  head_step fns e σ ev e' σ' efs →
-  tstep fns (fill K e, σ) (fill K e', σ').
-Proof. intros ?. by econstructor; econstructor. Qed.

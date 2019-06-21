@@ -5,6 +5,9 @@ From stbor.lang Require Import defs.
 
 Set Default Proof Using "Type".
 
+Definition never_stuck fs e σ :=
+  ∀ e' σ', (e, σ) ~{fs}~>* (e', σ') → terminal e' ∨ reducible (Λ:=bor_lang fs)  e' σ'.
+
 Section local.
 Context {A: ucmraT}.
 Variable (wsat: A → state → state → Prop).
@@ -20,7 +23,7 @@ Definition rrel (vrel: A → expr → expr → Prop) (r: A) (es et: expr) : Prop
     | _, _ => False
     end.
 
-Notation PRED := (A → nat → expr → state → expr → state → Prop)%type.
+Notation PRED := (A → nat → result → state → result → state → Prop)%type.
 Notation SIM := (A → nat → expr → state → expr → state → PRED → Prop)%type.
 
 Implicit Type (Φ: PRED).
@@ -68,37 +71,27 @@ Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop := {
   sim_local_body_terminal :
     (* if tgt is terminal *)
-    terminal et →
+    ∀ vt (TERM: to_result et = Some vt),
       (* then src can get terminal *)
-      ∃ es' σs' r', (es, σs) ~{fns}~>* (es', σs') ∧
-        terminal es' ∧
+      ∃ vs' σs' r', (es, σs) ~{fns}~>* (of_result vs', σs') ∧
         (* and re-establish wsat *)
-        wsat (r_f ⋅ r') σs' σt ∧ Wf σs' ∧
-        (* and the returned values are related *)
-        rrel vrel r' es' et ∧ ∃ idx', Φ r' idx' es' σs' et σt ;
+        wsat (r_f ⋅ r') σs' σt ∧ ∃ idx', Φ r' idx' vs' σs' vt σt ;
   sim_local_body_step :
       _sim_local_body_step r_f sim_local_body r idx es σs et σt Φ
 }.
 
-Inductive _sim_local_body (sim_local_body : SIM)
+Definition _sim_local_body (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop :=
-(* If src is stuck, then anything is related *)
-| sim_local_body_stuck
-    (STUCK: stuck (Λ:=bor_lang fns) es σs)
-(* Otherwise, either tgt is terminal or makes 1 step, src can make some steps *)
-| sim_local_body_not_stuck
-    (STEP: ∀ r_f
-      (* for any frame r_f that is compatible with our resource r 
-        has world satisfaction *)
-      (WSAT: wsat (r_f ⋅ r) σs σt),
-      sim_local_body_base r_f sim_local_body r idx es σs et σt Φ).
+  (* assuming that src cannot get stuck *)
+  ∀ (NEVER_STUCK: never_stuck fns es σs)
+    (* for any frame r_f that is compatible with our resource r has world satisfaction *)
+    r_f (WSAT: wsat (r_f ⋅ r) σs σt),
+    sim_local_body_base r_f sim_local_body r idx es σs et σt Φ.
 
 Lemma sim_local_body_mono : monotone7 _sim_local_body.
 Proof.
-  intros r idx es σs et σt Φ R R' SIM LE; inversion SIM; subst.
-  { by eapply sim_local_body_stuck; eauto. }
-  eapply sim_local_body_not_stuck. intros.
-  destruct (STEP _ WSAT) as [TM ST]. split; [naive_solver|].
+  intros r idx es σs et σt Φ R R' SIM LE NT r_f WSAT.
+  destruct (SIM NT _ WSAT) as [TM ST]. split; [naive_solver|].
   inversion ST; subst.
   - constructor 1. naive_solver.
   - econstructor 2; eauto. naive_solver.
@@ -122,7 +115,7 @@ Definition sim_local_fun (fn_src fn_tgt : function) : Prop :=
           | FunV xl e => subst_l xl el_tgt e = Some et
           end),
     ∃ idx, sim_local_body r idx (InitCall es) σs (InitCall et) σt
-                          (λ r _ es _ et _, vrel r es et).
+                          (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)).
 
 Definition sim_local_funs : Prop :=
   ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
