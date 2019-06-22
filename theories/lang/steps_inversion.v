@@ -205,6 +205,33 @@ Proof.
   - clear S1. by eapply tstep_bin_op_red_r.
 Qed.
 
+(* Let *)
+
+Lemma fill_let_decompose K e (x: binder) e1 e2 :
+  fill K e = (let: x := e1 in e2)%E →
+  K = [] ∧ e = (let: x := e1 in e2)%E ∨
+  (∃ K', K = K' ++ [LetCtx x e2] ∧ fill K' e = e1).
+Proof.
+  revert e e1. induction K as [|Ki K IH]; [naive_solver|].
+  intros e e1 EqK. simpl in *. right.
+  destruct (IH _ _ EqK) as [[? EqKi]|[K' [EqK' Eq]]]; subst; simpl in *.
+  - exists []. simpl. destruct Ki; try done. simpl in EqK. by inversion EqK.
+  - by exists (Ki :: K').
+Qed.
+
+Lemma tstep_let_inv (x: string) e1 e2 e' σ σ'
+  (TERM: terminal e1)
+  (STEP: ((let: x := e1 in e2)%E, σ) ~{fns}~> (e', σ')) :
+  e' = subst x e1 e2  ∧ σ' = σ.
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_let_decompose _ _ _ _ _ Eq)
+    as [[]|[K' [? Eq']]]; subst.
+  - clear Eq. simpl in HS. by inv_head_step.
+  - apply result_head_stuck in HS. simpl in *. apply fill_val in TERM as [? EqT].
+    by rewrite EqT in HS.
+Qed.
+
 (** MEM STEP -----------------------------------------------------------------*)
 
 (** InitCall *)
