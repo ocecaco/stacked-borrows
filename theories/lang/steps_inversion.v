@@ -232,6 +232,31 @@ Proof.
     by rewrite EqT in HS.
 Qed.
 
+(* Ref *)
+
+Lemma fill_ref_decompose K e e' :
+  fill K e = (& e')%E →
+  K = [] ∧ e = (& e')%E ∨ (∃ K', K = K' ++ [RefCtx] ∧ fill K' e = e').
+Proof.
+  revert e. induction K as [|Ki K IH]; [naive_solver|].
+  intros e EqK. right.
+  destruct (IH _ EqK) as [[? EqKi]|[K' [EqK' Eq]]]; subst; simpl in *.
+  - exists []. simpl. destruct Ki; try done. simpl in EqK. by inversion EqK.
+  - by exists (Ki :: K').
+Qed.
+
+Lemma tstep_ref_inv l tg T e' σ σ'
+  (STEP: ((& (Place l tg T))%E, σ) ~{fns}~> (e', σ')) :
+  e' = #[ScPtr l tg]%E ∧ σ' = σ.
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_ref_decompose _ _ _ Eq)
+    as [[]|[K' [? Eq']]]; subst.
+  - clear Eq. simpl in HS. by inv_head_step.
+  - apply result_head_stuck, (fill_no_result _ K') in HS.
+    by rewrite Eq' in HS.
+Qed.
+
 (** MEM STEP -----------------------------------------------------------------*)
 
 (** InitCall *)

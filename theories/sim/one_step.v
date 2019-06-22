@@ -223,6 +223,21 @@ Proof.
   split; [done|]. by left.
 Qed.
 
+Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
+  r ⊨{n,fs,ft} (#[ScPtr l tgs], σs) ≤ (#[ScPtr l tgt], σt) : Φ →
+  r ⊨{n,fs,ft} ((& (Place l tgs Ts))%E, σs) ≤ ((& (Place l tgt Tt))%E, σt) : Φ.
+Proof.
+  intros SIM. pfold.
+  intros NT r_f WSAT. split; [done|]. constructor 1. intros.
+  destruct (tstep_ref_inv _ _ _ _ _ _ _ STEPT). subst et' σt'.
+  have ?: is_Some (σs.(shp) !! l).
+  { clear -WSAT STEPT. inv_tstep. admit. }
+  exists #[ScPtr l tgs]%E, σs, r, n. split.
+  { left. constructor 1. eapply (head_step_fill_tstep _ []).
+    by econstructor; econstructor. }
+  split; [done|]. by left.
+Admitted.
+
 (* Lemma sim_body_end_call fns fnt r n es et σs σt :
   sim_body fns fnt r n es σs et σt →
   sim_body fns fnt r n (EndCall es) σs (EndCall et) σt.
