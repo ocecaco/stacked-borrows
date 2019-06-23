@@ -61,7 +61,7 @@ Proof.
   intros r1 n Ks Kt es et σs σt Φ SIM. pfold. punfold SIM. intros NT ??.
   have NT2 := never_stuck_fill_inv _ _ _ _ NT.
   destruct (SIM NT2 _ WSAT) as [TM ST]. clear SIM. split.
-  { (* et is terminal *)
+  { (* Kt[et] is a value *)
     clear ST. intros vt Eqvt.
     destruct (fill_result _ Kt et) as [Tt ?]; [by eexists|].
     subst Kt. simpl in *.
@@ -82,9 +82,9 @@ Proof.
       clear vs2 Eq1. destruct SS' as [SS'|[? SS']].
       + left. by apply fill_tstep_tc.
       + simplify_eq. right. split; [|done]. lia. }
-  (* et makes a step *)
+  (* Kt[et] makes a step *)
   inversion_clear ST as [|Ks1 Kt1].
-  { (* step into *)
+  { (* step into Kt[et] *)
    destruct (to_result et) as [vt|] eqn:Eqvt.
     - (* et is value *)
       have ? : et = of_result vt. { symmetry. by apply of_to_result. }
@@ -128,7 +128,7 @@ Proof.
         * left. by apply fill_tstep_tc.
         * simplify_eq. right. split; [|done]. lia.
       + pclearbot. right. by apply CIH. }
-  { (* step over call *)
+  { (* Kt[et] has a call, and we step over the call *)
     apply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|].
     intros FAT.
