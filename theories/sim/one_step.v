@@ -228,31 +228,60 @@ Lemma sim_body_end_call fs ft r n vs vt σs σt :
   (* and any private location w.r.t to the current call id ownership must be related *)
   (∀ c, hd_error σt.(scs) = Some c →
     ∀ T, r.2 !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
-    ∀ h, r.1 !! t ≡  Some (to_tagKindR tkUnique, h) → ∀ l, l ∈ dom (gset loc) h →
-    σs.(shp) !! l = σt.(shp) !! l) →
+    ∀ h, r.1 !! t ≡  Some (to_tagKindR tkUnique, h) →
+    ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
+    ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st) →
   r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≤ (EndCall (Val vt), σt) :
     (λ r _ vs _ vt _, vrel_expr r (of_result vs) (of_result vt)).
 Proof.
+  intros VREL Hr. pfold. intros NT r_f WSAT. split; [done|].
+  constructor 1. intros et' σt' STEPT.
+  destruct (tstep_end_call_inv ft (Val vt) et' σt σt')
+    as (vt' & Eqvt & ? & c & cids & Eqc & Eqs); [by eexists|done|].
+  subst. simpl in Eqvt. symmetry in Eqvt. simplify_eq.
+  set σs' := (mkState σs.(shp) σs.(sst) cids σs.(snp) σs.(snc)).
+  have STEPS: (EndCall #vs, σs) ~{fs}~> ((#vs)%E, σs').
+  { destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs & ?).
+    eapply (head_step_fill_tstep _ []).
+    econstructor. by econstructor. econstructor. by rewrite Eqcs. }
+  exists (Val vs), σs'.
+  set r2' := match (r.2 !! c) with
+             | Some (Cinl (Excl T)) => <[c := to_callStateR csPub]> r.2
+             | _ => r.2
+             end.
+  exists (r.1, r2'), (S n). split; last split.
+  { left. by constructor 1. }
+  { destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+     split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - apply (local_update_discrete_valid_frame _ _ _ VALID).
+      destruct (r.2 !! c) as [[[T|]| |]|] eqn:Eqr2; rewrite /r2'; [|by destruct r..].
+      rewrite (_: r_f ⋅ (r.1, <[c:=to_callStateR csPub]> r.2) =
+              (r_f.1 ⋅ r.1, r_f.2 ⋅ <[c:=to_callStateR csPub]> r.2)); last first.
+      { rewrite -pair_op. by destruct r_f. }
+      rewrite (_: (r_f ⋅ r, r) = ((r_f.1 ⋅ r.1, r_f.2 ⋅ r.2), (r.1, r.2))); last first.
+      { rewrite -pair_op. by destruct r_f, r. }
+      apply prod_local_update_2.
+      rewrite (cmap_insert_op_r r_f.2 r.2 c T); [|apply VALID|exact Eqr2].
+      apply (insert_local_update _ _ _
+              (to_callStateR (csOwned T)) (to_callStateR (csOwned T)));
+        [|done|by apply exclusive_local_update].
+      apply cmap_lookup_op_r; [apply VALID|exact Eqr2].
+    - admit.
+    - admit.
+    - admit. }
+  left. pfold. split; last first.
+  { constructor 1. intros vt' σt' STEPT'. exfalso.
+    have ?: to_result (Val vt) = None.
+    { apply (tstep_reducible_not_result ft). naive_solver. } done. }
+  move => ? /= Eqvt. symmetry in Eqvt. simplify_eq.
+  exists (ValR vs). do 2 eexists. exists n. split; last split.
+  { right. split; [lia|]. eauto. }
+  { eauto. }
+  exists vs, vt. do 2 (split; [done|]).
+  admit.
 Abort.
-
-(* Lemma sim_body_end_call fns fnt r n es et σs σt :
-  sim_body fns fnt r n es σs et σt →
-  sim_body fns fnt r n (EndCall es) σs (EndCall et) σt.
-Proof.
-  revert r n es et σs σt. pcofix CIH. rename r into R.
-  intros r n es et σs σt PR.
-  punfold PR. pfold. inversion PR; subst.
-  { constructor 1. by apply (stuck_fill _ [EndCallCtx]). }
-  constructor 2. intros.
-  destruct (STEP _ WSAT) as [TE ST]. split; [by intros []|].
-  constructor 1. intros.
-  case (decide (terminal et)) => [Tet|NTet].
-  - destruct (tstep_end_call_terminal_inv _ _ _ _ _ Tet STEPT)
-      as (vt & Eqvt & Eqet & c & cids & EQC & EQS). subst.
-    destruct (TE Tet) as
-      (es' & σs1 & r1 & STEPS1 & Tes1 & WSAT1).
-    exists es, (mkState σs1.(shp) σs1.(sst) cids σs1.(snp) σs1.(snc)).
-Abort. *)
 
 (** PURE STEP ----------------------------------------------------------------*)
 

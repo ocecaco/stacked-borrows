@@ -45,3 +45,25 @@ Proof.
   - apply Cinr_equiv, agree_op_inv. apply agree_included in LE.
     rewrite -LE. apply VAL.
 Qed.
+
+Lemma cmap_lookup_op_r (cm1 cm2: cmapUR) c T (VALID: ✓ (cm1 ⋅ cm2)):
+  cm2 !! c = Some (Cinl (Excl T)) → (cm1 ⋅ cm2) !! c = Some (Cinl (Excl T)).
+Proof.
+  intros HL. move : (VALID c). rewrite lookup_op HL.
+  destruct (cm1 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
+  rewrite -Some_op Some_valid.
+  destruct cs' as [[]|c2|]; auto; try inversion 1.
+Qed.
+
+Lemma cmap_insert_op_r (cm1 cm2: cmapUR) c T cs (VALID: ✓ (cm1 ⋅ cm2)):
+  cm2 !! c = Some (Cinl (Excl T)) →
+  cm1 ⋅ <[c:=cs]> cm2 = <[c:=cs]> (cm1 ⋅ cm2).
+Proof.
+  intros HL. apply (map_eq (cm1 ⋅ <[c:=cs]> cm2)). intros c'.
+  move : (VALID c). rewrite 2!lookup_op HL.
+  destruct (cm1 !! c) as [[| |]|] eqn:Eqc; rewrite Eqc; [inversion 1..|].
+  intros VL.
+  case (decide (c' = c)) => [->|?].
+  - by rewrite 2!lookup_insert Eqc.
+  - do 2 (rewrite lookup_insert_ne //). by rewrite lookup_op.
+Qed.

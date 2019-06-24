@@ -36,6 +36,13 @@ Section inv.
 Variable (fns: fn_env).
 Implicit Type (e: ectx_language.expr (bor_ectx_lang fns)).
 
+Lemma tstep_reducible_not_result e :
+  (∃ σ e' σ', (e,σ) ~{fns}~> (e', σ')) → to_result e = None.
+Proof.
+  intros (σ & e' & σ' & STEP). inversion STEP. apply (reducible_not_val e σ).
+  econstructor. by exists e', σ', efs.
+Qed.
+
 Lemma head_step_fill_tstep K
   e σ e' σ' ev efs :
   head_step fns e σ ev e' σ' efs →
@@ -376,7 +383,7 @@ Proof.
   - by rewrite Eq' -fill_comp.
 Qed.
 
-Lemma tstep_end_call_terminal_inv vr e' σ σ'
+Lemma tstep_end_call_inv vr e' σ σ'
   (TERM: terminal vr)
   (STEP: (EndCall vr, σ) ~{fns}~> (e', σ')) :
   ∃ v, to_result vr = Some (ValR v) ∧ e' = Val v ∧
