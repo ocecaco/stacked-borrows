@@ -387,7 +387,7 @@ Proof.
   - destruct Eq. by destruct Ki.
 Qed.
 
-Lemma fill_no_result fns K (e : ectx_language.expr (bor_ectx_lang fns))  :
+Lemma fill_not_result fns K (e : ectx_language.expr (bor_ectx_lang fns))  :
   to_result e = None → to_result (fill K e) = None.
 Proof.
   revert e. induction K as [|Ki K IH]; intros; [done|].

@@ -174,3 +174,10 @@ Lemma cinv_lookup_in_eq (r: resUR) (σ: state) c cs:
 Proof.
   intros WF CINV EQ. eapply cinv_lookup_in; eauto. by rewrite EQ.
 Qed.
+
+Lemma srel_heap_dom r σs σt :
+  Wf σs → Wf σt → srel r σs σt → dom (gset loc) σt.(shp) ≡ dom (gset loc) σs.(shp).
+Proof.
+  intros WFS WFT (EQS&?).
+  rewrite (state_wf_dom _ WFS) (state_wf_dom _ WFT) EQS //.
+Qed.

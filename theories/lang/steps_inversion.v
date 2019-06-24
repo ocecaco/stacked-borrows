@@ -205,7 +205,7 @@ Proof.
   - clear S1. by eapply tstep_bin_op_red_r.
 Qed.
 
-(* Let *)
+(** Let *)
 
 Lemma fill_let_decompose K e (x: binder) e1 e2 :
   fill K e = (let: x := e1 in e2)%E →
@@ -232,8 +232,7 @@ Proof.
     by rewrite EqT in HS.
 Qed.
 
-(* Ref *)
-
+(** Ref *)
 Lemma fill_ref_decompose K e e' :
   fill K e = (& e')%E →
   K = [] ∧ e = (& e')%E ∨ (∃ K', K = K' ++ [RefCtx] ∧ fill K' e = e').
@@ -247,14 +246,82 @@ Qed.
 
 Lemma tstep_ref_inv l tg T e' σ σ'
   (STEP: ((& (Place l tg T))%E, σ) ~{fns}~> (e', σ')) :
-  e' = #[ScPtr l tg]%E ∧ σ' = σ.
+  e' = #[ScPtr l tg]%E ∧ σ' = σ ∧ is_Some (σ.(shp) !! l).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_ref_decompose _ _ _ Eq)
     as [[]|[K' [? Eq']]]; subst.
   - clear Eq. simpl in HS. by inv_head_step.
-  - apply result_head_stuck, (fill_no_result _ K') in HS.
+  - apply result_head_stuck, (fill_not_result _ K') in HS.
     by rewrite Eq' in HS.
+Qed.
+
+(** Deref *)
+Lemma fill_deref_decompose K e e' T :
+  fill K e = ( *{T} e')%E →
+  K = [] ∧ e = ( *{T} e')%E ∨ (∃ K', K = K' ++ [DerefCtx T] ∧ fill K' e = e').
+Proof.
+  revert e. induction K as [|Ki K IH]; [naive_solver|].
+  intros e EqK. right.
+  destruct (IH _ EqK) as [[? EqKi]|[K' [EqK' Eq]]]; subst; simpl in *.
+  - exists []. simpl. destruct Ki; try done. simpl in EqK. by inversion EqK.
+  - by exists (Ki :: K').
+Qed.
+
+Lemma tstep_deref_inv l tg T e' σ σ'
+  (STEP: (( *{T} #[ScPtr l tg])%E, σ) ~{fns}~> (e', σ')) :
+  e' = Place l tg T ∧ σ' = σ ∧
+  (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σ.(shp)).
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_deref_decompose _ _ _ _ Eq)
+    as [[]|[K' [? Eq']]]; subst.
+  - clear Eq. simpl in HS. by inv_head_step.
+  - apply result_head_stuck, (fill_not_result _ K') in HS.
+    by rewrite Eq' in HS.
+Qed.
+
+(** Call *)
+Lemma fill_call_decompose K e e1 el1:
+  fill K e = Call e1 el1 →
+  K = [] ∧ e = Call e1 el1 ∨
+  (∃ K', K = K' ++ [CallLCtx el1] ∧ fill K' e = e1) ∨
+  (∃ K' v1 vl e2 el, K = K' ++ [CallRCtx v1 vl el] ∧ fill K' e = e2 ∧
+    el1 = (of_result <$> vl) ++ e2 :: el).
+Proof.
+  revert e e1 el1.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e1 el1 EqK. right.
+  destruct (IH _ _ _ EqK) as [[? _]|[[K0 [? Eq0]]|[K' [v1 [vl [e2 [el [? Eq']]]]]]]].
+  - subst. simpl in *. destruct Ki; try done.
+    + simpl in EqK. simplify_eq. left. exists []. naive_solver.
+    + right. simpl in EqK. inversion EqK; subst.
+      exists []. naive_solver eauto using to_of_result.
+  - subst K. left. by exists (Ki :: K0).
+  - subst K. right. exists (Ki :: K'). naive_solver.
+Qed.
+
+Lemma tstep_call_inv (fid: fn_id) el e' σ σ'
+  (TERM: Forall (λ ei, is_Some (to_value ei)) el)
+  (STEP: (Call #[fid] el, σ) ~{fns}~> (e', σ')) :
+  ∃ xl e HC es, fns !! fid = Some (@FunV xl e HC) ∧
+    subst_l xl el e = Some es ∧ e' = InitCall es ∧ σ' = σ.
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_call_decompose _ _ _ _ Eq)
+    as [[]|[[K' [? Eq']]|[K' [v1 [vl [e2 [el2 [? Eq']]]]]]]]; subst.
+  - simpl in *. inv_head_step. naive_solver.
+  - exfalso. simpl in *. apply result_head_stuck in HS.
+    destruct (fill_val (Λ:=bor_ectx_lang fns) K' e1') as [? Eqv].
+    + rewrite /= Eq'. by eexists.
+    + by rewrite /= HS in Eqv.
+  - exfalso. simpl in *. destruct Eq' as [Eq1 Eq2].
+    apply result_head_stuck in HS.
+    destruct (fill_val (Λ:=bor_ectx_lang fns) K' e1') as [? Eqv].
+    + rewrite /= Eq1. apply is_Some_to_value_result.
+      apply (Forall_forall (λ ei, is_Some (to_value ei)) el); [exact TERM|].
+      rewrite Eq2. set_solver.
+    + by rewrite /= HS in Eqv.
 Qed.
 
 (** MEM STEP -----------------------------------------------------------------*)

@@ -294,12 +294,12 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
     0 ≤ i →
     el !! (Z.to_nat i) = Some e →
     pure_expr_step FNs h (case: #[i] of el) SilentEvt e
-| CallBS name el xl e HC e':
-    FNs !! name = Some (@FunV xl e HC) →
+| CallBS fid el xl e HC e':
+    FNs !! fid = Some (@FunV xl e HC) →
     Forall (λ ei, is_Some (to_value ei)) el →
     subst_l xl el e = Some e' →
-    pure_expr_step FNs h (Call #[ScFnPtr name] el)
-                         (NewCallEvt name) (InitCall e').
+    pure_expr_step FNs h (Call #[ScFnPtr fid] el)
+                         (NewCallEvt fid) (InitCall e').
 
 
 Inductive mem_expr_step (h: mem) : expr → event → mem → expr → Prop :=
