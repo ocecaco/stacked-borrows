@@ -222,6 +222,19 @@ Proof.
   destruct (CONT _ _ _ σs' σt' VR) as [n' ?]. exists n'. by left.
 Qed.
 
+Lemma sim_body_end_call fs ft r n vs vt σs σt :
+  (* return values are related *)
+  vrel r vs vt →
+  (* and any private location w.r.t to the current call id ownership must be related *)
+  (∀ c, hd_error σt.(scs) = Some c →
+    ∀ T, r.2 !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
+    ∀ h, r.1 !! t ≡  Some (to_tagKindR tkUnique, h) → ∀ l, l ∈ dom (gset loc) h →
+    σs.(shp) !! l = σt.(shp) !! l) →
+  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≤ (EndCall (Val vt), σt) :
+    (λ r _ vs _ vt _, vrel_expr r (of_result vs) (of_result vt)).
+Proof.
+Abort.
+
 (* Lemma sim_body_end_call fns fnt r n es et σs σt :
   sim_body fns fnt r n es σs et σt →
   sim_body fns fnt r n (EndCall es) σs (EndCall et) σt.
@@ -285,9 +298,8 @@ Proof.
   intros NT r_f WSAT. split; [done|]. constructor 1. intros.
   destruct (tstep_ref_inv _ _ _ _ _ _ _ STEPT) as [? [? IS]]. subst et' σt'.
   have ?: is_Some (σs.(shp) !! l).
-  { clear -WSAT IS. move : IS. rewrite -2!(elem_of_dom (D:=gset loc)).
-    destruct WSAT as (WFS&WFT&?&?&?&SREL).
-    by rewrite (srel_heap_dom _ _ _ WFS WFT SREL). }
+  { clear -WSAT IS. move : IS.
+    by rewrite -2!(elem_of_dom (D:=gset loc)) wsat_heap_dom. }
   exists #[ScPtr l tgs]%E, σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
@@ -303,9 +315,7 @@ Proof.
   intros NT r_f WSAT. split; [done|]. constructor 1. intros.
   destruct (tstep_deref_inv _ _ _ _ _ _ _ STEPT) as [? [? IS]]. subst et' σt'.
   have ?: (∀ (i: nat), (i < tsize Ts)%nat → l +ₗ i ∈ dom (gset loc) σs.(shp)).
-  { clear -WSAT IS EQS. rewrite EQS. move => i /IS.
-    destruct WSAT as (WFS&WFT&?&?&?&SREL).
-    by rewrite (srel_heap_dom _ _ _ WFS WFT SREL). }
+  { clear -WSAT IS EQS. rewrite EQS. move => i /IS. by rewrite wsat_heap_dom. }
   exists (Place l tgs Ts), σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }

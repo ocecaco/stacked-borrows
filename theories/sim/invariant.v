@@ -181,3 +181,7 @@ Proof.
   intros WFS WFT (EQS&?).
   rewrite (state_wf_dom _ WFS) (state_wf_dom _ WFT) EQS //.
 Qed.
+
+Lemma wsat_heap_dom r σs σt :
+  wsat r σs σt → dom (gset loc) σt.(shp) ≡ dom (gset loc) σs.(shp).
+Proof. intros (?&?&?&?&?&?). by eapply srel_heap_dom. Qed.
