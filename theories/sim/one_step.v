@@ -157,8 +157,8 @@ Proof.
   { by eapply (head_step_fill_tstep _ []), initcall_head_step. }
   have FRESH: (r_f ⋅ r).2 !! σt.(snc) = None.
   { destruct ((r_f ⋅ r).2 !! σt.(snc)) as [cs|] eqn:Eqcs; [|done].
-    exfalso. destruct WSAT as (WFS & WFT & WFR & _).
-    by apply (lt_irrefl σt.(snc)), WFR, (elem_of_dom_2 _ _ _ Eqcs). }
+    exfalso. destruct WSAT as (WFS & WFT & ? & ? & CINV & ?).
+    apply (lt_irrefl σt.(snc)), (cinv_lookup_in_eq _ _ _ _ WFT CINV Eqcs). }
   have LOCAL: (r_f ⋅ r ⋅ ε, ε) ~l~> (r_f ⋅ r ⋅ r', r').
   { apply prod_local_update_2.
     rewrite /= right_id (comm _ (_ ⋅ _)) -insert_singleton_op //.
@@ -167,18 +167,11 @@ Proof.
   { (* sim cont *)  by punfold SIM. }
   { (* STEP src *)  left. by apply tc_once. }
   (* WSAT new *)
-  destruct WSAT as (WFS & WFT & WFR & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   rewrite assoc.
-  split; last split; last split; last split; last split; last split.
+  split; last split; last split; last split; last split.
   { (* WF src *)    by apply (tstep_wf _ _ _ STEPS WFS). }
   { (* WF tgt *)    by apply (tstep_wf _ _ _ STEPT WFT). }
-  { (* WF res *)
-    constructor.
-    - intros c.
-      rewrite /= comm -insert_singleton_op // dom_insert
-              elem_of_union elem_of_singleton.
-      move => [->|/(wf_res_call_id _ _ WFR)]; lia.
-    - intros ?. rewrite /= right_id. apply WFR. }
   { (* VALID *)
     apply (local_update_discrete_valid_frame (r_f ⋅ r) ε r'); [|done].
     by rewrite right_id. }
@@ -192,7 +185,7 @@ Proof.
       inversion Eqcs as [?? Eq| |]; subst. inversion Eq as [?? Eq2|] ; subst.
       split; [by left|]. intros ? IN. exfalso. move : IN.
       by rewrite -Eq2 elem_of_empty.
-    - rewrite lookup_insert_ne // => /CINV. destruct cs as [[]| |]; [|done..].
+    - rewrite lookup_insert_ne // => /CINV. destruct cs as [[]| |]; [|done|lia|done].
       intros [? Ht]. split; [by right|]. intros ????. rewrite right_id. by apply Ht. }
   { (* srel *)
     destruct SREL as (?&?&?&?&SREL).
@@ -204,9 +197,7 @@ Proof.
     - exists t, c, T, h. rewrite /= right_id. split; [|done].
       rewrite (comm _ (r_f.2 ⋅ r.2)) -insert_singleton_op //.
       rewrite lookup_insert_ne // => Eqc. subst c.
-      apply (lt_irrefl σt.(snc)), WFR.
-      case (decide (σt.(snc) ∈ dom (gset nat) (r_f ⋅ r).2))
-        => [//|/not_elem_of_dom Eq1]. rewrite Eq1 in PRI. by inversion PRI. }
+      apply (lt_irrefl σt.(snc)), (cinv_lookup_in _ _ _ _ WFT CINV PRI). }
 Qed.
 
 Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
