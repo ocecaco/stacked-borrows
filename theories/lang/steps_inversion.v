@@ -414,19 +414,18 @@ Proof.
   - subst K. by exists (Ki :: K0).
 Qed.
 
-Lemma tstep_copy_terminal_inv e e' σ σ'
-  (STEP: (Copy e, σ) ~{fns}~> (e', σ')) (TM: terminal e) :
-  ∃ l ltag T v, e = Place l ltag T ∧ e' = (Val v) ∧
-    read_mem l (tsize T) σ.(shp) = Some v
-    (* not true: the stacked borrows may change, ∧ σ' = σ *).
+Lemma tstep_copy_inv l tg T e' σ σ'
+  (STEP: (Copy (Place l tg T), σ) ~{fns}~> (e', σ')) :
+  ∃ v α', e' = Val v ∧ read_mem l (tsize T) σ.(shp) = Some v ∧
+    memory_read σ.(sst) σ.(scs) l tg (tsize T) = Some α' ∧
+    σ' = mkState σ.(shp) α' σ.(scs) σ.(snp) σ.(snc).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_copy_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
-  - clear Eq. simpl in HS. inv_head_step.
-    by exists l, lbor, T, v.
-    (* TODO: about the state σ' *)
-  - apply fill_val in TM. apply val_head_stuck in HS.
-    rewrite /= HS in TM. by destruct TM.
+  - clear Eq. simpl in HS. inv_head_step. naive_solver.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq'. by eexists.
+    + by rewrite Eq1' in HS.
 Qed.
 
 Lemma tstep_copy_non_terminal_inv e e' σ σ'

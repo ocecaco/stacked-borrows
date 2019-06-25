@@ -144,6 +144,69 @@ Qed.
 
 (** MEM STEP -----------------------------------------------------------------*)
 
+(** Copy *)
+Lemma sim_body_copy fs ft r n l tg Ts Tt σs σt Φ
+  (EQS: tsize Ts = tsize Tt) :
+  (∀ vs vt,
+    read_mem l (tsize Ts) σs.(shp) = Some vs →
+    read_mem l (tsize Tt) σt.(shp) = Some vt →
+    ∀ α', memory_read σt.(sst) σt.(scs) l tg (tsize Tt) = Some α' →
+      let σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc) in
+      let σt' := mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc) in
+      Φ r n (ValR vs) σs' (ValR vt) σt' : Prop) →
+  r ⊨{n,fs,ft} (Copy (Place l tg Ts), σs) ≤ (Copy (Place l tg Tt), σt) : Φ.
+Proof.
+  intros POST. pfold.
+  intros NT. intros. split; [done|]. constructor 1. intros.
+  destruct (tstep_copy_inv _ _ _ _ _ _ _ STEPT) as (vt & α' & ? & Eqvt & Eqα' & ?).
+  subst et'.
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct (read_mem_is_Some l (tsize Ts) σs.(shp)) as [vs Eqvs].
+  { intros m. rewrite -(srel_heap_dom _ _ _ WFS WFT SREL) EQS.
+    apply (read_mem_is_Some' l (tsize Tt) σt.(shp)). by eexists. }
+  have Eqα'2: memory_read σs.(sst) σs.(scs) l tg (tsize Ts) = Some α'.
+  { destruct SREL as (Eqst&?&Eqcs&?). by rewrite Eqst Eqcs EQS. }
+  set σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc).
+  have STEPS: (Copy (Place l tg Ts), σs) ~{fs}~> ((#vs)%E, σs').
+  { by eapply (head_step_fill_tstep _ []), copy_head_step'. }
+  exists (Val vs), σs', r, (S n). split; last split.
+  { left. by constructor 1. }
+  { split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - done.
+    - intros t k h Eqt. destruct (PINV t k h Eqt) as [Lt PI]. subst σt'. simpl.
+      split; [done|]. intros l' s' Eqk' stk' Eqstk'.
+      destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+        as (stk & Eqstk & SUB & ?).
+      intros pm opro In'. destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2).
+      destruct (PI _ _ Eqk' _ Eqstk it2.(perm) opro) as [Eql' HTOP].
+      { simpl in *. rewrite /= Eqt2 Eqp2. by destruct it2. }
+      split; [done|].
+      destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
+        as [?|MR]; [by subst|]. revert MR HTOP.
+      admit.
+    - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
+      clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
+      destruct CINV as [IN CINV]. split; [done|].
+      intros t InT k h Eqt l' Inh.
+      destruct (CINV _ InT _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+      destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+        as [stk [Eqstk AS]].
+      exists stk, pm'. split; [done|]. by apply AS.
+    - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?). }
+  left. pfold. split; last first.
+  { constructor 1. intros vt' ? STEPT'. exfalso.
+    have ?: to_result (Val vt) = None.
+    { apply (tstep_reducible_not_result ft). naive_solver. } done. }
+  move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
+  exists (ValR vs), σs', r, n. split; last split.
+  { right. split; [lia|]. eauto. }
+  { eauto. }
+  { by apply POST. }
+Abort.
+
+(** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
@@ -202,26 +265,7 @@ Proof.
       apply (lt_irrefl σt.(snc)), (cinv_lookup_in _ _ _ _ WFT CINV PRI). }
 Qed.
 
-Lemma sim_body_step_over_call fs ft
-  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
-  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft)))
-  rc rv n fid els elt σs σt Φ
-  (VS  : Forall (λ ei, is_Some (to_value ei)) els)
-  (VREL: Forall2 (vrel_expr rv) els elt) :
-  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt), ∃ n',
-    rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≤ (fill Kt (Val vt), σt') : Φ) →
-  rc ⋅ rv ⊨{n,fs,ft}
-    (fill Ks (Call #[ScFnPtr fid] els), σs) ≤ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
-Proof.
-  intros CONT. pfold. intros NT r_f WSAT. split.
-  { intros vt. by rewrite fill_not_result. }
-  econstructor 2; [eauto|].
-  intros VT. exists els, σs, rc, rv. split; [by apply rtc_refl|].
-  do 3 (split; [done|]).
-  intros r' ? ? σs' σt' (vs&vt&?&?&VR). simplify_eq.
-  destruct (CONT _ _ _ σs' σt' VR) as [n' ?]. exists n'. by left.
-Qed.
-
+(** EndCall *)
 Lemma sim_body_end_call fs ft r n vs vt σs σt :
   (* return values are related *)
   vrel r vs vt →
@@ -321,6 +365,28 @@ Qed.
 
 (** PURE STEP ----------------------------------------------------------------*)
 
+(** Call - step over *)
+Lemma sim_body_step_over_call fs ft
+  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
+  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft)))
+  rc rv n fid els elt σs σt Φ
+  (VS  : Forall (λ ei, is_Some (to_value ei)) els)
+  (VREL: Forall2 (vrel_expr rv) els elt) :
+  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt), ∃ n',
+    rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≤ (fill Kt (Val vt), σt') : Φ) →
+  rc ⋅ rv ⊨{n,fs,ft}
+    (fill Ks (Call #[ScFnPtr fid] els), σs) ≤ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
+Proof.
+  intros CONT. pfold. intros NT r_f WSAT. split.
+  { intros vt. by rewrite fill_not_result. }
+  econstructor 2; [eauto|].
+  intros VT. exists els, σs, rc, rv. split; [by apply rtc_refl|].
+  do 3 (split; [done|]).
+  intros r' ? ? σs' σt' (vs&vt&?&?&VR). simplify_eq.
+  destruct (CONT _ _ _ σs' σt' VR) as [n' ?]. exists n'. by left.
+Qed.
+
+(** Call - step into *)
 Lemma sim_body_step_into_call fs ft
   r n fid xls es HCs els es' xlt et HCt elt et' σs σt Φ
   (FS: fs !! fid = Some (@FunV xls es HCs))
@@ -341,6 +407,7 @@ Proof.
   by apply (CallBS _ _ _ els xls es HCs).
 Qed.
 
+(** Let *)
 Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
   terminal es1 → terminal et1 →
   r ⊨{n,fs,ft} (subst x es1 es2, σs) ≤ (subst x et1 et2, σt) : Φ →
@@ -355,6 +422,7 @@ Proof.
   split; [done|]. by left.
 Qed.
 
+(** Ref *)
 Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
   r ⊨{n,fs,ft} (#[ScPtr l tgs], σs) ≤ (#[ScPtr l tgt], σt) : Φ →
   r ⊨{n,fs,ft} ((& (Place l tgs Ts))%E, σs) ≤ ((& (Place l tgt Tt))%E, σt) : Φ.
@@ -371,6 +439,7 @@ Proof.
   split; [done|]. by left.
 Qed.
 
+(** Deref *)
 Lemma sim_body_deref fs ft r n l tgs tgt Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt) :
   r ⊨{n,fs,ft} (Place l tgs Ts, σs) ≤ (Place l tgt Tt, σt) : Φ →

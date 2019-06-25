@@ -282,6 +282,27 @@ Proof.
     + move => ??. apply Lt. lia.
 Qed.
 
+Lemma for_each_lookup_case α l n f α' :
+  for_each α l n false f = Some α' →
+  ∀ l' stk stk', α !! l' = Some stk → α' !! l' = Some stk' →
+  stk = stk' ∨ f stk = Some stk'.
+Proof.
+  intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
+  intros l1 stk stk' Eq Eq'.
+  case (decide (l1.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    destruct (EQ2 (Z.to_nat (l1.2 - l.2)) stk') as [stk1 [Eq1 Eq2]];
+      [rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia|by rewrite -Eql2 |].
+    rewrite -Eql2 in Eq1. simplify_eq. by right.
+  - left. rewrite EQ3 in Eq'; [by simplify_eq|].
+    intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia.
+  - left. rewrite EQ3 in Eq'; [by simplify_eq|].
+    intros i Lt Eq3. apply NEql. by rewrite Eq3.
+Qed.
+
 Lemma for_each_access1 α nxtc l n tg kind α' :
   for_each α l n false
           (λ stk, nstk' ← access1 stk kind tg nxtc; Some nstk'.2) = Some α' →
@@ -303,6 +324,106 @@ Proof.
   - exists stk1. split; [|done]. rewrite -EQ3; [done|].
     intros i Lt Eq. apply NIN. rewrite Eq /=. lia.
   - exists stk1. split; [|done]. rewrite -EQ3; [done|].
+    intros i Lt Eq. apply NEql. by rewrite Eq.
+Qed.
+
+Definition active_preserving (cids: call_id_stack) (stk stk': stack) :=
+  ∀ pm t c, c ∈ cids → mkItem pm t (Some c) ∈ stk → mkItem pm t (Some c) ∈ stk'.
+
+Instance active_preserving_preorder cids : PreOrder (active_preserving cids).
+Proof.
+  constructor.
+  - intros ??. done.
+  - intros ??? AS1 AS2 ?????. naive_solver.
+Qed.
+
+Lemma active_preserving_app_mono (cids: call_id_stack) (stk1 stk2 stk': stack) :
+  active_preserving cids stk1 stk2 → active_preserving cids (stk1 ++ stk') (stk2 ++ stk').
+Proof.
+  intros AS pm t c Inc. rewrite 2!elem_of_app.
+  specialize (AS pm t c Inc). set_solver.
+Qed.
+
+Lemma remove_check_active_preserving cids stk stk' idx:
+  remove_check cids stk idx = Some stk' → active_preserving cids stk stk'.
+Proof.
+  revert stk' idx.
+  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  { destruct idx; [|done]. intros ??. by simplify_eq. }
+  destruct idx as [|idx]; [intros ??; by simplify_eq|].
+  case check_protector eqn:Eq; [|done].
+  move => /IH AS pm t c IN /elem_of_cons [?|]; [|by apply AS].
+  subst it. exfalso. move : Eq.
+  by rewrite /check_protector /= /is_active bool_decide_true //.
+Qed.
+
+Lemma replace_check'_acc_result cids acc stk stk' :
+  replace_check' cids acc stk = Some stk' → acc ⊆ stk'.
+Proof.
+   revert acc stk'.
+  induction stk as [|it stk IH]; intros acc stk'; simpl; [by intros; simplify_eq|].
+  case decide => ?; [case check_protector; [|done]|];
+    move => /IH; set_solver.
+Qed.
+
+Lemma replace_check'_active_preserving cids acc stk stk':
+  replace_check' cids acc stk = Some stk' → active_preserving cids stk stk'.
+Proof.
+  revert acc stk'.
+  induction stk as [|it stk IH]; intros acc stk'; simpl.
+  { intros. simplify_eq. by intros ?????%not_elem_of_nil. }
+  case decide => ?; [case check_protector eqn:Eq; [|done]|].
+  - move => /IH AS pm t c IN /elem_of_cons [?|]; [|by apply AS].
+    subst it. exfalso. move : Eq.
+    by rewrite /check_protector /= /is_active bool_decide_true //.
+  - move => Eq pm t c IN /elem_of_cons [?|].
+    + apply (replace_check'_acc_result _ _ _ _ Eq), elem_of_app. right.
+      by apply elem_of_list_singleton.
+    + by apply (IH _ _ Eq).
+Qed.
+
+Lemma replace_check_active_preserving cids stk stk':
+  replace_check cids stk = Some stk' → active_preserving cids stk stk'.
+Proof. by apply replace_check'_active_preserving. Qed.
+
+Lemma access1_active_preserving stk stk' kind tg cids n:
+  access1 stk kind tg cids = Some (n, stk') →
+  active_preserving cids stk stk'.
+Proof.
+  rewrite /access1. case find_granting as [gip|]; [|done]. simpl.
+  destruct kind.
+  - case replace_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros. simplify_eq.
+    rewrite -{1}(take_drop gip.1 stk).
+    by apply active_preserving_app_mono, replace_check_active_preserving.
+  - case find_first_write_incompatible as [idx|]; [|done]. simpl.
+    case remove_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros. simplify_eq.
+    rewrite -{1}(take_drop gip.1 stk).
+    by eapply active_preserving_app_mono, remove_check_active_preserving.
+Qed.
+
+Lemma for_each_access1_active_preserving α cids l n tg kind α':
+  for_each α l n false
+          (λ stk, nstk' ← access1 stk kind tg cids; Some nstk'.2) = Some α' →
+  ∀ l stk, α !! l = Some stk →
+  ∃ stk', α' !! l = Some stk' ∧ active_preserving cids stk stk'.
+Proof.
+  intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
+  intros l1 stk1 Eq1.
+  case (decide (l1.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    destruct (EQ1 (Z.to_nat (l1.2 - l.2)) stk1)
+      as [stk [Eq [[n1 stk'] [Eq' Eq0]]%bind_Some]];
+      [rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia|by rewrite -Eql2|].
+    exists stk. rewrite -Eql2 in Eq. split; [done|]. simpl in Eq0. simplify_eq.
+    eapply access1_active_preserving; eauto.
+  - rewrite EQ3; [naive_solver|].
+    intros i Lt Eq. apply NIN. rewrite Eq /=. lia.
+  - rewrite EQ3; [naive_solver|].
     intros i Lt Eq. apply NEql. by rewrite Eq.
 Qed.
 

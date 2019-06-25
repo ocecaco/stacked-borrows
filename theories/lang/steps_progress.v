@@ -97,27 +97,40 @@ Proof.
     intros. by rewrite -(elem_of_dom (D:= gset loc) σ.(shp)).
 Qed.
 
+Lemma read_mem_is_Some' l n h :
+  (∀ m, (m < n)%nat → l +ₗ m ∈ dom (gset loc) h) ↔
+  is_Some (read_mem l n h).
+Proof.
+  eapply (read_mem_elim
+            (λ l n h ov,
+              (∀ m : nat, (m < n)%nat → l +ₗ m ∈ dom (gset loc) h) ↔ is_Some ov)
+            (λ _ _ h l n oacc gov, is_Some oacc →
+              ((∀ m : nat, (m < n)%nat → l +ₗ m ∈ dom (gset loc) h) ↔
+               is_Some gov))).
+  - naive_solver.
+  - intros. split. naive_solver. by intros; lia.
+  - intros l1 n1 h2 l2 n2 oacc IH [acc Eqacc]. rewrite Eqacc /=.
+    split.
+    + intros BLK.
+      assert (is_Some (h2 !! l2)) as [v2 Eq2].
+      { apply (elem_of_dom (D:=gset loc)). rewrite -(shift_loc_0_nat l2).
+        apply BLK. lia. }
+      rewrite Eq2 /=. apply IH; [by eexists|].
+      intros m Lt. rewrite shift_loc_assoc -(Nat2Z.inj_add 1). apply BLK. lia.
+    + intros [v Eq]. destruct (h2 !! l2) as [v2|] eqn:Eq2; [|done].
+      simpl in Eq.
+      specialize (IH acc v2 (ltac:(by eexists))).
+      intros m Lt. destruct m as [|m].
+      { rewrite shift_loc_0_nat. apply (elem_of_dom_2 _ _ _ Eq2). }
+      rewrite (_: l2 +ₗ S m = l2 +ₗ 1 +ₗ m); last first.
+      { by rewrite shift_loc_assoc -(Nat2Z.inj_add 1). }
+      apply IH; [|lia]. by eexists.
+Qed.
+
 Lemma read_mem_is_Some l n h
   (BLK: ∀ m, (m < n)%nat → l +ₗ m ∈ dom (gset loc) h) :
   is_Some (read_mem l n h).
-Proof.
-  revert BLK.
-  eapply (read_mem_elim
-            (λ l n h ov,
-              (∀ m : nat, (m < n)%nat → l +ₗ m ∈ dom (gset loc) h) → is_Some ov)
-            (λ _ _ h l n oacc gov,
-              (∀ m : nat, (m < n)%nat → l +ₗ m ∈ dom (gset loc) h) →
-              is_Some oacc → is_Some gov)).
-  - naive_solver.
-  - naive_solver.
-  - intros l1 n1 h2 l2 n2 oacc IH BLK [acc Eqacc].
-    rewrite Eqacc /=.
-    assert (is_Some (h2 !! l2)) as [v2 Eq2].
-    { apply (elem_of_dom (D:=gset loc)). rewrite -(shift_loc_0_nat l2).
-      apply BLK. lia. }
-    rewrite Eq2 /=. apply IH; [|by eexists].
-    intros m Lt. rewrite shift_loc_assoc -(Nat2Z.inj_add 1). apply BLK. lia.
-Qed.
+Proof. by apply read_mem_is_Some'. Qed.
 
 Lemma read_mem_values l n h v :
   read_mem l n h = Some v →
@@ -331,6 +344,20 @@ Proof.
     destruct (access1_read_is_Some _ _ _ STK) as [? Eq2]. rewrite Eq2. by eexists.
 Qed.
 
+Lemma copy_head_step' fns (σ: state) l bor T v α (WF: Wf σ) :
+  read_mem l (tsize T) σ.(shp) = Some v →
+  memory_read σ.(sst) σ.(scs) l bor (tsize T) = Some α →
+  let σ' := mkState σ.(shp) α σ.(scs) σ.(snp) σ.(snc) in
+  head_step fns (Copy (Place l bor T)) σ
+            [CopyEvt l bor T v] (Val v) σ' [].
+Proof.
+  intros RM. econstructor; econstructor; eauto.
+  move => l1 [t1|//] /elem_of_list_lookup [i Eqi].
+  apply (state_wf_mem_tag _ WF (l +ₗ i) l1).
+  destruct (read_mem_values _ _ _ _ RM) as [Eq1 Eq2].
+  rewrite Eq2; [done|]. rewrite -Eq1. by eapply lookup_lt_Some.
+Qed.
+
 Lemma copy_head_step fns (σ: state) l bor T
   (WF: Wf σ)
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(shp))
@@ -346,11 +373,8 @@ Proof.
   destruct (read_mem_is_Some _ _ _ BLK) as [v RM].
   destruct (memory_read_is_Some σ.(sst) σ.(scs) l bor (tsize T));[|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
-  do 2 eexists. do 2 (split; [done|]). econstructor; econstructor; [done..|].
-  move => l1 [t1|//] /elem_of_list_lookup [i Eqi].
-  apply (state_wf_mem_tag _ WF (l +ₗ i) l1).
-  destruct (read_mem_values _ _ _ _ RM) as [Eq1 Eq2].
-  rewrite Eq2; [done|]. rewrite -Eq1. by eapply lookup_lt_Some.
+  do 2 eexists. do 2 (split; [done|]). intros σ'.
+  eapply copy_head_step'; eauto.
 Qed.
 
 Lemma access1_write_is_Some cids stk bor
