@@ -55,6 +55,24 @@ Proof.
   destruct cs' as [[]|c2|]; auto; try inversion 1.
 Qed.
 
+Lemma cmap_lookup_op_l (cm1 cm2: cmapUR) c T (VALID: ✓ (cm1 ⋅ cm2)):
+  cm1 !! c = Some (Cinl (Excl T)) → (cm1 ⋅ cm2) !! c = Some (Cinl (Excl T)).
+Proof.
+  intros HL. move : (VALID c). rewrite lookup_op HL.
+  destruct (cm2 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
+  rewrite -Some_op Some_valid.
+  destruct cs' as [[]|c2|]; auto; try inversion 1.
+Qed.
+
+Lemma cmap_lookup_op_l_equiv (cm1 cm2: cmapUR) c T (VALID: ✓ (cm1 ⋅ cm2)):
+  cm1 !! c ≡ Some (Cinl (Excl T)) → (cm1 ⋅ cm2) !! c ≡ Some (Cinl (Excl T)).
+Proof.
+  intros HL. move : (VALID c). rewrite lookup_op HL.
+  destruct (cm2 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
+  rewrite -Some_op Some_valid.
+  destruct cs' as [[]|c2|]; auto; try inversion 1.
+Qed.
+
 Lemma cmap_insert_op_r (cm1 cm2: cmapUR) c T cs (VALID: ✓ (cm1 ⋅ cm2)):
   cm2 !! c = Some (Cinl (Excl T)) →
   cm1 ⋅ <[c:=cs]> cm2 = <[c:=cs]> (cm1 ⋅ cm2).

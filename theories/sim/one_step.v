@@ -226,11 +226,12 @@ Lemma sim_body_end_call fs ft r n vs vt σs σt :
   (* return values are related *)
   vrel r vs vt →
   (* and any private location w.r.t to the current call id ownership must be related *)
-  (∀ c, hd_error σt.(scs) = Some c →
-    ∀ T, r.2 !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
-    ∀ h, r.1 !! t ≡  Some (to_tagKindR tkUnique, h) →
+  (∀ c, hd_error σt.(scs) = Some c → is_Some (r.2 !! c) ∧
+    (∀ r_f, ✓ (r_f ⋅ r) →
+    ∀ T, (r_f ⋅ r).2 !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
+    ∀ h, (r_f ⋅ r).1 !! t ≡  Some (to_tagKindR tkUnique, h) →
     ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
-    ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st) →
+    ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st)) →
   r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≤ (EndCall (Val vt), σt) :
     (λ r _ vs _ vt _, vrel_expr r (of_result vs) (of_result vt)).
 Proof.
@@ -239,11 +240,12 @@ Proof.
   destruct (tstep_end_call_inv ft (Val vt) et' σt σt')
     as (vt' & Eqvt & ? & c & cids & Eqc & Eqs); [by eexists|done|].
   subst. simpl in Eqvt. symmetry in Eqvt. simplify_eq.
+  rewrite Eqc in Hr. destruct (Hr _ eq_refl) as [[cs Eqcs] Hr']. clear Hr.
   set σs' := (mkState σs.(shp) σs.(sst) cids σs.(snp) σs.(snc)).
   have STEPS: (EndCall #vs, σs) ~{fs}~> ((#vs)%E, σs').
-  { destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs & ?).
+  { destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs' & ?).
     eapply (head_step_fill_tstep _ []).
-    econstructor. by econstructor. econstructor. by rewrite Eqcs. }
+    econstructor. by econstructor. econstructor. by rewrite Eqcs'. }
   exists (Val vs), σs'.
   set r2' := match (r.2 !! c) with
              | Some (Cinl (Excl T)) => <[c := to_callStateR csPub]> r.2
@@ -252,25 +254,60 @@ Proof.
   exists (r.1, r2'), (S n). split; last split.
   { left. by constructor 1. }
   { destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
-     split; last split; last split; last split; last split.
-    - by apply (tstep_wf _ _ _ STEPS WFS).
-    - by apply (tstep_wf _ _ _ STEPT WFT).
-    - apply (local_update_discrete_valid_frame _ _ _ VALID).
+    destruct r_f as [r_f1 r_f2].
+    have VALID': ✓ ((r_f1, r_f2) ⋅ (r.1, r2')).
+    { apply (local_update_discrete_valid_frame _ _ _ VALID).
       destruct (r.2 !! c) as [[[T|]| |]|] eqn:Eqr2; rewrite /r2'; [|by destruct r..].
-      rewrite (_: r_f ⋅ (r.1, <[c:=to_callStateR csPub]> r.2) =
-              (r_f.1 ⋅ r.1, r_f.2 ⋅ <[c:=to_callStateR csPub]> r.2)); last first.
-      { rewrite -pair_op. by destruct r_f. }
-      rewrite (_: (r_f ⋅ r, r) = ((r_f.1 ⋅ r.1, r_f.2 ⋅ r.2), (r.1, r.2))); last first.
-      { rewrite -pair_op. by destruct r_f, r. }
+      destruct r as [r1 r2]. rewrite 2!pair_op.
       apply prod_local_update_2.
-      rewrite (cmap_insert_op_r r_f.2 r.2 c T); [|apply VALID|exact Eqr2].
+      rewrite (cmap_insert_op_r r_f2 r2 c T); [|apply VALID|exact Eqr2].
       apply (insert_local_update _ _ _
               (to_callStateR (csOwned T)) (to_callStateR (csOwned T)));
         [|done|by apply exclusive_local_update].
-      apply cmap_lookup_op_r; [apply VALID|exact Eqr2].
-    - admit.
-    - admit.
-    - admit. }
+      apply cmap_lookup_op_r; [apply VALID|exact Eqr2]. }
+    split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - done.
+    - rewrite pair_op. apply PINV.
+    - rewrite pair_op. intros c1 cs1. simpl.
+      case (decide (c1 = c)) => [->|NEqc]; last first.
+      + rewrite (_: (r_f2 ⋅ r2') !! c1 = (r_f2 ⋅ r.2) !! c1); last first.
+        { rewrite /r2'. destruct (r.2 !! c) as [[[T|]| |]|]; [|done..].
+          by rewrite 2!lookup_op lookup_insert_ne. }
+        intros Eqcs1. move : (CINV _ _ Eqcs1). clear -NEqc Eqc.
+        destruct cs1 as [[T|]| |]; [|done..]. rewrite Eqc.
+        move => [/elem_of_cons IN ?]. split; [|done].
+        destruct IN; [by subst|done].
+      + intros Eqcs1.
+        have VALID1: ✓ cs1. { rewrite -Some_valid -Eqcs1. apply VALID'. }
+        destruct cs1 as [[T|]| |]; [|done| |done]; last first.
+        { apply (state_wf_cid_agree _ WFT). rewrite Eqc. by left. }
+        (* TODO: move out *)
+        exfalso. move : Eqcs1. rewrite /r2' lookup_op.
+        destruct (r.2 !! c) as [[[T'|]| |]|] eqn:Eqc2;
+          [rewrite lookup_insert|rewrite Eqc2..|done]; clear;
+          (destruct (r_f2 !! c) as [cs|] eqn:Eqrf2; rewrite Eqrf2 ;
+            [rewrite -Some_op /=; intros Eq%Some_equiv_inj
+            |rewrite left_id /=; intros Eq%Some_equiv_inj;
+              by inversion Eq; simplify_eq]);
+          destruct cs as [[]| |]; by inversion Eq; simplify_eq.
+    - destruct SREL as (Eqst & Eqnp & Eqcs' & Eqnc & Eqhp).
+      do 4 (split; [done|]). rewrite /= /r2'.
+      destruct (r.2 !! c) as [[[T|]| |]|] eqn:Eqc2; [|apply Eqhp..].
+      intros l st Eqs. destruct (Eqhp _ _ Eqs) as [[ss [Eqss VR]]|[t PV]].
+      + left. by exists ss.
+      + destruct PV as (c' & T' & h & Eqc' & InT' & Eqt & Inh). simpl in *.
+        case (decide (c' = c)) => ?; last first.
+        { right. exists t, c', T', h. repeat split; [|done..].
+          by rewrite /= lookup_op lookup_insert_ne // -lookup_op. }
+        subst c'.
+        have Eq2 := cmap_lookup_op_r r_f2 r.2 _ _ (proj2 VALID) Eqc2.
+        rewrite Eq2 in Eqc'.
+        apply Some_equiv_inj, Cinl_inj, Excl_inj, leibniz_equiv_iff in Eqc'.
+        subst T'. specialize (Hr' (r_f1, r_f2) VALID T). rewrite /= Eq2 in Hr'.
+        destruct (Hr' (ltac:(done)) _ InT' _ Eqt _ _ Inh Eqs) as [ss [Eqss AR]].
+        left. by exists ss. }
   left. pfold. split; last first.
   { constructor 1. intros vt' σt' STEPT'. exfalso.
     have ?: to_result (Val vt) = None.
@@ -279,9 +316,8 @@ Proof.
   exists (ValR vs). do 2 eexists. exists n. split; last split.
   { right. split; [lia|]. eauto. }
   { eauto. }
-  exists vs, vt. do 2 (split; [done|]).
-  admit.
-Abort.
+  exists vs, vt. do 2 (split; [done|]). by apply (Forall2_impl _ _ _ _ VREL).
+Qed.
 
 (** PURE STEP ----------------------------------------------------------------*)
 
