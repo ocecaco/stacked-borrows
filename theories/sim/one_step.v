@@ -184,8 +184,12 @@ Proof.
       { simpl in *. rewrite /= Eqt2 Eqp2. by destruct it2. }
       split; [done|].
       destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
-        as [?|MR]; [by subst|]. revert MR HTOP.
-      admit.
+        as [?|[MR _]]; [by subst|]. clear -In' MR HTOP.
+      destruct (access1 stk AccessRead tg σt.(scs)) as [[n stk1]|] eqn:Eqstk';
+        [|done]. simpl in MR. simplify_eq.
+      destruct k.
+      + admit.
+      + admit.
     - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].

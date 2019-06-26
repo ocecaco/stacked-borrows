@@ -442,15 +442,6 @@ Proof.
     intros i Lt Eq. apply NEql. by rewrite Eq.
 Qed.
 
-(** Head preserving *)
-Lemma access1_head_preserving stk stk' kind tg cids n pm t opro:
-  access1 stk kind tg cids = Some (n, stk') →
-  mkItem pm (Tagged t) opro ∈ stk' →
-  (∃ stk1 opro1, stk = (mkItem Unique (Tagged t) opro1) :: stk1) →
-  (∃ stk1 opro1, stk' = (mkItem Unique (Tagged t) opro1) :: stk1).
-Proof.
-Abort.
-
 (** Wellformedness *)
 Lemma for_each_access1_non_empty α cids l n tg kind α' :
   for_each α l n false
@@ -605,6 +596,67 @@ Proof.
     rewrite -{1}(take_drop n stk). move : Eqc.
     apply remove_check_stack_item_tagged_NoDup_2.
 Qed.
+
+Lemma remove_check_sublist cids stk idx stk' :
+  remove_check cids stk idx = Some stk' → sublist stk' stk.
+Proof.
+  revert stk' idx.
+  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  { destruct idx; [|done]. intros ?. by simplify_eq. }
+  destruct idx as [|idx]; [intros ?; by simplify_eq|].
+  case check_protector eqn:Eq; [|done].
+  move => /IH IH'. by constructor 3.
+Qed.
+
+(** Head preserving *)
+Definition is_stack_head (it: item) (stk: stack) :=
+  ∃ stk', stk = it :: stk'.
+
+Lemma sublist_head_preserving t it it' stk stk' :
+  stk' `sublist_of` stk →
+  it'.(tg) = Tagged t → it.(tg) = Tagged t →
+  it' ∈ stk' →
+  stack_item_tagged_NoDup stk →
+  is_stack_head it stk →
+  is_stack_head it stk'.
+Proof.
+  intros SUB. revert t it it'.
+  induction SUB as [|???? IH|???? IH]; [done|..];
+    intros t it it' Eqt' Eqt In' ND; intros [stk1 ?]; simplify_eq;
+    [by eexists|].
+  exfalso. move : ND.
+  rewrite /stack_item_tagged_NoDup filter_cons decide_True;
+    last by rewrite /is_tagged Eqt.
+  rewrite fmap_cons NoDup_cons. intros [NI ?].
+  apply NI, elem_of_list_fmap. exists it'. split; [rewrite Eqt' Eqt //|].
+  apply elem_of_list_filter. split. by rewrite /is_tagged Eqt'. by rewrite <-SUB.
+Qed.
+
+Lemma access1_head_preserving stk stk' kind tg cids n pm pm' t opro:
+  stack_item_tagged_NoDup stk →
+  pm ≠ Disabled →
+  mkItem pm (Tagged t) opro ∈ stk' →
+  access1 stk kind tg cids = Some (n, stk') →
+  is_stack_head (mkItem pm' (Tagged t) opro) stk →
+  is_stack_head (mkItem pm' (Tagged t) opro) stk'.
+Proof.
+  intros ND NDIS IN ACC.
+  have ND' := access1_stack_item_tagged_NoDup _ _ _ _ _ _ ACC ND.
+  revert ACC.
+  rewrite /access1. case find_granting as [gip|]; [|done]. simpl.
+  destruct kind.
+  - case replace_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros ?. simplify_eq.
+    intros [stk2 Eq2].
+    admit.
+  - case find_first_write_incompatible as [idx|]; [|done]. simpl.
+    case remove_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros ?. simplify_eq.
+    have SUB: stk1 ++ drop gip.1 stk `sublist_of` stk.
+    { rewrite -{2}(take_drop gip.1 stk). apply sublist_app; [|done].
+      move : Eq. apply remove_check_sublist. }
+    eapply sublist_head_preserving; eauto. done.
+Abort.
 
 Lemma for_each_access1_stack_item α nxtc cids nxtp l n tg kind α' :
   for_each α l n false
