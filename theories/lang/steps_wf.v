@@ -973,7 +973,7 @@ Proof.
 Qed.
 
 Lemma unsafe_action_wf_stack
-  (f: stacks → _ → _ → _ → _) α l (last fs us: nat) α' lc' nxtp nxtc
+  (f: stacks → _ → _ → _ → _) α l (last fs us: nat) α' l' c' nxtp nxtc
   (P: stacks → loc → nat → Prop) :
   (∀ α l sz1 sz2, P α l (sz1 + sz2)%nat →
     P α l sz1 ∧ ∀ α',
@@ -987,8 +987,8 @@ Lemma unsafe_action_wf_stack
     wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
     dom (gset loc) α1 ≡ dom (gset loc) α2 ∧
     wf_stack_item α2 nxtp nxtc ∧ wf_non_empty α2) →
-  P α (l +ₗ last) (fs + us)%nat →
-  unsafe_action f α l last fs us = Some (α', lc') →
+  P α (l +ₗ last) (l' - last)%nat →
+  unsafe_action f α l last fs us = Some (α', (l', c')) →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
   wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
@@ -996,6 +996,7 @@ Proof.
   intros HP Hf0 Hf. rewrite /unsafe_action.
   case f as [α1|] eqn:Eq1; [simpl|done].
   case (f α1) as [α2|] eqn:Eq2; [simpl|done]. intros HP1 Eq WF. simplify_eq.
+  rewrite (_: (last + fs + us - last)%nat = (fs + us)%nat) in HP1; [|lia].
   destruct (HP _ _ _ _ HP1) as [HP2 HP3].
   destruct (Hf _ _ _ _ _ HP2 Eq1) as (EqD1 & ?); [done|].
   have HP4: P α1 (l +ₗ last +ₗ fs) us.
@@ -1067,89 +1068,82 @@ Proof.
 Qed.
 
 Lemma unsafe_action_stacks_unchanged
-  (f: stacks → _ → nat → _ → _) α l (last fsz usz: nat) α' lc'
+  (f: stacks → _ → nat → _ → _) α l (last fsz usz: nat) α' ln cn
   (HF: ∀ α1 α2 l n b, f α1 l n b = Some α2 →
       ∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') :
-  unsafe_action f α l last fsz usz = Some (α', lc') →
-  ∀ l', (∀ (i : nat), (i < fsz + usz)%nat → l' ≠ l +ₗ last +ₗ i) →
-    α' !! l' = α !! l'.
+  unsafe_action f α l last fsz usz = Some (α', (ln, cn)) →
+  (last ≤ ln)%nat ∧
+  (∀ l', (∀ (i : nat), (last ≤ i < ln)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l').
 Proof.
   rewrite /unsafe_action.
   case f as [α1|] eqn:Eqf1; [simpl|done]. case (f α1) eqn:Eqf2; [simpl|done].
-  intros ? ? NEQ. simplify_eq.
-  rewrite (HF _ _ _ _ _ Eqf2); [rewrite (HF _ _ _ _ _ Eqf1) //|].
-  - intros ??. apply NEQ. lia.
-  - intros ??.
-    rewrite shift_loc_assoc -Nat2Z.inj_add -plus_assoc Nat2Z.inj_add -shift_loc_assoc.
-    apply NEQ. lia.
+  intros ?. simplify_eq. split; [lia|].
+  intros ? NEQ.
+  rewrite (HF _ _ _ _ _ Eqf2); last first.
+  { intros i Lt.
+    rewrite shift_loc_assoc -Nat2Z.inj_add. apply NEQ. lia. }
+  rewrite (HF _ _ _ _ _ Eqf1) //.
+  intros ??. rewrite shift_loc_assoc -Nat2Z.inj_add. apply NEQ. lia.
 Qed.
 
 Lemma visit_freeze_sensitive'_stacks_unchanged h l (f: stacks → _ → _ → _ → _)
-  α α' last cur T lc' :
+  α α' last cur T l' c' :
   let HF (f: stacks → loc → nat → bool → option stacks) :=
     (∀ α1 α2 l n b, f α1 l n b = Some α2 →
       ∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
-  let UC α1 α2 l n :=
-    (∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
+  let UC α1 α2 (l: loc) (lo ln: nat) :=
+    (lo ≤ ln)%nat ∧
+    (∀ l', (∀ (i : nat), (lo ≤ i < ln)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
   HF f →
-  visit_freeze_sensitive' h l f α last cur T = Some (α', lc') →
-  UC α α' (l +ₗ last) (cur + tsize T)%nat.
+  visit_freeze_sensitive' h l f α last cur T = Some (α', (l', c')) →
+  UC α α' l last l'.
 Proof.
   intros HF UC.
   apply (visit_freeze_sensitive'_elim
     (* general goal P *)
-    (λ _ l f α l1 c1 T oalc, ∀ α' lc',
-      HF f → oalc = Some (α', lc') → UC α α' (l +ₗ l1) (c1 + tsize T)%nat)
-    (λ _ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' lc',
-      HF f → oalc = Some (α', lc') →
-          UC α α' (l +ₗ l1) (c1 + tsize (Product Ts2))%nat)
-    (λ _ l f α l1 c1 Ts1 Ts2 _ oalc, ∀ α' lc',
-      HF f → oalc = Some (α', lc') →
-          UC α α' (l +ₗ l1) (c1 + tsize (Sum Ts2))%nat)); rewrite /HF /UC.
+    (λ _ l f α l1 c1 T oalc, ∀ α' l' c',
+      HF f → oalc = Some (α', (l', c')) → UC α α' l l1 l')
+    (λ _ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
+      HF f → oalc = Some (α', (l', c')) →
+          UC α α' l l1 l')
+    (λ _ l f α l1 c1 Ts1 Ts2 _ oalc, ∀ α' l' c',
+      HF f → oalc = Some (α', (l', c')) →
+          UC α α' l l1 l')); rewrite /HF /UC.
   - naive_solver.
   - naive_solver.
   - (* Unsafe case *)
-    intros _ ???????? HF0 UN. eapply unsafe_action_stacks_unchanged; eauto.
+    clear. intros _ ?? α l1 c1 ? α2 l2 c2 HF0.
+    eapply unsafe_action_stacks_unchanged; eauto.
   - (* Union case *)
     intros _???????? HF0. case is_freeze; [by intros; simplify_eq|].
     intros UN. eapply unsafe_action_stacks_unchanged; eauto.
-  - clear. intros ??????? IH ?? HF0.
+  - clear. intros ??????? IH ??? HF0.
     case is_freeze; [by intros ?; simplify_eq|]. intros VS.
-    eapply (IH _ _ HF0); eauto.
-  - clear. intros ??????? IH ?? HF0. case is_freeze; [by intros; simplify_eq|].
+    eapply (IH _ _ _ HF0); eauto.
+  - clear. intros ??????? IH ??? HF0. case is_freeze; [by intros; simplify_eq|].
     case lookup => [[//|i|//|//]|//].
     case decide => [Ge0|//].
     case visit_freeze_sensitive'_clause_6_visit_lookup
-      as [[]|] eqn:Eq1; [simpl|done].
+      as [[? []]|] eqn:Eq1; [simpl|done].
     intros. simplify_eq. eapply (IH ScPoison); eauto.
   - naive_solver.
   - (* Product case *)
-    clear. intros ???????????? IH1 IH2 ?? HF0.
-    rewrite tsize_product_cons plus_assoc.
+    clear. intros ???????????? IH1 IH2 ??? HF0.
     case visit_freeze_sensitive' as [alc|] eqn:Eqa; [|done].
-    intros VS l' NC. simpl in VS. destruct alc as [a1 [l1 c1]].
-    rewrite -(IH2 a1 (l1,c1) HF0 eq_refl).
-    + eapply (IH1 (a1, (l1,c1))); eauto.
-      apply visit_freeze_sensitive'_offsets in Eqa as [Le Eq]. clear -Le Eq NC.
-      intros i Lt. rewrite /= shift_loc_assoc -Nat2Z.inj_add.
-      rewrite (_: (l1 + i)%nat = (last0 + ((cur_dist0 + tsize t - c1) + i))%nat);
-        [|lia].
-      rewrite Nat2Z.inj_add -shift_loc_assoc. apply NC.
-      simpl in *. lia.
-    + clear -NC. intros ??. apply NC. lia.
+    intros VS. destruct alc as [a1 [l1 c1]]. simpl in VS.
+    destruct (IH2 a1 l1 c1 HF0 eq_refl) as [Le2 IH2'].
+    destruct (IH1 (a1, (l1,c1)) α' l' c') as [Le1 IH1'];
+      [done..|simpl in Le1; split]; [lia|].
+    intros ? NC. simpl in IH1', IH2'. rewrite IH1'; [rewrite IH2' //|].
+    + intros ??. apply NC. lia.
+    + intros ??. apply NC. lia.
   - naive_solver.
-  - clear. intros h l f α l1 c1 Ts1 T Ts2 IH α' lc' HF0 VS.
-    intros l' Le. apply (IH α' lc' HF0 VS).
-    intros i Lt. apply Le.
-    have ?: (S (tsize T) ≤ tsize (Sum (T :: Ts2)))%nat.
-    { apply tsize_subtype_of_sum. by left. } lia.
-  - clear. intros h l f α l1 c1 s1 T Ts2 i IH α' lc' HF0 VS.
-    intros l' Le. apply (IH α' lc' HF0 VS).
-    intros i' Lt. apply Le. have ?:= tsize_sum_cons_le T Ts2. lia.
+  - naive_solver.
+  - naive_solver.
 Qed.
 
 Lemma visit_freeze_sensitive'_wf_stack h l (f: stacks → _ → _ → _ → _)
-  α α' last cur T lc' nxtp nxtc (P: stacks → loc → nat → Prop) :
+  α α' last cur T l' c' nxtp nxtc (P: stacks → loc → nat → Prop) :
   let Hα α1 α2 l n :=
     (P α1 l n → wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
       dom (gset loc) α1 ≡ dom (gset loc) α2 ∧
@@ -1163,55 +1157,56 @@ Lemma visit_freeze_sensitive'_wf_stack h l (f: stacks → _ → _ → _ → _)
       ∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
   let HF f := (∀ α1 α2  l n b, f α1 l n b = Some α2 → Hα α1 α2 l n) in
   HP → HF0 f → HF f →
-  visit_freeze_sensitive' h l f α last cur T = Some (α', lc') →
-  Hα α α' (l +ₗ last) (cur + tsize T)%nat.
+  visit_freeze_sensitive' h l f α last cur T = Some (α', (l', c')) →
+  Hα α α' (l +ₗ last) (l' - last)%nat.
 Proof.
   intros Hα HP HF0 HF HP1.
   apply (visit_freeze_sensitive'_elim
     (* general goal P *)
-    (λ _ l f α l1 c1 T oalc, ∀ α' lc',
-      HF0 f → HF f → oalc = Some (α', lc') → Hα α α' (l +ₗ l1) (c1 + tsize T)%nat)
-    (λ _ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' lc',
-      HF0 f → HF f → oalc = Some (α', lc') →
-          Hα α α' (l +ₗ l1) (c1 + tsize (Product Ts2))%nat)
-    (λ _ l f α l1 c1 Ts Ts2 _ oalc, ∀ α' lc',
-      HF0 f → HF f → oalc = Some (α', lc') →
-          Hα α α' (l +ₗ l1) (c1 + tsize (Sum Ts2))%nat)); rewrite /HF /HF0 /Hα.
+    (λ _ l f α l1 c1 T oalc, ∀ α' l' c',
+      HF0 f → HF f → oalc = Some (α', (l', c')) → Hα α α' (l +ₗ l1) (l' - l1)%nat)
+    (λ _ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
+      HF0 f → HF f → oalc = Some (α', (l', c')) →
+          Hα α α' (l +ₗ l1) (l' - l1)%nat)
+    (λ _ l f α l1 c1 Ts Ts2 _ oalc, ∀ α' l' c',
+      HF0 f → HF f → oalc = Some (α', (l', c')) →
+          Hα α α' (l +ₗ l1) (l' - l1)%nat)); rewrite /HF /HF0 /Hα.
   - naive_solver.
   - naive_solver.
   - (* Unsafe case *)
     clear -HP1.
-    intros _ ???????? HF0 HF UN HP2. eapply unsafe_action_wf_stack; eauto.
+    intros _ ????????? HF0 HF UN HP2. eapply unsafe_action_wf_stack; eauto.
   - (* Union case *)
     clear -HP1.
-    intros _???????? HF0 HF. case is_freeze; [by intros; simplify_eq|].
+    intros _????????? HF0 HF. case is_freeze; [by intros; simplify_eq|].
     intros UN HP2. eapply unsafe_action_wf_stack; eauto.
-  - clear -HP1. intros ??????? IH ?? HF0 HF.
+  - clear -HP1. intros ??????? IH ??? HF0 HF.
     case is_freeze; [by intros ?; simplify_eq|]. intros VS HP2.
-    eapply (IH _ _ HF0 HF); eauto.
-  - clear. intros ??????? IH ?? HF0 HF. case is_freeze; [by intros; simplify_eq|].
+    eapply (IH _ _ _ HF0 HF); eauto.
+  - clear. intros ??????? IH ??? HF0 HF. case is_freeze; [by intros; simplify_eq|].
     case lookup => [[//|i|//|//]|//].
     case decide => [Ge0|//].
     case visit_freeze_sensitive'_clause_6_visit_lookup
-      as [[]|] eqn:Eq1; [simpl|done].
+      as [[? []]|] eqn:Eq1; [simpl|done].
     intros. simplify_eq. eapply (IH ScPoison); eauto.
   - naive_solver.
   - (* Product case *)
-    clear -HP1. intros ??????????? Ts IH1 IH2 ?? HF0 HF.
-    rewrite tsize_product_cons plus_assoc.
+    clear -HP1. intros h l f α1 l1 c1 Ts1 α0 l0 c0 T Ts IH1 IH2 α' l' c' HF0 HF.
     case visit_freeze_sensitive' as [alc|] eqn:Eqa; [|done].
-    intros VS HP2 WF. simpl in VS. destruct alc as [a1 [l1 c1]].
-    destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ _ Eqa) as [Le1 Eq1].
-    clear -HP2 Le1 Eq1.
-    (* destruct (HP1 _ _ _ _ HP2) as [HP3 HP4].
-    specialize (IH2 a1 (l1,c1) HF0 HF eq_refl HP3 WF) as [EqD WF1]. rewrite EqD.
-    apply (IH1 (a1, (l1,c1)) _ _ HF0 HF VS); [|done]. *)
-    admit.
-    (* visit_freeze_sensitive'_stacks_unchanged
-     *)
+    intros VS HP2 WF. simpl in VS. destruct alc as [α2 [l2 c2]].
+    destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ _ Eqa) as [Le2 Eq2].
+    destruct (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ _ HF0 Eqa)
+      as [Le NC].
+    destruct (HP1 α0 (l +ₗ l0) (l2 - l0)%nat (l' - l2)%nat) as [HP3 HP4].
+    { rewrite (_: (l2  - l0 + (l' - l2))%nat = l' - l0)%nat //. SearchAbout l' l2. }
+    (* rewrite (_: (l2 + c2 - l0 = c0 + tsize T)%nat) in HP3; [|lia].
+    specialize (IH2 α2 (l2,c2) HF0 HF eq_refl HP3 WF) as [EqD WF1]. rewrite EqD.
+    apply (IH1 (α2, (l2,c2)) _ _ HF0 HF VS); [|done].
+    move : (HP4 α2). simpl.
+    simpl.
   - naive_solver.
   - admit.
-  - admit.
+  - admit. *)
 Admitted.
 
 Lemma visit_freeze_sensitive_wf_stack h l T (f: stacks → _ → _ → _ → _)
