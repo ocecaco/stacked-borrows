@@ -1198,7 +1198,7 @@ Proof.
     destruct (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ _ HF0 Eqa)
       as [Le NC].
     destruct (HP1 α0 (l +ₗ l0) (l2 - l0)%nat (l' - l2)%nat) as [HP3 HP4].
-    { rewrite (_: (l2  - l0 + (l' - l2))%nat = l' - l0)%nat //. SearchAbout l' l2. }
+    { rewrite (_: (l2  - l0 + (l' - l2))%nat = l' - l0)%nat //. }
     (* rewrite (_: (l2 + c2 - l0 = c0 + tsize T)%nat) in HP3; [|lia].
     specialize (IH2 α2 (l2,c2) HF0 HF eq_refl HP3 WF) as [EqD WF1]. rewrite EqD.
     apply (IH1 (α2, (l2,c2)) _ _ HF0 HF VS); [|done].
