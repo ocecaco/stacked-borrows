@@ -925,14 +925,17 @@ Proof.
     admit.
 Admitted.
 
+Definition tag_fresh t (α: stacks) l n :=
+  match t with
+  | Tagged _ => ∀ (i: nat) stk, (i < n)%nat → α !! (l +ₗ i) = Some stk →
+              ∀ it, it ∈ stk → it.(tg) ≠ t
+  | _ => True
+  end.
+
 Lemma for_each_grant_stack_item α nxtc cids nxtp l n bor new α'
   (PR: match new.(protector) with Some c => (c < nxtc)%nat | _ => True end)
   (TG2: new.(tg) <t nxtp)
-  (NEW: match new.(tg) with
-        | Tagged t => ∀ (i: nat) stk, (i < n)%nat → α !! (l +ₗ i) = Some stk →
-                    ∀ it, it ∈ stk → it.(tg) ≠ new.(tg)
-        | _ => True
-        end) :
+  (NEW: tag_fresh new.(tg) α l n) :
   for_each α l n false (λ stk, grant stk bor new cids) = Some α' →
   wf_stack_item α nxtp nxtc → wf_stack_item α' nxtp nxtc.
 Proof.
@@ -956,11 +959,7 @@ Qed.
 Lemma reborrowN_wf_stack α nxtc cids nxtp l n old new pm bar α'
   (PR: match bar with Some c => (c < nxtc)%nat | _ => True end)
   (TG2: new <t nxtp)
-  (NEW: match new with
-        | Tagged t => ∀ (i: nat) stk, (i < n)%nat → α !! (l +ₗ i) = Some stk →
-                    ∀ it, it ∈ stk → it.(tg) ≠ new
-        | _ => True
-        end) :
+  (NEW: tag_fresh new α l n) :
   reborrowN α cids l n old new pm bar = Some α' →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
@@ -1156,34 +1155,38 @@ Lemma visit_freeze_sensitive'_wf_stack h l (f: stacks → _ → _ → _ → _)
     (∀ α1 α2 l n b, f α1 l n b = Some α2 →
       ∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
   let HF f := (∀ α1 α2  l n b, f α1 l n b = Some α2 → Hα α1 α2 l n) in
-  HP → HF0 f → HF f →
+  HP →
   visit_freeze_sensitive' h l f α last cur T = Some (α', (l', c')) →
-  Hα α α' (l +ₗ last) (l' - last)%nat.
+  (last ≤ l')%nat ∧ (HF0 f → HF f → Hα α α' (l +ₗ last) (l' - last)%nat).
 Proof.
   intros Hα HP HF0 HF HP1.
   apply (visit_freeze_sensitive'_elim
     (* general goal P *)
     (λ _ l f α l1 c1 T oalc, ∀ α' l' c',
-      HF0 f → HF f → oalc = Some (α', (l', c')) → Hα α α' (l +ₗ l1) (l' - l1)%nat)
+      oalc = Some (α', (l', c')) →
+        (l1 ≤ l')%nat ∧ (HF0 f → HF f → Hα α α' (l +ₗ l1) (l' - l1)%nat))
     (λ _ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
-      HF0 f → HF f → oalc = Some (α', (l', c')) →
-          Hα α α' (l +ₗ l1) (l' - l1)%nat)
+      oalc = Some (α', (l', c')) →
+        (l1 ≤ l')%nat ∧ (HF0 f → HF f → Hα α α' (l +ₗ l1) (l' - l1)%nat))
     (λ _ l f α l1 c1 Ts Ts2 _ oalc, ∀ α' l' c',
-      HF0 f → HF f → oalc = Some (α', (l', c')) →
-          Hα α α' (l +ₗ l1) (l' - l1)%nat)); rewrite /HF /HF0 /Hα.
+      oalc = Some (α', (l', c')) →
+        (l1 ≤ l')%nat ∧ (HF0 f → HF f →  Hα α α' (l +ₗ l1) (l' - l1)%nat)));
+    rewrite /HF /HF0 /Hα.
   - naive_solver.
   - naive_solver.
   - (* Unsafe case *)
     clear -HP1.
-    intros _ ????????? HF0 HF UN HP2. eapply unsafe_action_wf_stack; eauto.
+    intros _ ????????? UN. split.
+    + apply unsafe_action_offsets  in UN as [??]. lia.
+    + intros HF0 HF HP2. eapply unsafe_action_wf_stack; eauto.
   - (* Union case *)
-    clear -HP1.
-    intros _????????? HF0 HF. case is_freeze; [by intros; simplify_eq|].
-    intros UN HP2. eapply unsafe_action_wf_stack; eauto.
-  - clear -HP1. intros ??????? IH ??? HF0 HF.
-    case is_freeze; [by intros ?; simplify_eq|]. intros VS HP2.
-    eapply (IH _ _ _ HF0 HF); eauto.
-  - clear. intros ??????? IH ??? HF0 HF. case is_freeze; [by intros; simplify_eq|].
+    clear -HP1. intros _?????????. case is_freeze; [by intros; simplify_eq|].
+    intros UN. split.
+    + apply unsafe_action_offsets  in UN as [??]. lia.
+    + intros HF0 HF HP2. eapply unsafe_action_wf_stack; eauto.
+  - clear -HP1. intros ??????? IH ???.
+    case is_freeze; [by intros ?; simplify_eq|]. intros VS. eapply IH; eauto.
+  - clear. intros ??????? IH ???. case is_freeze; [by intros; simplify_eq|].
     case lookup => [[//|i|//|//]|//].
     case decide => [Ge0|//].
     case visit_freeze_sensitive'_clause_6_visit_lookup
@@ -1191,51 +1194,84 @@ Proof.
     intros. simplify_eq. eapply (IH ScPoison); eauto.
   - naive_solver.
   - (* Product case *)
-    clear -HP1. intros h l f α1 l1 c1 Ts1 α0 l0 c0 T Ts IH1 IH2 α' l' c' HF0 HF.
+    clear -HP1. intros h l f α1 l1 c1 Ts1 α0 l0 c0 T Ts IH1 IH2 α' l' c'.
     case visit_freeze_sensitive' as [alc|] eqn:Eqa; [|done].
-    intros VS HP2 WF. simpl in VS. destruct alc as [α2 [l2 c2]].
+    intros VS. simpl in VS. destruct alc as [α2 [l2 c2]].
     destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ _ Eqa) as [Le2 Eq2].
+    specialize (IH2 α2 l2 c2 eq_refl) as [_ IH2].
+    specialize (IH1 (α2, (l2,c2)) _ _ _ VS) as [Le1 IH1]. simpl in Le1.
+    split. { lia. }
+    intros HF0 HF HP2 WF.
     destruct (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ _ HF0 Eqa)
-      as [Le NC].
+      as [_ NC].
     destruct (HP1 α0 (l +ₗ l0) (l2 - l0)%nat (l' - l2)%nat) as [HP3 HP4].
-    { rewrite (_: (l2  - l0 + (l' - l2))%nat = l' - l0)%nat //. }
-    (* rewrite (_: (l2 + c2 - l0 = c0 + tsize T)%nat) in HP3; [|lia].
-    specialize (IH2 α2 (l2,c2) HF0 HF eq_refl HP3 WF) as [EqD WF1]. rewrite EqD.
-    apply (IH1 (α2, (l2,c2)) _ _ HF0 HF VS); [|done].
-    move : (HP4 α2). simpl.
+    { rewrite (_: (l2  - l0 + (l' - l2))%nat = l' - l0)%nat //. lia. }
+    specialize (IH2 HF0 HF HP3 WF) as [EqD WF1]. rewrite EqD.
+    specialize (IH1 HF0 HF). apply IH1; [|done].
     simpl.
+    rewrite (_: (l +ₗ l0 +ₗ (l2 - l0)%nat) = l +ₗ l2) in HP4; last first.
+    { rewrite shift_loc_assoc. f_equal. lia. }
+    apply HP4. intros i Lt. apply NC.
+    intros j Ltj. rewrite shift_loc_assoc -Nat2Z.inj_add.
+    intros ?%shift_loc_inj. lia.
   - naive_solver.
-  - admit.
-  - admit. *)
-Admitted.
+  - naive_solver.
+  - naive_solver.
+Qed.
 
 Lemma visit_freeze_sensitive_wf_stack h l T (f: stacks → _ → _ → _ → _)
-  nxtp nxtc α α' :
-  (∀ α1 α2 l n b, f α1 l n b = Some α2 →
+  nxtp nxtc α α' (P: stacks → loc → nat → Prop) :
+  let HP :=
+    (∀ α l sz1 sz2, P α l (sz1 + sz2)%nat → P α l sz1 ∧ ∀ α',
+    (∀ i:nat, (i < sz2)%nat → α' !! (l +ₗ sz1 +ₗ i) = α !! (l +ₗ sz1 +ₗ i)) →
+    P α' (l +ₗ sz1) sz2) in
+  let HF0 (f: stacks → loc → nat → bool → option stacks) :=
+    (∀ α1 α2 l n b, f α1 l n b = Some α2 →
+      ∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
+  HP → HF0 f →
+  (∀ α1 α2 l n b, f α1 l n b = Some α2 → P α1 l n →
     wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
     dom (gset loc) α1 ≡ dom (gset loc) α2 ∧
    wf_stack_item α2 nxtp nxtc ∧ wf_non_empty α2) →
   visit_freeze_sensitive h l T f α = Some α' →
+  P α l (tsize T) →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
   wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
 Proof.
-  intros Hf. rewrite /visit_freeze_sensitive.
+  intros HP HF0 HP1 HF1 Hf. rewrite /visit_freeze_sensitive.
   case visit_freeze_sensitive' as [[α1 [last cur]]|] eqn:Eq; [|done].
-  move => Eqf WF.
-  move : Eq => /visit_freeze_sensitive'_wf_stack WF'.
-  (* destruct (WF' _ _ Hf WF) as [EqD WF1]. rewrite EqD.
-  by eapply Hf; eauto. *)
-Admitted.
+  move => Eqf HP2 WF.
+  destruct (visit_freeze_sensitive'_wf_stack _ _ _ _ _ _ _ _ _ _ nxtp nxtc P HP1 Eq)
+    as [Le WF'].
+  specialize (WF' HF1 Hf). rewrite shift_loc_0_nat Nat.sub_0_r in WF'.
+  destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ _ Eq) as [_ Eqs].
+  simpl in Eqs. rewrite -Eqs in HP2.
+  specialize (HP1 _ _ _ _ HP2) as [HP3 HP4].
+  specialize (WF' HP3 WF) as [EqD WF1]. rewrite EqD.
+  eapply Hf; eauto.
+  apply HP4. intros i Lt.
+  apply (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ _ HF1 Eq).
+  intros j Ltj. rewrite shift_loc_assoc -Nat2Z.inj_add.
+    intros ?%shift_loc_inj. lia.
+Qed.
+
+Lemma tag_fresh_split α l sz1 sz2 new :
+  tag_fresh new α l (sz1 + sz2) → tag_fresh new α l sz1 ∧
+  (∀ α', (∀ i : nat, (i < sz2)%nat → α' !! (l +ₗ sz1 +ₗ i) = α !! (l +ₗ sz1 +ₗ i))
+         → tag_fresh new α' (l +ₗ sz1) sz2).
+Proof.
+  rewrite /tag_fresh. destruct new; [|done].
+  intros TF. split.
+  - intros ???. apply TF. lia.
+  - intros ? NC ???. rewrite NC //. rewrite shift_loc_assoc -Nat2Z.inj_add.
+    apply TF. lia.
+Qed.
 
 Lemma reborrow_wf_stack h α nxtc cids nxtp l old T kind new bar α'
   (TG2: new <t nxtp)
   (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end)
-  (NEW: match new with
-        | Tagged t => ∀ (i: nat) stk, (i < tsize T)%nat → α !! (l +ₗ i) = Some stk →
-                    ∀ it, it ∈ stk → it.(tg) ≠ new
-        | _ => True
-        end) :
+  (NEW: tag_fresh new α l (tsize T)) :
   reborrow h α cids l old T kind new bar = Some α' →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
@@ -1244,16 +1280,17 @@ Proof.
   rewrite /reborrow. destruct kind as [[]| |].
   - by eapply reborrowN_wf_stack; eauto.
   - by eapply reborrowN_wf_stack; eauto.
-  - SearchAbout visit_freeze_sensitive.
-    apply visit_freeze_sensitive_wf_stack.
-    intros ???????. admit.
-    (* by eapply reborrowN_wf_stack. *)
+  - intros VS. revert VS NEW. apply visit_freeze_sensitive_wf_stack.
+    + intros. by apply tag_fresh_split.
+    + intros ?????. apply for_each_lookup.
+    + intros ???????. by eapply reborrowN_wf_stack.
   - destruct mutable.
     + by eapply reborrowN_wf_stack; eauto.
-    + apply visit_freeze_sensitive_wf_stack.
-      intros ?????. admit.
-      (*  by eapply reborrowN_wf_stack. *)
-Admitted.
+    + intros VS. revert VS NEW. apply visit_freeze_sensitive_wf_stack.
+      * intros. by apply tag_fresh_split.
+      * intros ?????. apply for_each_lookup.
+      * intros ???????. by eapply reborrowN_wf_stack.
+Qed.
 
 Lemma retag_ref_wf_stack h α nxtc cids nxtp x l old T kind bar bor' α' nxtp'
   (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end)
@@ -1281,9 +1318,12 @@ Proof.
   intros ?. simplify_eq. intros WF2 WF3.
   eapply reborrow_wf_stack; eauto; [..|].
   - destruct kind; simpl; [lia..|done].
-  - admit.
+  - rewrite /tag_fresh. destruct kind; [..|done];
+    intros i stk Lt Eqst it IN;
+      destruct (proj1 (WF2 _ _ Eqst) _ IN);
+      destruct it.(tg); auto; intros ?; simplify_eq; lia.
   - split; [|done]. eapply wf_stack_item_mono; [..|done|exact WF2]. by lia.
-Admitted.
+Qed.
 
 Definition borrow_barrier_Some nxtc kind c : Prop :=
   match kind with FnEntry => (c < nxtc)%nat | _ => True end.
