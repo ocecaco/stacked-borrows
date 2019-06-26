@@ -20,19 +20,6 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
   | _, _ => False
   end.
 
-Fixpoint active_SRO (stk: stack) : gset ptr_id :=
-  match stk with
-  | [] => ∅
-  | it :: stk =>
-    match it.(perm) with
-    | SharedReadOnly => match it.(tg) with
-                        | Tagged t => {[t]} ∪ active_SRO stk
-                        | Untagged => active_SRO stk
-                        end
-    | _ => ∅
-    end
-  end.
-
 Definition ptrmap_inv (r: resUR) (σ: state) : Prop :=
   ∀ (t: ptr_id) (k: tag_kind) h, r.1 !! t ≡ Some (to_tagKindR k, h) →
   (t < σ.(snp))%nat ∧
@@ -45,7 +32,7 @@ Definition ptrmap_inv (r: resUR) (σ: state) : Prop :=
   (* If [k] is Unique, then [t] must be Unique at the top of [stk]. Otherwise
     if [k] is Pub, then [t] can be among the top SRO items. *)
   match k with
-  | tkUnique => ∃ stk' opro', stk = mkItem Unique (Tagged t) opro' :: stk'
+  | tkUnique => ∃ stk', stk = mkItem Unique (Tagged t) opro :: stk'
   | tkPub => t ∈ active_SRO stk
   end).
 

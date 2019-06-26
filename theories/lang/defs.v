@@ -18,8 +18,11 @@ Definition stack_item_included (stk: stack) (nxtp: ptr_id) (nxtc: call_id) :=
                     | Some c => (c < nxtc)%nat
                     | _ => True
                    end.
+Definition stack_item_no_dup (stk : stack) :=
+  ∀ it1 it2 t, it1 ∈ stk → it2 ∈ stk →
+    it1.(tg) = Tagged t → it2.(tg) = Tagged t → it1 = it2.
 Definition wf_stack_item (α: stacks) (nxtp: ptr_id) (nxtc: call_id) :=
-  ∀ l stk, α !! l = Some stk → stack_item_included stk nxtp nxtc.
+  ∀ l stk, α !! l = Some stk → stack_item_included stk nxtp nxtc ∧ stack_item_no_dup stk.
 Definition wf_non_empty (α: stacks) :=
   ∀ l stk, α !! l = Some stk → stk ≠ [].
 Definition wf_no_dup (α: stacks) :=
@@ -40,8 +43,21 @@ Record state_wf' (s: state) := {
 
 Instance state_wf : Wellformed state :=  state_wf'.
 Instance config_wf : Wellformed config := λ cfg, Wf cfg.(cst).
-Notation terminal e := (is_Some (to_result e)).
 
+Fixpoint active_SRO (stk: stack) : gset ptr_id :=
+  match stk with
+  | [] => ∅
+  | it :: stk =>
+    match it.(perm) with
+    | SharedReadOnly => match it.(tg) with
+                        | Tagged t => {[t]} ∪ active_SRO stk
+                        | Untagged => active_SRO stk
+                        end
+    | _ => ∅
+    end
+  end.
+
+Notation terminal e := (is_Some (to_result e)).
 Lemma expr_terminal_False (e: expr) : ¬ terminal e ↔ to_result e = None.
 Proof.
   split.
@@ -61,6 +77,7 @@ Notation "x ~{ fn }~>* y" := (rtc (tstep fn) x y)
   (at level 70, format "x  ~{ fn }~>*  y").
 Notation "x ~{ fn }~>+ y" := (tc (tstep fn) x y)
   (at level 70, format "x  ~{ fn }~>+  y").
+
 
 (*=================================== UNUSED =================================*)
 (* Implicit Type (ρ: cfg bor_lang). *)

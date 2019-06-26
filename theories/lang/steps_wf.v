@@ -44,7 +44,8 @@ Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 Lemma wf_stack_item_mono α :
   Proper ((≤)%nat ==> (≤)%nat ==> impl) (wf_stack_item α).
 Proof.
-  move=> ?? Le1 ? ? Le2 WF ?? /WF Hf ? /Hf [TG1 TG2]. split.
+  move=> ?? Le1 ? ? Le2 WF ?? /WF [Hf ND]. split; [|done].
+  move => ? /Hf [TG1 TG2]. split.
   - move : TG1. case tg => [?|]; [lia|done].
   - move : TG2. case protector => [?|]; [lia|done].
 Qed.
@@ -76,10 +77,12 @@ Proof.
       intros [|Eq]%foldr_gmap_insert_lookup; [done|].
       move : (state_wf_mem_tag _ WF _ _ _ Eq). destruct bor; simpl; lia.
     + intros ??. rewrite init_stacks_foldr.
-      intros [->|Eq]%foldr_gmap_insert_lookup si.
-      * intros ->%elem_of_list_singleton. simpl. split; [lia|done].
-      * move => /(state_wf_stack_item _ WF _ _ Eq) /= [Lt ?]. split; [|done].
-        destruct si.(tg); [simpl; lia|done..].
+      intros [->|Eq]%foldr_gmap_insert_lookup; split.
+      * intros si ->%elem_of_list_singleton. simpl. split; [lia|done].
+      * intros ??. set_solver.
+      * move => si /(proj1 (state_wf_stack_item _ WF _ _ Eq)) /= [Lt ?].
+        split; [|done]. destruct si.(tg); [simpl; lia|done..].
+      * apply (state_wf_stack_item _ WF _ _ Eq).
     + intros ??. rewrite init_stacks_foldr.
       intros [->|Eq]%foldr_gmap_insert_lookup; [done|].
       by apply (state_wf_non_empty _ WF _ _ Eq).
@@ -327,6 +330,7 @@ Proof.
     intros i Lt Eq. apply NEql. by rewrite Eq.
 Qed.
 
+(** Active protector preserving *)
 Definition active_preserving (cids: call_id_stack) (stk stk': stack) :=
   ∀ pm t c, c ∈ cids → mkItem pm t (Some c) ∈ stk → mkItem pm t (Some c) ∈ stk'.
 
@@ -338,7 +342,8 @@ Proof.
 Qed.
 
 Lemma active_preserving_app_mono (cids: call_id_stack) (stk1 stk2 stk': stack) :
-  active_preserving cids stk1 stk2 → active_preserving cids (stk1 ++ stk') (stk2 ++ stk').
+  active_preserving cids stk1 stk2 →
+  active_preserving cids (stk1 ++ stk') (stk2 ++ stk').
 Proof.
   intros AS pm t c Inc. rewrite 2!elem_of_app.
   specialize (AS pm t c Inc). set_solver.
@@ -427,6 +432,16 @@ Proof.
     intros i Lt Eq. apply NEql. by rewrite Eq.
 Qed.
 
+(** Head preserving *)
+Lemma access1_head_preserving stk stk' kind tg cids n pm t opro:
+  access1 stk kind tg cids = Some (n, stk') →
+  mkItem pm (Tagged t) opro ∈ stk' →
+  (∃ stk1 opro1, stk = (mkItem Unique (Tagged t) opro1) :: stk1) →
+  (∃ stk1 opro1, stk' = (mkItem Unique (Tagged t) opro1) :: stk1).
+Proof.
+Abort.
+
+(** Wellformedness *)
 Lemma for_each_access1_non_empty α cids l n tg kind α' :
   for_each α l n false
           (λ stk, nstk' ← access1 stk kind tg cids; Some nstk'.2) = Some α' →
@@ -435,15 +450,127 @@ Proof.
   move => /for_each_access1 EQ1 WF ?? /EQ1 [? [? [? NE]]]. by eapply NE, WF.
 Qed.
 
+Lemma stack_item_no_dup_mono stk stk' :
+  stk' ⊆ stk →
+  stack_item_no_dup stk → stack_item_no_dup stk'.
+Proof. intros SUB ND it1 it2 t In1 In2. by apply ND; apply SUB. Qed.
+
+(* Lemma stack_item_no_dup_cons_1 si stk t :
+   stack_item_no_dup (si :: stk) → si.(tg) = Tagged t → ¬ si ∈ stk.
+Proof.
+  revert si. induction stk as [|si' stk IH]; [set_solver|].
+  intros si ND. *)
+
+(* Lemma stack_item_no_dup_cons si stk :
+  stack_item_no_dup (si :: stk) ↔
+  (∀ t, si.(tg) = Tagged t → ¬ si ∈ stk ∧
+    ∀  si', si' ∈ stk → si'.(tg) ≠ (Tagged t)) ∧ stack_item_no_dup stk.
+Proof.
+  split.
+  - intros ND. split.
+    + intros t Eqsi. admit.
+    + eapply stack_item_no_dup_mono; [|exact ND]. set_solver.
+  - move => [NS ND] it1 it2 t /elem_of_cons[?|In1] /elem_of_cons[?|In2];
+      subst; [done|..].
+    + intros Eq1 Eq2. exfalso.
+      destruct (NS _ Eq1) as [? NS2]. by apply (NS2 _ In2 Eq2).
+    + intros Eq1 Eq2. exfalso.
+      destruct (NS _ Eq2) as [? NS1]. by apply (NS1 _ In1 Eq1).
+    + by apply ND. *)
+
+(* Lemma stack_item_no_dup_app stk1 stk2 :
+  stack_item_no_dup (stk1 ++ stk2) ↔
+  stack_item_no_dup stk1 ∧
+  (∀ t pm1 opro1 pm2 opro2,
+    mkItem pm1 (Tagged t) opro1 ∈ stk1 →
+    mkItem pm2 (Tagged t) opro2 ∈ stk2 → False) ∧
+  stack_item_no_dup stk2.
+Proof.
+  revert stk2. induction stk1 as [|si stk1 IH]; simpl; intros stk2.
+  { split; [|naive_solver].
+    intros ND. split; last split; [intros ?; set_solver|set_solver|done]. }
+  split.
+  - intros ND. split; last split.
+    + eapply stack_item_no_dup_mono; [|exact ND]. set_solver.
+    + have ND3: stack_item_no_dup (stk1 ++ stk2).
+      { eapply stack_item_no_dup_mono; [|exact ND]. set_solver. }
+      apply IH in ND3 as (ND1 & NS & ND2).
+      move => t pm1 opro1 pm2 opro2 /elem_of_cons [?|]; [|by apply NS].
+      NoDup_app
+      admit.
+    + eapply stack_item_no_dup_mono; [|exact ND]. set_solver.
+  - intros (ND1 & NS & ND2).
+    have ND3: stack_item_no_dup (stk1 ++ stk2).
+    { apply IH. split; last split; [..|done].
+      - eapply stack_item_no_dup_mono; [|exact ND1]. set_solver.
+      - intros t pm1 opro1 pm2 opro2 In1. eapply NS. right. eauto. }
+    intros it1 it2 t. rewrite 2!elem_of_cons.
+    move => [?|/elem_of_app[In1|In1]] [?|/elem_of_app[In2|In2]]; subst; [done|..].
+    + apply ND1; [by left|by right].
+    + intros Eq1 Eq2. exfalso.
+      apply (NS t si.(perm) si.(protector) it2.(perm) it2.(protector)).
+      * apply elem_of_cons. left. rewrite -Eq1. by destruct si.
+      * rewrite -Eq2. by destruct it2.
+    + apply ND1; [by right|by left].
+    + apply ND3; set_solver.
+    + apply ND3; set_solver.
+    + intros Eq1 Eq2. exfalso.
+      apply (NS t si.(perm) si.(protector) it1.(perm) it1.(protector)).
+      * apply elem_of_cons. left. rewrite -Eq2. by destruct si.
+      * rewrite -Eq1. by destruct it1.
+    + apply ND3; set_solver.
+    + by apply ND2.
+Qed. *)
+
+Lemma remove_check_stack_item_no_dup cids stk stk' idx:
+  remove_check cids stk idx = Some stk' →
+  stack_item_no_dup stk → stack_item_no_dup stk'.
+Proof.
+  revert stk' idx.
+  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  { destruct idx; [|done]. intros ??. by simplify_eq. }
+  destruct idx as [|idx]; [intros ??; by simplify_eq|].
+  case check_protector eqn:Eq; [|done].
+  move => /IH IH' ND. apply IH'. eapply stack_item_no_dup_mono; [|exact ND].
+  set_solver.
+Qed.
+
+Lemma access1_stack_item_no_dup stk kind bor cids n stk' :
+  access1 stk kind bor cids = Some (n, stk') →
+  stack_item_no_dup stk → stack_item_no_dup stk'.
+Proof.
+  rewrite /access1. case find_granting as [gip|] eqn:Eq1; [|done].
+  apply fmap_Some in Eq1 as [[i it] [[IN ?]%list_find_Some EQ]].
+  subst gip; simpl.
+  destruct kind.
+  - case replace_check as [stk1|] eqn:Eqc ; [|done].
+    simpl. intros ?. simplify_eq.
+    rewrite -{1}(take_drop n stk).
+    admit.
+  - case find_first_write_incompatible as [?|]; [|done]. simpl.
+    case remove_check as [?|] eqn:Eqc ; [|done].
+    simpl. intros ?. simplify_eq.
+    rewrite -{1}(take_drop n stk).
+    intros ND. apply remove_check_stack_item_no_dup in Eqc.
+    + admit.
+    + eapply stack_item_no_dup_mono; [|exact ND]. set_solver.
+Admitted.
+
 Lemma for_each_access1_stack_item α nxtc cids nxtp l n tg kind α' :
   for_each α l n false
           (λ stk, nstk' ← access1 stk kind tg cids; Some nstk'.2) = Some α' →
   wf_stack_item α nxtp nxtc → wf_stack_item α' nxtp nxtc.
 Proof.
-  intros ACC WF l' stk'.
-  move => /for_each_access1 EQ.
-  destruct (EQ _ _ _ _ _ _ ACC) as [stk [Eq [SUB ?]]].
-  move => ? /SUB [? [IN [-> ->]]]. by apply (WF _ _ Eq _ IN).
+  intros ACC WF l' stk' Eq'.
+  destruct (for_each_access1 _ _ _ _ _ _ _ ACC _ _ Eq') as [stk [Eq [SUB NN]]].
+  split.
+  - move => ? /SUB [? [IN [-> ->]]]. by apply (proj1 (WF _ _ Eq) _ IN).
+  - clear SUB NN.
+    destruct (for_each_lookup_case _ _ _ _ _ ACC _ _ _ Eq Eq') as [?|Eqf].
+    { subst. by apply (WF _ _ Eq). }
+    destruct (access1 stk kind tg cids) as [[]|] eqn:Eqf'; [|done].
+    simpl in Eqf. simplify_eq.
+    eapply access1_stack_item_no_dup; eauto. by apply (WF _ _ Eq).
 Qed.
 
 Lemma copy_step_wf σ σ' e e' h0 l bor T vl :
@@ -550,10 +677,11 @@ Proof.
   inversion IS. clear IS. simplify_eq.
   (* have EqN: nxtc !! fresh (dom (gset nat) nxtc) = None
     by apply (not_elem_of_dom (D:= gset nat)), is_fresh. *)
-  constructor; simpl; [apply WF..| |apply WF| |].
-  - intros ?? Eq ? In.
-    destruct (state_wf_stack_item _ WF _ _ Eq _ In) as [SI1 SI2].
+  constructor; simpl; [apply WF..|intros ?? Eq; split|apply WF| |].
+  - intros ? In.
+    destruct ((proj1 (state_wf_stack_item _ WF _ _ Eq)) _ In) as [SI1 SI2].
     split; [done|]. move : SI2. destruct si.(protector); [simpl; lia|done].
+  - apply (state_wf_stack_item _ WF _ _ Eq).
   - apply NoDup_cons_2; [|apply WF].
     move => /(state_wf_cid_agree _ WF) /=. lia.
   - intros c. rewrite elem_of_cons.
@@ -573,8 +701,9 @@ Proof.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
-  constructor; simpl; [apply WF..| |apply WF| |].
-  - intros ?? Eq ? In. apply (state_wf_stack_item _ WF _ _ Eq _ In).
+  constructor; simpl; [apply WF..|intros ?? Eq; split|apply WF| |].
+  - intros ? In. apply ((proj1 (state_wf_stack_item _ WF _ _ Eq)) _ In).
+  - apply (state_wf_stack_item _ WF _ _ Eq).
   - eapply NoDup_cons_12, WF.
   - intros c IN. apply WF. by right.
 Qed.
@@ -727,12 +856,13 @@ Lemma for_each_grant_stack_item α nxtc cids nxtp l n bor new α'
   for_each α l n false (λ stk, grant stk bor new cids) = Some α' →
   wf_stack_item α nxtp nxtc → wf_stack_item α' nxtp nxtc.
 Proof.
-  intros ACC WF l' stk'.
-  move => /for_each_grant EQ.
-  destruct (EQ _ _ _ _ _ _ ACC) as [stk [Eq [SUB ?]]].
-  eapply tagged_sublist_stack_item_included; [eauto|].
-  move => it /elem_of_cons [-> //|]. by apply (WF _ _ Eq).
-Qed.
+  intros ACC WF l' stk' Eq'.
+  destruct (for_each_grant _ _ _ _ _ _ _ ACC _ _ Eq') as [stk [Eq [SUB ?]]].
+  split.
+  - eapply tagged_sublist_stack_item_included; [eauto|].
+    move => it /elem_of_cons [-> //|]. by apply (WF _ _ Eq).
+  - admit.
+Admitted.
 
 Lemma reborrowN_wf_stack α nxtc cids nxtp l n old new pm bar α'
   (PR: match bar with Some c => (c < nxtc)%nat | _ => True end)
