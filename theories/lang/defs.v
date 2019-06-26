@@ -18,11 +18,16 @@ Definition stack_item_included (stk: stack) (nxtp: ptr_id) (nxtc: call_id) :=
                     | Some c => (c < nxtc)%nat
                     | _ => True
                    end.
-Definition stack_item_no_dup (stk : stack) :=
-  ∀ it1 it2 t, it1 ∈ stk → it2 ∈ stk →
-    it1.(tg) = Tagged t → it2.(tg) = Tagged t → it1 = it2.
+
+Definition is_tagged (it: item) :=
+  match it.(tg) with Tagged _ => True | _ => False end.
+Instance is_tagged_dec: Decision (is_tagged it).
+Proof. intros. rewrite /is_tagged. case tg; solve_decision. Defined.
+Definition stack_item_tagged_NoDup (stk : stack) :=
+  NoDup (fmap tg (filter is_tagged stk)).
+
 Definition wf_stack_item (α: stacks) (nxtp: ptr_id) (nxtc: call_id) :=
-  ∀ l stk, α !! l = Some stk → stack_item_included stk nxtp nxtc ∧ stack_item_no_dup stk.
+  ∀ l stk, α !! l = Some stk → stack_item_included stk nxtp nxtc ∧ stack_item_tagged_NoDup stk.
 Definition wf_non_empty (α: stacks) :=
   ∀ l stk, α !! l = Some stk → stk ≠ [].
 Definition wf_no_dup (α: stacks) :=
