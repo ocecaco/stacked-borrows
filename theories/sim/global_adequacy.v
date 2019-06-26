@@ -53,6 +53,7 @@ Proof.
     rename y into conf'_tgt.
     rename z into conf''_tgt.
     i. punfold SIM. exploit SIM.
+    { admit. (* never_stuck *) }
     { admit. (* WF *) }
     { admit. (* WF *) }
     clear SIM. intro SIM. inv SIM.
@@ -68,14 +69,12 @@ Proof.
   - intros idx. revert x.
     induction idx using strong_induction. i.
     punfold SIM. exploit SIM.
+    { admit. (* never_stuck *) }
     { admit. (* WF *) }
     { admit. (* WF *) }
     clear SIM. intro SIM. inv SIM. inv MAT.
-    + exploit sim_stuck; eauto.
-      { by apply stuck_terminal. }
-      i. des.
-      pfold. econs; eauto.
-      constructor 1; by apply stuck_terminal.
+    + exfalso. eapply sim_stuck; eauto.
+      apply stuck_terminal. ss.
     + exploit sim_terminal; eauto. i. des.
       pfold. econs; eauto.
       econs 2. rename x2 into SE. by apply SE.

@@ -45,37 +45,38 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
     (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
     (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt)))
     fid el_tgt
+    el_src σ1_src
+    rc rv
+    (* tgt is ready to make a call of [name] *)
     (CALLTGT: et = fill Kt (Call #[ScFnPtr fid] el_tgt))
-    (STEPOVER: ∀
-      (* tgt is ready to make a call of [name] *)
-      (VTGT : Forall (λ ei, is_Some (to_value ei)) el_tgt),
-      (* then src is also ready to make a call of [name] *)
-      ∃ el_src σ1_src rc rv,
-      (es, σs) ~{fns}~>*
-        (fill Ks (Call #[ScFnPtr fid] el_src), σ1_src) ∧
-      Forall (λ ei, is_Some (to_value ei)) el_src ∧
-      (* and we can pick a resource [rv] for the arguments *)
-      wsat (r_f ⋅ (rc ⋅ rv)) σ1_src σt ∧
-      (* [rv] justifies the arguments *)
-      Forall2 (vrel rv) el_src el_tgt ∧
-      (* and after the call our context can continue *)
-      (∀ r' v_src v_tgt σs' σt'
-        (* For any new resource r' that supports the returned values are
-          related w.r.t. (r ⋅ r' ⋅ r_f) *)
-        (VRET: vrel r' (Val v_src) (Val v_tgt)),
+    (VTGT: Forall (λ ei, is_Some (to_value ei)) el_tgt)
+    (* src is ready to make a call of [name] *)
+    (CALLSRC: (es, σs) ~{fns}~>* (fill Ks (Call #[ScFnPtr fid] el_src), σ1_src))
+    (VSRC: Forall (λ ei, is_Some (to_value ei)) el_src)
+    (* and we can pick a resource [rv] for the arguments *)
+    (WSAT: wsat (r_f ⋅ (rc ⋅ rv)) σ1_src σt)
+    (* [rv] justifies the arguments *)
+    (VREL: Forall2 (vrel rv) el_src el_tgt)
+    (* and after the call our context can continue *)
+    (CONT: ∀ r' v_src v_tgt σs' σt'
+             (* For any new resource r' that supports the returned values are
+                related w.r.t. (r ⋅ r' ⋅ r_f) *)
+             (WSAT: wsat (r_f ⋅ (rc ⋅ r')) σs' σt')
+             (VRET: vrel r' (Val v_src) (Val v_tgt)),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
-                                (fill Ks (Val v_src)) σs'
-                                (fill Kt (Val v_tgt)) σt' Φ)).
+                               (fill Ks (Val v_src)) σs'
+                               (fill Kt (Val v_tgt)) σt' Φ).
 
 Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop := {
+  sim_local_body_stuck :
+    ~ stuck (Λ:= bor_lang fnt) et σt ;
   sim_local_body_terminal :
     (* if tgt is terminal *)
     ∀ vt (TERM: to_result et = Some vt),
       (* then src can get terminal *)
-      ∃ vs' σs' r' idx',
-        ((es, σs) ~{fns}~>+ (of_result vs', σs') ∨
-         ((idx' < idx)%nat ∧ (of_result vs', σs') = (es, σs))) ∧
+      ∃ vs' σs' idx' r',
+        (es, σs) ~{fns}~>* (of_result vs', σs') ∧
         (* and re-establish wsat *)
         wsat (r_f ⋅ r') σs' σt ∧ Φ r' idx' vs' σs' vt σt ;
   sim_local_body_step :
@@ -93,7 +94,7 @@ Definition _sim_local_body (sim_local_body : SIM)
 Lemma sim_local_body_mono : monotone7 _sim_local_body.
 Proof.
   intros r idx es σs et σt Φ R R' SIM LE NT r_f WSAT.
-  destruct (SIM NT _ WSAT) as [TM ST]. split; [naive_solver|].
+  destruct (SIM NT _ WSAT) as [NS TM ST]. split; [naive_solver|naive_solver|].
   inversion ST; subst.
   - constructor 1. naive_solver.
   - econstructor 2; eauto. naive_solver.
