@@ -900,11 +900,114 @@ Proof.
   move => /for_each_grant EQ1 WF ?? /EQ1 [? [? [? NE]]]. by eapply NE, WF.
 Qed.
 
+Definition tag_fresh_stack (t: tag) (stk: stack) :=
+  match t with
+  | Tagged _ => ∀ it, it ∈ stk → it.(tg) ≠ t
+  | _ => True
+  end.
+
+Lemma tag_fresh_stack_app t stk1 stk2 :
+  tag_fresh_stack t (stk1 ++ stk2) ↔ tag_fresh_stack t stk1 ∧ tag_fresh_stack t stk2.
+Proof.
+  rewrite /tag_fresh_stack.
+  destruct t; [|naive_solver].
+  setoid_rewrite elem_of_app. naive_solver.
+Qed.
+
+Lemma replace_check'_tag_fresh_stack cids acc stk stk' new :
+  replace_check' cids acc stk = Some stk' →
+  tag_fresh_stack new (acc ++ stk) → tag_fresh_stack new stk'.
+Proof.
+  revert acc stk'.
+  induction stk as [|it stk IH]; intros acc stk'; simpl.
+  { intros ?. simplify_eq. by rewrite app_nil_r. }
+  case decide => ?; [case check_protector; [|done]|];
+    [|move => /IH; by rewrite -app_assoc].
+  move => RC IS. apply (IH _ _ RC). move : IS. clear -RC.
+  rewrite /tag_fresh_stack. destruct new; [|done].
+  apply replace_check'_tagged_sublist in RC.
+  do 2 (setoid_rewrite elem_of_app). setoid_rewrite elem_of_cons at 1.
+  intros IS it1 [[|Eq%elem_of_list_singleton]|]; [naive_solver| |naive_solver].
+  rewrite Eq /=. naive_solver.
+Qed.
+
+Lemma replace_check_tag_fresh_stack cids stk stk' new :
+  replace_check cids stk = Some stk' →
+  tag_fresh_stack new stk → tag_fresh_stack new stk'.
+Proof. by eapply replace_check'_tag_fresh_stack. Qed.
+
+Lemma remove_check_tag_fresh_stack cids stk stk' idx new :
+  remove_check cids stk idx = Some stk' →
+  tag_fresh_stack new stk → tag_fresh_stack new stk'.
+Proof.
+  revert stk' idx.
+  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  { destruct idx; [|done]. intros. by simplify_eq. }
+  destruct idx as [|idx]; [intros; by simplify_eq|].
+  case check_protector eqn:Eq; [|done].
+  move => /IH IH1 IS. apply IH1. by apply (tag_fresh_stack_app _ [it]) in IS as [].
+Qed.
+
+Lemma access1_tag_fresh_stack stk kind bor cids n stk1 new :
+  access1 stk kind bor cids = Some (n, stk1) →
+  tag_fresh_stack new stk → tag_fresh_stack new stk1.
+Proof.
+  rewrite /access1. case find_granting as [gip|] eqn:Eq1; [|done].
+  apply fmap_Some in Eq1 as [[i it] [[IN ?]%list_find_Some EQ]].
+  subst gip; simpl.
+  destruct kind.
+  - case replace_check as [stk'|] eqn:Eqc ; [|done].
+    simpl. intros ?. simplify_eq.
+    rewrite -{1}(take_drop n stk). rewrite 2!tag_fresh_stack_app.
+    intros [??]. split; [|done]. by eapply replace_check_tag_fresh_stack.
+  - case find_first_write_incompatible as [?|]; [|done]. simpl.
+    case remove_check as [?|] eqn:Eqc ; [|done].
+    simpl. intros ?. simplify_eq.
+    rewrite -{1}(take_drop n stk). rewrite 2!tag_fresh_stack_app.
+    intros [??]. split; [|done]. by eapply remove_check_tag_fresh_stack.
+Qed.
+
+Instance stack_item_tagged_NoDup_proper :
+  Proper (Permutation ==> iff) stack_item_tagged_NoDup.
+Proof. intros stk1 stk2 PERM. by rewrite /stack_item_tagged_NoDup PERM. Qed.
+
+Lemma stack_item_tagged_NoDup_tag_fresh_cons new stk :
+  tag_fresh_stack new.(tg) stk →
+  stack_item_tagged_NoDup stk → stack_item_tagged_NoDup (new :: stk).
+Proof.
+  rewrite /tag_fresh_stack /stack_item_tagged_NoDup.
+  rewrite filter_cons.
+  case decide => [|//]. rewrite {1}/is_tagged fmap_cons => ?.
+  destruct new.(tg); [|done].
+  intros IS ND. apply NoDup_cons. split; [|done].
+  move => /elem_of_list_fmap [it [Eq /elem_of_list_filter [IT IN]]].
+  by apply (IS _ IN).
+Qed.
+
+Lemma item_insert_dedup_tagged_NoDup new stk n:
+  tag_fresh_stack new.(tg) stk →
+  stack_item_tagged_NoDup stk →
+  stack_item_tagged_NoDup (item_insert_dedup stk new n).
+Proof.
+  intros. destruct n; simpl.
+  - destruct stk.
+    + apply stack_item_tagged_NoDup_singleton.
+    + case decide => ?; [done|].
+      by apply stack_item_tagged_NoDup_tag_fresh_cons.
+  - case lookup => [?|]; case lookup => [?|].
+    + case decide => ?; [done|]. case decide => ?; [done|].
+      rewrite -Permutation_middle take_drop.
+      by apply stack_item_tagged_NoDup_tag_fresh_cons.
+    + case decide => ?; [done|]. rewrite -Permutation_middle take_drop.
+      by apply stack_item_tagged_NoDup_tag_fresh_cons.
+    + case decide => ?; [done|]. rewrite -Permutation_middle take_drop.
+      by apply stack_item_tagged_NoDup_tag_fresh_cons.
+    + rewrite -Permutation_middle take_drop.
+      by apply stack_item_tagged_NoDup_tag_fresh_cons.
+Qed.
+
 Lemma grant_stack_item_tagged_NoDup stk bor new cids stk'
-  (NEW: match new.(tg) with
-        | Tagged t => ∀ it, it ∈ stk → it.(tg) ≠ new.(tg)
-        | _ => True
-        end) :
+  (NEW: tag_fresh_stack new.(tg) stk) :
   grant stk bor new cids = Some stk' →
   stack_item_tagged_NoDup stk → stack_item_tagged_NoDup stk'.
 Proof.
@@ -912,18 +1015,21 @@ Proof.
   case find_granting as [[n pm]|]; [|done].
   cbn -[item_insert_dedup]. destruct new.(perm). (* TODO: duplicated proofs *)
   - case access1 as [[n1 stk1]|] eqn:Eq1; [|done]. cbn -[item_insert_dedup].
-    intros. simplify_eq.
-    admit.
+    intros ? ND. simplify_eq.
+    apply item_insert_dedup_tagged_NoDup.
+    by eapply access1_tag_fresh_stack. by eapply access1_stack_item_tagged_NoDup.
   - case find_first_write_incompatible as [n1|]; [|done].
-    simpl. intros. simplify_eq.
-    admit.
+    simpl. intros ? ND. simplify_eq.
+    by apply item_insert_dedup_tagged_NoDup.
   - case access1 as [[n1 stk1]|] eqn:Eq1; [|done]. cbn -[item_insert_dedup].
-    intros. simplify_eq.
-    admit.
+    intros ? ND. simplify_eq.
+    apply item_insert_dedup_tagged_NoDup.
+    by eapply access1_tag_fresh_stack. by eapply access1_stack_item_tagged_NoDup.
   - case access1 as [[n1 stk1]|] eqn:Eq1; [|done]. cbn -[item_insert_dedup].
-    intros. simplify_eq.
-    admit.
-Admitted.
+    intros ? ND. simplify_eq.
+    apply item_insert_dedup_tagged_NoDup.
+    by eapply access1_tag_fresh_stack. by eapply access1_stack_item_tagged_NoDup.
+Qed.
 
 Definition tag_fresh t (α: stacks) l n :=
   match t with
