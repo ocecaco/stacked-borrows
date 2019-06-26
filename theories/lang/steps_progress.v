@@ -470,64 +470,6 @@ Proof.
   move => -> /=. by do 3 eexists.
 Qed.
 
-Lemma unsafe_action_offsets {A}
-  (f: A → _ → nat → _ → _) a l (last fsz usz: nat) a' last' cur_dist' :
-  unsafe_action f a l last fsz usz = Some (a', (last', cur_dist')) →
-  (last' = last + fsz + usz ∧ cur_dist' = O)%nat.
-Proof.
-  rewrite /unsafe_action. do 2 (case f => ?; [simpl|done]).
-  intros. by simplify_eq.
-Qed.
-
-Lemma visit_freeze_sensitive'_offsets {A}
-  h l (f: A → _ → nat → _ → _) a (last cur_dist: nat) T a' last' cur_dist' :
-  let HA (oalc: option (A * (nat * nat))) l1 c1 T1 a2 l2 c2 :=
-    (oalc = Some (a2, (l2, c2)) →
-      (l1 ≤ l2 ∧ l2 + c2 = l1 + c1 + tsize T1)%nat) in
-  HA (visit_freeze_sensitive' h l f a last cur_dist T)
-     last cur_dist T a' last' cur_dist'.
-Proof.
-  intros HA.
-  apply (visit_freeze_sensitive'_elim
-    (* general goal P *)
-    (λ _ _ _ _ l1 c1 T1 oalc, ∀ a2 l2 c2, HA oalc l1 c1 T1 a2 l2 c2)
-    (λ _ _ _ _ _ _ _ _ l1 c1 Ts oalc, ∀ a2 l2 c2,
-      HA oalc l1 c1 (Product Ts) a2 l2 c2)
-    (λ _ _ _ _ l1 c1 _ Ts i oalc, ∀ a2 l2 c2,
-      oalc = Some (a2, (l2, c2)) → ∃ T1, Ts !! i = Some T1 ∧
-      (l1 ≤ l2 ∧ l2 + c2 = l1 + S c1 + tsize T1)%nat)); rewrite /HA.
-  - intros. simplify_eq. simpl. lia.
-  - intros. simplify_eq. simpl. lia.
-  - clear. intros _ ????????? [??]%unsafe_action_offsets. subst. simpl. lia.
-  - clear. intros _ ?????????. case is_freeze.
-    + intros. simplify_eq. lia.
-    + intros [??]%unsafe_action_offsets. subst. lia.
-  - clear. intros ??????? IH ???.
-    case is_freeze; [intros; simplify_eq; lia|by move => /IH].
-  - clear. intros ???? l1 c1 ? IH ???.
-    case is_freeze; [intros; simplify_eq; lia|].
-    case lookup => [[//|i|//|//]|//].
-    case decide => [Ge0|//].
-    case visit_freeze_sensitive'_clause_6_visit_lookup
-      as [[? [l3 c3]]|] eqn:Eq1; [simpl|done].
-    intros. simplify_eq.
-    destruct (IH ScPoison _ Ge0 _ _ _ Eq1) as (T1&HL&Le&Eq).
-    split; [done|]. rewrite le_plus_minus_r; [done|].
-    etrans; [apply (le_plus_l _ c3)|]. rewrite Eq.
-    rewrite (_: l1 + S c1 + tsize T1 = l1 + c1 + S (tsize T1))%nat; [|lia].
-    by eapply plus_le_compat_l, tsize_subtype_of_sum, elem_of_list_lookup_2.
-  - naive_solver.
-  - clear. intros h l f a1 l1 c1 Ts a2 l2 c2 T Ts' IH1 IH2 a4 l4 c4.
-    case visit_freeze_sensitive' as [[a3 [l3 c3]]|] eqn:Eq3; [|done].
-    cbn -[tsize].
-    destruct (IH2 a3 l3 c3) as [Le3 EqO3]; [done|].
-    intros Eq4. destruct (IH1 (a3, (l3, c3)) a4 l4 c4 Eq4) as [Le4 EqO4].
-    clear -Le3 EqO3 Le4 EqO4. simpl in Le4. rewrite EqO4. cbn -[tsize].
-    rewrite EqO3 tsize_product_cons. lia.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-Qed.
 
 Lemma visit_freeze_sensitive'_is_Some {A} (GI: A → nat → Prop)
   h l (f: A → _ → nat → _ → _) a (last cur_dist: nat) T

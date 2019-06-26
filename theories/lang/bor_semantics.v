@@ -215,9 +215,9 @@ Equations visit_freeze_sensitive'
         where visit_LR (a: A) (last cur_dist: nat) (Ts: list type)
           : option (A * (nat * nat)) :=
           { visit_LR a last cur_dist [] := Some (a, (last, cur_dist)) ;
-            visit_LR a last cur_dist (T :: Ts) :=
-              alc ← visit_freeze_sensitive' h l f a last cur_dist T ;
-              visit_LR alc.1 alc.2.1 alc.2.2 Ts } ;
+            visit_LR a last cur_dist (T' :: Ts') :=
+              alc ← visit_freeze_sensitive' h l f a last cur_dist T' ;
+              visit_LR alc.1 alc.2.1 alc.2.2 Ts' } ;
   visit_freeze_sensitive' h l f a last cur_dist (Sum Ts) :=
     (* Try a shortcut *)
       if is_freeze (Sum Ts)
