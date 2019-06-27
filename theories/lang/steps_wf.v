@@ -502,6 +502,7 @@ Qed.
 
 (* end TODO: move *)
 
+(** NoDup *)
 Lemma stack_item_tagged_NoDup_cons_1 it stk :
   stack_item_tagged_NoDup (it :: stk) → stack_item_tagged_NoDup stk.
 Proof.
@@ -715,9 +716,7 @@ Lemma access1_head_preserving stk stk' kind tg cids n pm pm' t opro:
   is_stack_head (mkItem pm' (Tagged t) opro) stk →
   is_stack_head (mkItem pm' (Tagged t) opro) stk'.
 Proof.
-  intros ND NDIS IN ACC.
-  have ND' := access1_stack_item_tagged_NoDup _ _ _ _ _ _ ACC ND.
-  revert ACC.
+  intros ND NDIS IN.
   rewrite /access1. case find_granting as [gip|]; [|done]. simpl.
   destruct kind.
   - case replace_check as [stk1|] eqn:Eq; [|done].
@@ -732,6 +731,118 @@ Proof.
     { rewrite -{2}(take_drop gip.1 stk). apply sublist_app; [|done].
       move : Eq. apply remove_check_sublist. }
     eapply sublist_head_preserving; eauto. done.
+Qed.
+
+(** active_SRO preserving *)
+Lemma active_SRO_cons_elem_of t it stk :
+  t ∈ active_SRO (it :: stk) ↔
+  it.(perm) = SharedReadOnly ∧ (it.(tg) = Tagged t ∨ t ∈ active_SRO stk).
+Proof.
+  simpl. destruct it.(perm); [set_solver..| |set_solver].
+  case tg => [?|]; [rewrite elem_of_union elem_of_singleton|]; naive_solver.
+Qed.
+
+Lemma sublist_active_SRO_preserving t it stk stk' :
+  stk' `sublist_of` stk →
+  it.(tg) = Tagged t →
+  it ∈ stk' →
+  stack_item_tagged_NoDup stk →
+  t ∈ active_SRO stk → t ∈ active_SRO stk'.
+Proof.
+  intros SUB Eqt In' ND.
+  induction SUB as [|it1 stk1 stk2 ? IH|it1 stk1 stk2 ? IH]; [done|..].
+  - intros [? Eq]%active_SRO_cons_elem_of. apply active_SRO_cons_elem_of.
+    split; [done|]. destruct Eq as [?|Eq]; [by left|].
+    apply elem_of_cons in In' as [?|In'].
+    + subst it. rewrite Eqt. by left.
+    + right. apply IH; auto. by eapply stack_item_tagged_NoDup_cons_1.
+  - intros [? Eq]%active_SRO_cons_elem_of.
+    destruct Eq as [Eq|In2].
+    + exfalso. move : ND.
+      rewrite /stack_item_tagged_NoDup filter_cons decide_True;
+        last by rewrite /is_tagged Eq.
+      rewrite fmap_cons NoDup_cons. intros [NI ?].
+      apply NI, elem_of_list_fmap. exists it. split; [rewrite Eqt Eq //|].
+      apply elem_of_list_filter. split. by rewrite /is_tagged Eqt. by rewrite <-SUB.
+    + apply IH; auto. by eapply stack_item_tagged_NoDup_cons_1.
+Qed.
+
+Lemma active_SRO_tag_eq_elem_of stk1 stk2 t :
+  fmap tg stk1 = fmap tg stk2 →
+  Forall2 (λ pm1 pm2, pm1 = SharedReadOnly → pm2 = SharedReadOnly)
+          (fmap perm stk1) (fmap perm stk2) →
+  t ∈ active_SRO stk1 → t ∈ active_SRO stk2.
+Proof.
+  revert stk2.
+  induction stk1 as [|it stk1 IH]; intros stk2; [simpl; set_solver|].
+  destruct stk2 as [|it2 stk2]; [naive_solver|].
+  rewrite 4!fmap_cons. inversion 1 as [Eqt].
+  inversion 1 as [|???? Eq1 FA]; subst. rewrite 2!active_SRO_cons_elem_of.
+  intros [EqSRO Eq]. specialize (Eq1 EqSRO). split; [done|].
+  destruct Eq as [Eq|In1].
+  - rewrite -Eqt. by left.
+  - right. by apply IH.
+Qed.
+
+Lemma replace_check'_active_SRO_preserving cids acc stk stk' stk0 t it:
+  it.(tg) = Tagged t →
+  it ∈ stk' ++ stk0 →
+  replace_check' cids acc stk = Some stk' →
+  stack_item_tagged_NoDup (acc ++ stk ++ stk0) →
+  t ∈ active_SRO (acc ++ stk ++ stk0) → t ∈ active_SRO (stk' ++ stk0).
+Proof.
+  intros Eqt IN. revert acc.
+  induction stk as [|it1 stk IH]; simpl; intros acc.
+  { intros ?. by simplify_eq. }
+  case decide => [EqU|?]; [case check_protector; [|done]|];
+    [|move => /IH; rewrite -(app_assoc acc [it1] (stk ++ stk0)); naive_solver].
+  move => RC ND.
+  rewrite (app_assoc acc [it1] (stk ++ stk0)).
+  have ND3: stack_item_tagged_NoDup
+    ((acc ++ [mkItem Disabled it1.(tg) it1.(protector)]) ++ stk ++ stk0).
+  { move : ND. clear.
+    rewrite (app_assoc acc [it1]) 2!(Permutation_app_comm acc) -2!app_assoc.
+    rewrite /stack_item_tagged_NoDup 2!filter_cons /=.
+    case decide => ?; [rewrite decide_True //|rewrite decide_False //]. }
+  intros HD. apply (IH _ RC ND3). clear IH. move : HD.
+  apply active_SRO_tag_eq_elem_of.
+  - by rewrite !fmap_app /=.
+  - rewrite 2!(fmap_app _ _ (stk ++ stk0)).
+    apply Forall2_app; [rewrite 2!fmap_app; apply Forall2_app|].
+    + by apply Forall_Forall2, Forall_forall.
+    + apply Forall2_cons; [|constructor]. by rewrite EqU.
+    + by apply Forall_Forall2, Forall_forall.
+Qed.
+
+Lemma replace_check_active_SRO_preserving cids stk stk' stk0 it t:
+  it.(tg) = Tagged t →
+  it ∈ stk' ++ stk0 →
+  replace_check cids stk = Some stk' →
+  stack_item_tagged_NoDup (stk ++ stk0) →
+  t ∈ active_SRO (stk ++ stk0) → t ∈ active_SRO (stk' ++ stk0).
+Proof. by apply replace_check'_active_SRO_preserving. Qed.
+
+Lemma access1_active_SRO_preserving stk stk' kind tg cids n pm t opro:
+  stack_item_tagged_NoDup stk →
+  mkItem pm (Tagged t) opro ∈ stk' →
+  access1 stk kind tg cids = Some (n, stk') →
+  t ∈ active_SRO stk → t ∈ active_SRO stk'.
+Proof.
+  intros ND IN.
+  rewrite /access1. case find_granting as [gip|]; [|done]. simpl.
+  destruct kind.
+  - case replace_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros ?. simplify_eq.
+    rewrite -{1}(take_drop gip.1 stk). intros HD.
+    rewrite -{1}(take_drop gip.1 stk) in ND.
+    eapply replace_check_active_SRO_preserving; eauto. done.
+  - case find_first_write_incompatible as [idx|]; [|done]. simpl.
+    case remove_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros ?. simplify_eq.
+    have SUB: stk1 ++ drop gip.1 stk `sublist_of` stk.
+    { rewrite -{2}(take_drop gip.1 stk). apply sublist_app; [|done].
+      move : Eq. apply remove_check_sublist. }
+    eapply sublist_active_SRO_preserving; eauto. done.
 Qed.
 
 Lemma for_each_access1_stack_item α nxtc cids nxtp l n tg kind α' :

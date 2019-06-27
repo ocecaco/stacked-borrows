@@ -189,10 +189,10 @@ Proof.
         as [?|[MR _]]; [by subst|]. clear -In' MR HTOP Eqstk WFT NDIS.
       destruct (access1 stk AccessRead tg σt.(scs)) as [[n stk1]|] eqn:Eqstk';
         [|done]. simpl in MR. simplify_eq.
+      destruct (state_wf_stack_item _ WFT _ _ Eqstk). move : Eqstk' HTOP.
       destruct k.
-      + move : HTOP. eapply access1_head_preserving; eauto.
-        by destruct (state_wf_stack_item _ WFT _ _ Eqstk).
-      + admit.
+      + eapply access1_head_preserving; eauto.
+      + eapply access1_active_SRO_preserving; eauto.
     - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
@@ -211,7 +211,7 @@ Proof.
   { right. split; [lia|]. eauto. }
   { eauto. }
   { by apply POST. }
-Abort.
+Qed.
 
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
