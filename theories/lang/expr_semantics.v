@@ -64,6 +64,16 @@ Proof.
   revert vsl. induction xl=>/= vsl; inv_vec vsl=>//=v vsl. by rewrite -IHxl.
 Qed.
 
+Lemma subst_l_is_Some xl el e :
+  length xl = length el → is_Some (subst_l xl el e).
+Proof.
+  revert el. induction xl as [|x xl IH] => el.
+  { destruct el; [by eexists|done]. }
+  destruct el as [|e1 el]; [done|].
+  rewrite /= /subst'. intros ?.
+  destruct (IH el) as [? Eq2]; [lia|]. rewrite Eq2 /=. by eexists.
+Qed.
+
 Lemma subst_l_is_Some_length xl el e e' :
   subst_l xl el e = Some e' → length xl = length el.
 Proof.
