@@ -34,8 +34,7 @@ Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
   : Prop := mkSimBase {
   (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
   sim_stuck :
-    stuck (Λ:= bor_lang fnt) eσ1_tgt.1 eσ1_tgt.2 → ∃ eσ2_src,
-    eσ1_src ~{fns}~>* eσ2_src ∧ stuck (Λ:= bor_lang fns) eσ2_src.1 eσ2_src.2 ;
+    ~ stuck (Λ:= bor_lang fnt) eσ1_tgt.1 eσ1_tgt.2 ;
   (* (2) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
   sim_terminal :
     terminal eσ1_tgt.1 → ∃ eσ2_src, eσ1_src ~{fns}~>* eσ2_src ∧
@@ -48,15 +47,22 @@ Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
       sim idx2 eσ2_src eσ2_tgt;
 }.
 
+(* TODO: duplicate *)
+Definition never_stuck fs e σ :=
+  ∀ e' σ', (e, σ) ~{fs}~>* (e', σ') → terminal e' ∨ reducible (Λ:=bor_lang fs)  e' σ'.
+
 (* Generator for the actual simulation *)
 Definition _sim
   (sim : SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state) : Prop :=
-  Wf eσ1_src.2 → Wf eσ1_tgt.2 → sim_base sim idx1 eσ1_src eσ1_tgt.
+  forall (NEVER_STUCK: never_stuck fns eσ1_src.1 eσ1_src.2)
+    (WF_SRC: Wf eσ1_src.2)
+    (WF_TGT: Wf eσ1_tgt.2),
+    sim_base sim idx1 eσ1_src eσ1_tgt.
 
 Lemma _sim_mono : monotone3 (_sim).
 Proof.
-  intros idx1 eσ_src eσ_tgt r r' TS LE WF1 WF2.
-  destruct (TS WF1 WF2) as [SU TE ST]. repeat split; auto.
+  intros idx1 eσ_src eσ_tgt r r' TS LE NS WF1 WF2.
+  destruct (TS NS WF1 WF2) as [SU TE ST]. repeat split; auto.
   intros eσ2_tgt ONE. destruct (ST _ ONE) as (idx2 & eσ2_src & STEP1 & Hr).
   exists idx2, eσ2_src. split; [done|]. by apply LE.
 Qed.

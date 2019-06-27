@@ -12,6 +12,7 @@ theories/lang/steps_wf.v
 theories/lang/steps_progress.v
 theories/lang/steps_inversion.v
 theories/lang/examples.v
+theories/sim/behavior.v
 theories/sim/global.v
 theories/sim/global_adequacy.v
 theories/sim/cmra.v
