@@ -371,13 +371,6 @@ Canonical Structure bor_lang fns := LanguageOfEctx (bor_ectx_lang fns).
 
 Export bor_lang.
 
-(* TODO: move to Iris *)
-Lemma stuck_fill fns K (e : ectx_language.expr (bor_ectx_lang fns)) σ :
-  stuck e σ → stuck (fill K e) σ.
-Proof.
-  intros ST. split; [by apply fill_not_val, ST|apply irreducible_fill; apply ST].
-Qed.
-
 Lemma fill_result fns K (e : ectx_language.expr (bor_ectx_lang fns)) :
   is_Some (to_result (fill K e)) → is_Some (to_result e) ∧ K = [].
 Proof.
