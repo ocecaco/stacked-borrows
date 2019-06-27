@@ -83,6 +83,7 @@ Notation "x ~{ fn }~>* y" := (rtc (tstep fn) x y)
 Notation "x ~{ fn }~>+ y" := (tc (tstep fn) x y)
   (at level 70, format "x  ~{ fn }~>+  y").
 
+Definition reducible fs e σ := (∃ e' σ', (e,σ) ~{fs}~> (e', σ')).
 
 (*=================================== UNUSED =================================*)
 (* Implicit Type (ρ: cfg bor_lang). *)

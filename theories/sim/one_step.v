@@ -27,6 +27,16 @@ Proof.
   apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
 Qed.
 
+Lemma reducible_fill fs (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
+  to_result e = None →
+  reducible fs (fill K e) σ → reducible fs e σ.
+Proof.
+  intros TN (Ke'&σ'&STEP). inversion STEP. simpl in *.
+  have RED: language.reducible (Λ := bor_lang fs) (fill K e) σ by do 4 eexists.
+  destruct (reducible_fill _ σ TN RED) as (?&?&?&?&?).
+  do 2 eexists. by econstructor.
+Qed.
+
 Lemma never_stuck_fill_inv fs
   (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
   never_stuck fs (fill K e) σ → never_stuck fs e σ.
@@ -199,7 +209,7 @@ Proof.
   left. pfold. split; last first.
   { constructor 1. intros vt' ? STEPT'. exfalso.
     have ?: to_result (Val vt) = None.
-    { apply (tstep_reducible_not_result ft). naive_solver. } done. }
+    { eapply (tstep_reducible_not_result ft _ σt'); eauto. by do 2 eexists. } done. }
   move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
   exists (ValR vs), σs', r, n. split; last split.
   { right. split; [lia|]. eauto. }
@@ -360,7 +370,7 @@ Proof.
   left. pfold. split; last first.
   { constructor 1. intros vt' σt' STEPT'. exfalso.
     have ?: to_result (Val vt) = None.
-    { apply (tstep_reducible_not_result ft). naive_solver. } done. }
+    { eapply (tstep_reducible_not_result ft). by do 2 eexists. } done. }
   move => ? /= Eqvt. symmetry in Eqvt. simplify_eq.
   exists (ValR vs). do 2 eexists. exists n. split; last split.
   { right. split; [lia|]. eauto. }

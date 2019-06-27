@@ -36,10 +36,10 @@ Section inv.
 Variable (fns: fn_env).
 Implicit Type (e: ectx_language.expr (bor_ectx_lang fns)).
 
-Lemma tstep_reducible_not_result e :
-  (∃ σ e' σ', (e,σ) ~{fns}~> (e', σ')) → to_result e = None.
+Lemma tstep_reducible_not_result e σ :
+  reducible fns e σ → to_result e = None.
 Proof.
-  intros (σ & e' & σ' & STEP). inversion STEP. apply (reducible_not_val e σ).
+  intros (e' & σ' & STEP). inversion STEP. apply (reducible_not_val e σ).
   econstructor. by exists e', σ', efs.
 Qed.
 

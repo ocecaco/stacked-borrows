@@ -34,7 +34,7 @@ Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
   : Prop := mkSimBase {
   (* (1) If [eσ1_tgt] gets stuck, [eσ1_src] can also get stuck. *)
   sim_stuck :
-    (terminal eσ1_tgt.1 ∨ reducible (Λ:= bor_lang fnt) eσ1_tgt.1 eσ1_tgt.2) ;
+    (terminal eσ1_tgt.1 ∨ reducible fnt eσ1_tgt.1 eσ1_tgt.2) ;
   (* (2) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
   sim_terminal :
     terminal eσ1_tgt.1 → ∃ idx2 eσ2_src,
@@ -50,7 +50,7 @@ Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
 
 (* TODO: duplicate *)
 Definition never_stuck fs e σ :=
-  ∀ e' σ', (e, σ) ~{fs}~>* (e', σ') → terminal e' ∨ reducible (Λ:=bor_lang fs)  e' σ'.
+  ∀ e' σ', (e, σ) ~{fs}~>* (e', σ') → terminal e' ∨ reducible fs  e' σ'.
 
 (* Generator for the actual simulation *)
 Definition _sim
