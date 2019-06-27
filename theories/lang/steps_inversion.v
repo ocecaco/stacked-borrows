@@ -49,6 +49,11 @@ Lemma head_step_fill_tstep K
   (fill K e, σ) ~{fns}~> (fill K e', σ').
 Proof. intros ?. by econstructor; econstructor. Qed.
 
+Lemma fill_tstep_once K e σ e' σ' :
+  (e, σ) ~{fns}~> (e', σ') →
+  (fill K e, σ) ~{fns}~> (fill K e', σ').
+Proof. intros. inv_tstep. rewrite 2!fill_comp. by eapply head_step_fill_tstep. Qed.
+
 Lemma fill_tstep K e σ e' σ' :
   (e, σ) ~{fns}~>* (e', σ') →
   (fill K e, σ) ~{fns}~>* (fill K e', σ').
@@ -58,8 +63,7 @@ Proof.
   induction 1 as [|? [e1 σ1] ? S1 ? IH]; intros e σ H1 H2; subst; simplify_eq.
   { constructor 1. }
   etrans; last by apply IH. clear IH ST.
-  apply rtc_once.
-  inv_tstep. rewrite 2!fill_comp. econstructor. by econstructor.
+  apply rtc_once. by eapply fill_tstep_once.
 Qed.
 
 Lemma fill_tstep_inv K e1' σ1 e2 σ2 :

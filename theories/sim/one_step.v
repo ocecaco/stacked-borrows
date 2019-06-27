@@ -27,7 +27,7 @@ Proof.
   apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
 Qed.
 
-Lemma reducible_fill fs (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
+Lemma tstep_reducible_fill_inv fs (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
   to_result e = None →
   reducible fs (fill K e) σ → reducible fs e σ.
 Proof.
@@ -35,6 +35,18 @@ Proof.
   have RED: language.reducible (Λ := bor_lang fs) (fill K e) σ by do 4 eexists.
   destruct (reducible_fill _ σ TN RED) as (?&?&?&?&?).
   do 2 eexists. by econstructor.
+Qed.
+
+Lemma tstep_reducible_fill
+  fs (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
+  reducible fs e σ → reducible fs (fill K e) σ.
+Proof. intros (e' & σ' & STEP). exists (fill K e'), σ'. by eapply fill_tstep_once. Qed.
+
+Lemma tstep_reducible_step fs e1 σ1 e2 σ2 :
+  (e1, σ1) ~{fs}~>* (e2, σ2) → reducible fs e2 σ2 → reducible fs e1 σ1.
+Proof.
+  intros STEP ?. inversion STEP as [|? [e3 σ3]]; simplify_eq; [done|].
+  by do 2 eexists.
 Qed.
 
 Lemma never_stuck_fill_inv fs
@@ -45,7 +57,7 @@ Proof.
   destruct (to_result e') as [v'|] eqn:Eq'; [left; by eexists|right].
   destruct NT as [NT|RED].
   { exfalso. move : NT => [?]. apply (fill_not_result _ K) in Eq'. by rewrite Eq'. }
-  move : RED. by apply reducible_fill.
+  move : RED. by apply tstep_reducible_fill_inv.
 Qed.
 
 Lemma never_stuck_step fs e σ e' σ':
@@ -71,7 +83,17 @@ Proof.
   intros r1 n Ks Kt es et σs σt Φ SIM. pfold. punfold SIM. intros NT ??.
   have NT2 := never_stuck_fill_inv _ _ _ _ NT.
   destruct (SIM NT2 _ WSAT) as [NTT TM ST]. clear SIM. split.
-  { admit. }
+  { destruct NTT as [[vt Eqvt]|RED].
+    - rewrite -(of_to_result _ _ Eqvt).
+      destruct (TM _ Eqvt) as (vs' & σs' & r' & idx' & SS' & WSAT' & CONT).
+      have STEPK: (fill (Λ:=bor_ectxi_lang fs) Ks es, σs)
+                ~{fs}~>* (fill (Λ:=bor_ectxi_lang fs) Ks vs', σs').
+      { apply (fill_tstep fs Ks es). destruct SS' as [|[? Eq]].
+        by apply tc_rtc. clear -Eq. by simplify_eq. }
+      punfold CONT.
+      have NT3:= never_stuck_step _ _ _ _ _ STEPK NT.
+      destruct (CONT NT3 _ WSAT') as [NTT' _ _]. done.
+    - right. by eapply tstep_reducible_fill. }
   { (* Kt[et] is a value *)
     clear ST. intros vt Eqvt.
     destruct (fill_result _ Kt et) as [Tt ?]; [by eexists|].
@@ -142,7 +164,7 @@ Proof.
     destruct (CONT _ _ _ σs' σt' VREL') as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH.
-Admitted.
+Qed.
 
 (** MEM STEP -----------------------------------------------------------------*)
 
@@ -227,7 +249,7 @@ Lemma sim_body_init_call fs ft r n es et σs σt Φ :
 Proof.
   intros σs' σt1 r' SIM. pfold.
   intros NT. intros. split; [|done|].
-  { admit. }
+  { right. do 2 eexists. by eapply (head_step_fill_tstep _ []), initcall_head_step. }
   constructor 1. intros.
   exists es, σs', (r ⋅ r').
   destruct (tstep_init_call_inv _ _ _ _ _ STEPT). subst et' σt'.
@@ -276,7 +298,7 @@ Proof.
       rewrite (comm _ (r_f.2 ⋅ r.2)) -insert_singleton_op //.
       rewrite lookup_insert_ne // => Eqc. subst c.
       apply (lt_irrefl σt.(snc)), (cinv_lookup_in _ _ _ _ WFT CINV PRI). }
-Admitted.
+Qed.
 
 (** EndCall *)
 Lemma sim_body_end_call fs ft r n vs vt σs σt :
@@ -294,7 +316,8 @@ Lemma sim_body_end_call fs ft r n vs vt σs σt :
 Proof.
   intros VREL Hr. pfold. intros NT r_f WSAT.
   split; [|done|].
-  { admit. }
+  { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor 2. by econstructor. econstructor. admit. }
   constructor 1. intros et' σt' STEPT.
   destruct (tstep_end_call_inv ft (Val vt) et' σt σt')
     as (vt' & Eqvt & ? & c & cids & Eqc & Eqs); [by eexists|done|].
@@ -394,7 +417,8 @@ Lemma sim_body_step_over_call fs ft
     (fill Ks (Call #[ScFnPtr fid] els), σs) ≤ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT. split.
-  { admit. }
+  { right. do 2 eexists. eapply (head_step_fill_tstep _ Kt).
+    econstructor 1. econstructor; eauto. admit. }
   { intros vt. by rewrite fill_not_result. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks _ fid elt els); eauto; [done|].
@@ -415,14 +439,15 @@ Lemma sim_body_step_into_call fs ft
   r ⊨{n,fs,ft} (Call #[ScFnPtr fid] els, σs) ≤ (Call #[ScFnPtr fid] elt, σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT. split; [|done|].
-  { admit. }
+  { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor 1. econstructor; eauto. }
   econstructor 1. intros et1 σt' STEPT.
   destruct (tstep_call_inv _ _ _ _ _ _ VT STEPT) as (?&?&?&?&?&?&?&?). subst; simplify_eq.
   exists (EndCall (InitCall es')), σs, r, n. split; last split; [|done|by left].
   left. constructor 1.
   eapply (head_step_fill_tstep _ []). econstructor.
   by apply (CallBS _ _ _ els xls es HCs).
-Admitted.
+Qed.
 
 (** Let *)
 Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
@@ -432,14 +457,15 @@ Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
 Proof.
   intros TS TT SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
-  { admit. }
+  { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor 1. econstructor; eauto. }
   constructor 1. intros.
   destruct (tstep_let_inv _ _ _ _ _ _ _ TT STEPT). subst et' σt'.
   exists (subst x es1 es2), σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
   split; [done|]. by left.
-Admitted.
+Qed.
 
 (** Ref *)
 Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
@@ -448,7 +474,8 @@ Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
 Proof.
   intros SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
-  { admit. }
+  { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor 1. econstructor; eauto. admit. }
   constructor 1. intros.
   destruct (tstep_ref_inv _ _ _ _ _ _ _ STEPT) as [? [? IS]]. subst et' σt'.
   have ?: is_Some (σs.(shp) !! l).
@@ -468,7 +495,8 @@ Lemma sim_body_deref fs ft r n l tgs tgt Ts Tt σs σt Φ
 Proof.
   intros SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
-  { admit. }
+  { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor 1. econstructor. admit. }
   constructor 1. intros.
   destruct (tstep_deref_inv _ _ _ _ _ _ _ STEPT) as [? [? IS]]. subst et' σt'.
   have ?: (∀ (i: nat), (i < tsize Ts)%nat → l +ₗ i ∈ dom (gset loc) σs.(shp)).
