@@ -61,7 +61,6 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
     (CONT: ∀ r' v_src v_tgt σs' σt'
              (* For any new resource r' that supports the returned values are
                 related w.r.t. (r ⋅ r' ⋅ r_f) *)
-             (WSAT: wsat (r_f ⋅ (rc ⋅ r')) σs' σt')
              (VRET: vrel r' (Val v_src) (Val v_tgt)),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
                                (fill Ks (Val v_src)) σs'
@@ -75,8 +74,9 @@ Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
     (* if tgt is terminal *)
     ∀ vt (TERM: to_result et = Some vt),
       (* then src can get terminal *)
-      ∃ vs' σs' idx' r',
-        (es, σs) ~{fns}~>* (of_result vs', σs') ∧
+      ∃ vs' σs' r' idx',
+        ((es, σs) ~{fns}~>+ (of_result vs', σs') ∨
+         ((idx' < idx)%nat ∧ (of_result vs', σs') = (es, σs))) ∧
         (* and re-establish wsat *)
         wsat (r_f ⋅ r') σs' σt ∧ Φ r' idx' vs' σs' vt σt ;
   sim_local_body_step :
