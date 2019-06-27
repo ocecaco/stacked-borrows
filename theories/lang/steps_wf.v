@@ -163,12 +163,15 @@ Qed.
 
 Definition tagged_sublist (stk1 stk2: stack) :=
   ∀ it1, it1 ∈ stk1 → ∃ it2,
-  it2 ∈ stk2 ∧ it1.(tg) = it2.(tg) ∧ it1.(protector) = it2.(protector).
+  it2 ∈ stk2 ∧ it1.(tg) = it2.(tg) ∧ it1.(protector) = it2.(protector) ∧
+  (it1.(perm) ≠ Disabled → it2.(perm) = it1.(perm)).
 Instance tagged_sublist_preorder : PreOrder tagged_sublist.
 Proof.
   constructor.
   - intros ??. naive_solver.
-  - move => ??? H1 H2 ? /H1 [? [/H2 ? [-> ->]]]. naive_solver.
+  - move => ??? H1 H2 ? /H1 [? [/H2 Eq [-> [-> ND]]]].
+    destruct Eq as (it2 &?&?&?&ND2). exists it2. repeat split; auto.
+    intros ND3. specialize (ND ND3). rewrite ND2 // ND //.
 Qed.
 
 Instance tagged_sublist_proper stk : Proper ((⊆) ==> impl) (tagged_sublist stk).
@@ -185,8 +188,8 @@ Qed.
 Lemma remove_check_tagged_sublist cids stk stk' idx:
   remove_check cids stk idx = Some stk' → tagged_sublist stk' stk.
 Proof.
-  revert stk' idx.
-  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  revert idx.
+  induction stk as [|it stk IH]; intros idx; simpl.
   { destruct idx; [|done]. intros. by simplify_eq. }
   destruct idx as [|idx]; [intros; by simplify_eq|].
   case check_protector eqn:Eq; [|done].
@@ -196,16 +199,17 @@ Qed.
 Lemma replace_check'_tagged_sublist cids acc stk stk':
   replace_check' cids acc stk = Some stk' → tagged_sublist stk' (acc ++ stk).
 Proof.
-  revert acc stk'.
-  induction stk as [|it stk IH]; intros acc stk'; simpl.
+  revert acc.
+  induction stk as [|it stk IH]; intros acc; simpl.
   { intros. simplify_eq. by rewrite app_nil_r. }
   case decide => ?; [case check_protector; [|done]|];
     move => /IH; [|by rewrite -app_assoc].
-  move => H1 it1 /H1 [it2 [IN2 [Eq1 Eq2]]].
+  move => H1 it1 /H1 [it2 [IN2 [Eq1 [Eq2 ND]]]].
   setoid_rewrite elem_of_app. setoid_rewrite elem_of_cons.
   move : IN2 => /elem_of_app [/elem_of_app [?|/elem_of_list_singleton Eq]|?];
-    [naive_solver| |naive_solver].
-  subst it2. exists it. naive_solver.
+    [..|naive_solver].
+  - exists it2. naive_solver.
+  - subst it2. exists it. naive_solver.
 Qed.
 
 Lemma replace_check_tagged_sublist cids stk stk':
@@ -362,8 +366,8 @@ Qed.
 Lemma remove_check_active_preserving cids stk stk' idx:
   remove_check cids stk idx = Some stk' → active_preserving cids stk stk'.
 Proof.
-  revert stk' idx.
-  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  revert idx.
+  induction stk as [|it stk IH]; intros idx; simpl.
   { destruct idx; [|done]. intros ??. by simplify_eq. }
   destruct idx as [|idx]; [intros ??; by simplify_eq|].
   case check_protector eqn:Eq; [|done].
@@ -375,8 +379,8 @@ Qed.
 Lemma replace_check'_acc_result cids acc stk stk' :
   replace_check' cids acc stk = Some stk' → acc ⊆ stk'.
 Proof.
-   revert acc stk'.
-  induction stk as [|it stk IH]; intros acc stk'; simpl; [by intros; simplify_eq|].
+  revert acc.
+  induction stk as [|it stk IH]; intros acc; simpl; [by intros; simplify_eq|].
   case decide => ?; [case check_protector; [|done]|];
     move => /IH; set_solver.
 Qed.
@@ -384,8 +388,8 @@ Qed.
 Lemma replace_check'_active_preserving cids acc stk stk':
   replace_check' cids acc stk = Some stk' → active_preserving cids stk stk'.
 Proof.
-  revert acc stk'.
-  induction stk as [|it stk IH]; intros acc stk'; simpl.
+  revert acc.
+  induction stk as [|it stk IH]; intros acc; simpl.
   { intros. simplify_eq. by intros ?????%not_elem_of_nil. }
   case decide => ?; [case check_protector eqn:Eq; [|done]|].
   - move => /IH AS pm t c IN /elem_of_cons [?|]; [|by apply AS].
@@ -394,7 +398,7 @@ Proof.
   - move => Eq pm t c IN /elem_of_cons [?|].
     + apply (replace_check'_acc_result _ _ _ _ Eq), elem_of_app. right.
       by apply elem_of_list_singleton.
-    + by apply (IH _ _ Eq).
+    + by apply (IH _ Eq).
 Qed.
 
 Lemma replace_check_active_preserving cids stk stk':
@@ -516,8 +520,8 @@ Lemma replace_check'_stack_item_tagged_NoDup cids acc stk stk':
   replace_check' cids acc stk = Some stk' →
   stack_item_tagged_NoDup (acc ++ stk) → stack_item_tagged_NoDup stk'.
 Proof.
-  revert acc stk'.
-  induction stk as [|it stk IH]; intros acc stk'; simpl.
+  revert acc.
+  induction stk as [|it stk IH]; intros acc; simpl.
   { intros ?. simplify_eq. by rewrite app_nil_r. }
   case decide => ?; [case check_protector; [|done]|];
     move => /IH; [|by rewrite -app_assoc].
@@ -532,8 +536,8 @@ Lemma replace_check'_stack_item_tagged_NoDup_2 cids acc stk stk' stk0:
   replace_check' cids acc stk = Some stk' →
   stack_item_tagged_NoDup (acc ++ stk ++ stk0) → stack_item_tagged_NoDup (stk' ++ stk0).
 Proof.
-  revert acc stk' stk0.
-  induction stk as [|it stk IH]; intros acc stk' stk0; simpl.
+  revert acc.
+  induction stk as [|it stk IH]; intros acc; simpl.
   { intros ?. by simplify_eq. }
   case decide => ?; [case check_protector; [|done]|];
     move => /IH; [|rewrite (app_assoc acc [it] (stk ++ stk0)); naive_solver].
@@ -558,8 +562,8 @@ Lemma remove_check_stack_item_tagged_NoDup cids stk stk' idx:
   remove_check cids stk idx = Some stk' →
   stack_item_tagged_NoDup stk → stack_item_tagged_NoDup stk'.
 Proof.
-  revert stk' idx.
-  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  revert idx.
+  induction stk as [|it stk IH]; intros idx; simpl.
   { destruct idx; [|done]. intros ??. by simplify_eq. }
   destruct idx as [|idx]; [intros ??; by simplify_eq|].
   case check_protector eqn:Eq; [|done].
@@ -570,8 +574,8 @@ Lemma remove_check_stack_item_tagged_NoDup_2 cids stk stk' stk0 idx:
   remove_check cids stk idx = Some stk' →
   stack_item_tagged_NoDup (stk ++ stk0) → stack_item_tagged_NoDup (stk' ++ stk0).
 Proof.
-  revert stk' stk0 idx.
-  induction stk as [|it stk IH]; intros stk' stk0 idx; simpl.
+  revert idx.
+  induction stk as [|it stk IH]; intros idx; simpl.
   { destruct idx; [|done]. intros ??. by simplify_eq. }
   destruct idx as [|idx]; [intros ??; by simplify_eq|].
   case check_protector eqn:Eq; [|done].
@@ -600,8 +604,8 @@ Qed.
 Lemma remove_check_sublist cids stk idx stk' :
   remove_check cids stk idx = Some stk' → sublist stk' stk.
 Proof.
-  revert stk' idx.
-  induction stk as [|it stk IH]; intros stk' idx; simpl.
+  revert idx.
+  induction stk as [|it stk IH]; intros idx; simpl.
   { destruct idx; [|done]. intros ?. by simplify_eq. }
   destruct idx as [|idx]; [intros ?; by simplify_eq|].
   case check_protector eqn:Eq; [|done].
@@ -620,9 +624,8 @@ Lemma sublist_head_preserving t it it' stk stk' :
   is_stack_head it stk →
   is_stack_head it stk'.
 Proof.
-  intros SUB. revert t it it'.
-  induction SUB as [|???? IH|???? IH]; [done|..];
-    intros t it it' Eqt' Eqt In' ND; intros [stk1 ?]; simplify_eq;
+  intros SUB Eqt' Eqt In' ND.
+  induction SUB as [|???? IH|???? IH]; [done|..]; intros [stk1 ?]; simplify_eq;
     [by eexists|].
   exfalso. move : ND.
   rewrite /stack_item_tagged_NoDup filter_cons decide_True;
@@ -631,6 +634,78 @@ Proof.
   apply NI, elem_of_list_fmap. exists it'. split; [rewrite Eqt' Eqt //|].
   apply elem_of_list_filter. split. by rewrite /is_tagged Eqt'. by rewrite <-SUB.
 Qed.
+
+Lemma stack_item_tagged_NoDup_app stk1 stk2 :
+  stack_item_tagged_NoDup (stk1 ++ stk2) →
+  stack_item_tagged_NoDup stk1 ∧ stack_item_tagged_NoDup stk2.
+Proof. rewrite /stack_item_tagged_NoDup filter_app fmap_app NoDup_app. naive_solver. Qed.
+
+Instance stack_item_tagged_NoDup_proper :
+  Proper (Permutation ==> iff) stack_item_tagged_NoDup.
+Proof. intros stk1 stk2 PERM. by rewrite /stack_item_tagged_NoDup PERM. Qed.
+
+Lemma stack_item_tagged_NoDup_eq stk it1 it2 t :
+  stack_item_tagged_NoDup stk →
+  it1 ∈ stk → it2 ∈ stk → it1.(tg) = Tagged t → it2.(tg) = Tagged t →
+  it1 = it2.
+Proof.
+  induction stk as [|it stk IH]; [set_solver|].
+  intros ND. specialize (IH (stack_item_tagged_NoDup_cons_1 _ _ ND)).
+  rewrite 2!elem_of_cons.
+  move => [?|In1] [?|In2]; subst; [done|..]; intros Eq1 Eq2.
+  - exfalso. apply elem_of_Permutation in In2 as [stk' Eq'].
+    move : ND. rewrite Eq'.
+    rewrite /stack_item_tagged_NoDup filter_cons decide_True; last by rewrite /is_tagged Eq1.
+    rewrite filter_cons decide_True; last by rewrite /is_tagged Eq2.
+    rewrite 2!fmap_cons Eq1 Eq2 NoDup_cons. set_solver.
+  - exfalso. apply elem_of_Permutation in In1 as [stk' Eq'].
+    move : ND. rewrite Eq'.
+    rewrite /stack_item_tagged_NoDup filter_cons decide_True; last by rewrite /is_tagged Eq2.
+    rewrite filter_cons decide_True; last by rewrite /is_tagged Eq1.
+    rewrite 2!fmap_cons Eq1 Eq2 NoDup_cons. set_solver.
+  - by apply IH.
+Qed.
+
+Lemma replace_check'_head_preserving stk stk' acc stk0 cids pm pm' t opro:
+  stack_item_tagged_NoDup (acc ++ stk ++ stk0) →
+  pm ≠ Disabled →
+  mkItem pm (Tagged t) opro ∈ (stk' ++ stk0) →
+  replace_check' cids acc stk = Some stk' →
+  is_stack_head (mkItem pm' (Tagged t) opro) (acc ++ stk ++ stk0) →
+  is_stack_head (mkItem pm' (Tagged t) opro) (stk' ++ stk0).
+Proof.
+  intros ND NDIS IN. revert acc ND.
+  induction stk as [|it stk IH]; simpl; intros acc ND.
+  { intros ?. by simplify_eq. }
+  case decide => ?; [case check_protector; [|done]|];
+    [|move => /IH; rewrite -(app_assoc acc [it] (stk ++ stk0)); naive_solver].
+  move => RC.
+  rewrite (app_assoc acc [it] (stk ++ stk0)).
+  have ND3: stack_item_tagged_NoDup
+    ((acc ++ [mkItem Disabled it.(tg) it.(protector)]) ++ stk ++ stk0).
+  { move : ND. clear.
+    rewrite (app_assoc acc [it]) 2!(Permutation_app_comm acc) -2!app_assoc.
+    rewrite /stack_item_tagged_NoDup 2!filter_cons /=.
+    case decide => ?; [rewrite decide_True //|rewrite decide_False //]. }
+  intros HD. apply (IH _ ND3 RC). clear IH. move : HD.
+  destruct acc as [|it1 acc]; last first.
+  { simpl in *. move => [? Eq]. inversion Eq. simplify_eq. by eexists. }
+  simpl. intros [stk2 Eq]. exfalso. simplify_eq; simpl in *.
+  have IN1:= (replace_check'_acc_result _ _ _ _ RC).
+  have IN': mkItem Disabled (Tagged t) opro ∈ stk' ++ stk0 by set_solver. clear IN1.
+  have ND4 := replace_check'_stack_item_tagged_NoDup_2 _ _ _ _ _ RC ND3.
+  have EQ := stack_item_tagged_NoDup_eq _ _ _ _ ND4 IN IN' eq_refl eq_refl.
+  by inversion EQ.
+Qed.
+
+Lemma replace_check_head_preserving stk stk' stk0 cids pm pm' t opro:
+  stack_item_tagged_NoDup (stk ++ stk0) →
+  pm ≠ Disabled →
+  mkItem pm (Tagged t) opro ∈ (stk' ++ stk0) →
+  replace_check cids stk = Some stk' →
+  is_stack_head (mkItem pm' (Tagged t) opro) (stk ++ stk0) →
+  is_stack_head (mkItem pm' (Tagged t) opro) (stk' ++ stk0).
+Proof. intros. eapply replace_check'_head_preserving; eauto. done. Qed.
 
 Lemma access1_head_preserving stk stk' kind tg cids n pm pm' t opro:
   stack_item_tagged_NoDup stk →
@@ -647,8 +722,9 @@ Proof.
   destruct kind.
   - case replace_check as [stk1|] eqn:Eq; [|done].
     simpl. intros ?. simplify_eq.
-    intros [stk2 Eq2].
-    admit.
+    rewrite -{1}(take_drop gip.1 stk). intros HD.
+    rewrite -{1}(take_drop gip.1 stk) in ND.
+    eapply replace_check_head_preserving; eauto.
   - case find_first_write_incompatible as [idx|]; [|done]. simpl.
     case remove_check as [stk1|] eqn:Eq; [|done].
     simpl. intros ?. simplify_eq.
@@ -656,7 +732,7 @@ Proof.
     { rewrite -{2}(take_drop gip.1 stk). apply sublist_app; [|done].
       move : Eq. apply remove_check_sublist. }
     eapply sublist_head_preserving; eauto. done.
-Abort.
+Qed.
 
 Lemma for_each_access1_stack_item α nxtc cids nxtp l n tg kind α' :
   for_each α l n false
@@ -666,7 +742,7 @@ Proof.
   intros ACC WF l' stk' Eq'.
   destruct (for_each_access1 _ _ _ _ _ _ _ ACC _ _ Eq') as [stk [Eq [SUB NN]]].
   split.
-  - move => ? /SUB [? [IN [-> ->]]]. by apply (proj1 (WF _ _ Eq) _ IN).
+  - move => ? /SUB [? [IN [-> [-> ?]]]]. by apply (proj1 (WF _ _ Eq) _ IN).
   - clear SUB NN.
     destruct (for_each_lookup_case _ _ _ _ _ ACC _ _ _ Eq Eq') as [?|[Eqf ?]].
     { subst. by apply (WF _ _ Eq). }
@@ -884,7 +960,7 @@ Qed.
 Lemma tagged_sublist_stack_item_included stk stk' nxtp nxtc  :
   tagged_sublist stk' stk →
   stack_item_included stk nxtp nxtc → stack_item_included stk' nxtp nxtc.
-Proof. by move => SF HI si /SF [? [/HI ? [-> ->]]]. Qed.
+Proof. by move => SF HI si /SF [? [/HI ? [-> [-> ?]]]]. Qed.
 
 Lemma subseteq_stack_item_included stk stk' nxtp nxtc  :
   stk' ⊆ stk →
@@ -1018,10 +1094,6 @@ Proof.
     rewrite -{1}(take_drop n stk). rewrite 2!tag_fresh_stack_app.
     intros [??]. split; [|done]. by eapply remove_check_tag_fresh_stack.
 Qed.
-
-Instance stack_item_tagged_NoDup_proper :
-  Proper (Permutation ==> iff) stack_item_tagged_NoDup.
-Proof. intros stk1 stk2 PERM. by rewrite /stack_item_tagged_NoDup PERM. Qed.
 
 Lemma stack_item_tagged_NoDup_tag_fresh_cons new stk :
   tag_fresh_stack new.(tg) stk →

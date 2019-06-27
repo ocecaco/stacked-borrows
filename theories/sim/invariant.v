@@ -25,8 +25,8 @@ Definition ptrmap_inv (r: resUR) (σ: state) : Prop :=
   (t < σ.(snp))%nat ∧
   (∀ (l: loc) (s: scalar), h !! l ≡ Some (to_agree s) →
   ∀ (stk: stack), σ.(sst) !! l = Some stk →
-  ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk →
-  (* as long as the tag [t] is in the stack [stk],
+  ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk → pm ≠ Disabled →
+  (* as long as the tag [t] is in the stack [stk] (Disabled is considered not in),
     then its heaplet [h] agree with the state [σ] *)
   σ.(shp) !! l = Some s ∧
   (* If [k] is Unique, then [t] must be Unique at the top of [stk]. Otherwise

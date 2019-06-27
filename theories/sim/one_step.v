@@ -179,16 +179,19 @@ Proof.
       split; [done|]. intros l' s' Eqk' stk' Eqstk'.
       destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as (stk & Eqstk & SUB & ?).
-      intros pm opro In'. destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2).
+      intros pm opro In' NDIS.
+      destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2 & NDIS2).
       destruct (PI _ _ Eqk' _ Eqstk it2.(perm) opro) as [Eql' HTOP].
       { simpl in *. rewrite /= Eqt2 Eqp2. by destruct it2. }
+      { simpl in *. by rewrite (NDIS2 NDIS). }
       split; [done|].
       destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
-        as [?|[MR _]]; [by subst|]. clear -In' MR HTOP.
+        as [?|[MR _]]; [by subst|]. clear -In' MR HTOP Eqstk WFT NDIS.
       destruct (access1 stk AccessRead tg σt.(scs)) as [[n stk1]|] eqn:Eqstk';
         [|done]. simpl in MR. simplify_eq.
       destruct k.
-      + admit.
+      + move : HTOP. eapply access1_head_preserving; eauto.
+        by destruct (state_wf_stack_item _ WFT _ _ Eqstk).
       + admit.
     - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
