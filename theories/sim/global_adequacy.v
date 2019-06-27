@@ -57,7 +57,7 @@ Proof.
     { admit. (* WF *) }
     { admit. (* WF *) }
     clear SIM. intro SIM. inv SIM.
-    exploit sim_step; eauto. i. des.
+    exploit sim_step; eauto. i. revert sim_stuck. des.
     + inv x0; ss.
       rename eσ2_src into conf'_src.
       exploit IHTAU; eauto.
@@ -73,14 +73,17 @@ Proof.
     { admit. (* WF *) }
     { admit. (* WF *) }
     clear SIM. intro SIM. inv SIM. inv MAT.
-    + exfalso. eapply sim_stuck; eauto.
-      apply stuck_terminal. ss.
-    + exploit sim_terminal; eauto. i. des.
-      pfold. econs; eauto.
-      econs 2. rename x2 into SE. by apply SE.
-    + pclearbot. exploit sim_step; eauto. i. des.
+    + exfalso. destruct sim_stuck as [[v TE]|ST].
+      * by apply (NT v).
+      * admit.
+    + exploit sim_terminal; eauto. i. revert sim_stuck. intros _. pfold. des.
+      * econs; eauto. etrans. apply tc_rtc; eauto.
+        rename x2 into SE.
+        admit.
+      * econs; eauto. admit.
+    + pclearbot. exploit sim_step; eauto. i. revert sim_stuck. des.
       * inv x1; ss.
-        exploit CIH; eauto. i.
+        exploit CIH; eauto. intros ?.
         apply tc_inv_l in x0. des.
         pfold. econs; eauto.
       * inv x1; ss. exploit IH; eauto.

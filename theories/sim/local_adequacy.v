@@ -107,17 +107,19 @@ Proof.
   pfold. ii. inv SIM. punfold LOCAL. exploit LOCAL; eauto.
   { admit. (* never_stuck *) }
   clear LOCAL. intro LOCAL. inv LOCAL. econs.
-  - ii. eapply sim_local_body_stuck. admit. (* stuck_fill_rev *)
-  - s. i. subst. apply fill_result in H. des. unfold terminal in H. des. subst. ss.
-    exploit sim_local_body_terminal; eauto. i. des.
+  - ii. admit. (* stuck_fill_rev *)
+  - s. i. subst. apply fill_result in H. revert sim_local_body_stuck. des.
+    unfold terminal in H. des. subst. ss.
+    exploit sim_local_body_terminal; eauto. intros ?. des.
     clear NEVER_STUCK WSAT.
-    clear sim_local_body_stuck sim_local_body_terminal sim_local_body_step.
+    clear sim_local_body_terminal sim_local_body_step. intros _.
     assert (VS': to_result vs' = Some x) by admit.
     induction FRAMES; ss.
     { esplits; eauto; ss. ii. clarify. }
     admit. (* global sim should have generalized index *) 
+    admit.
   - i. destruct eσ2_tgt as [e2_tgt σ2_tgt].
-    exploit fill_step_rev; eauto. i. des; cycle 1.
+    exploit fill_step_rev; eauto. i. revert sim_local_body_stuck. des; cycle 1.
     { (* return *)
       admit. (* similar to the above case *)
     }
@@ -125,7 +127,7 @@ Proof.
     + (* step *)
       exploit STEP; eauto. intros (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
       pclearbot. esplits; eauto.
-      * instantiate (1 := (fill K_src0 es', σs')).
+      * instantiate (1 := (fill K_src0 es', σs')). revert sim_local_body_stuck.
         des; [left|right]; esplits; eauto.
         { apply fill_stepp. ss. }
         { inv STEP'0. ss. }
@@ -139,7 +141,7 @@ Proof.
         }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
-          destruct (CONT _ _ _ _ _ WSAT' VRET).
+          destruct (CONT _ _ _ σ_src' σ_tgt' VRET).
           pclearbot. esplits; eauto.
         }
         { admit. (* sim_local_body for the call init *) }

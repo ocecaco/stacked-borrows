@@ -69,7 +69,7 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
 Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop := {
   sim_local_body_stuck :
-    ~ stuck (Λ:= bor_lang fnt) et σt ;
+    (terminal et ∨ reducible (Λ:= bor_lang fnt) et σt) ;
   sim_local_body_terminal :
     (* if tgt is terminal *)
     ∀ vt (TERM: to_result et = Some vt),
