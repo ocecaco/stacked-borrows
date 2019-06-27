@@ -312,7 +312,7 @@ Lemma tstep_call_inv (fid: fn_id) el e' σ σ'
   (TERM: Forall (λ ei, is_Some (to_value ei)) el)
   (STEP: (Call #[fid] el, σ) ~{fns}~> (e', σ')) :
   ∃ xl e HC es, fns !! fid = Some (@FunV xl e HC) ∧
-    subst_l xl el e = Some es ∧ e' = InitCall es ∧ σ' = σ.
+    subst_l xl el e = Some es ∧ e' = (EndCall (InitCall es)) ∧ σ' = σ.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_call_decompose _ _ _ _ Eq)
@@ -345,7 +345,7 @@ Qed.
 
 Lemma tstep_init_call_inv e σ e' σ':
   (InitCall e, σ) ~{fns}~> (e', σ') →
-  e' = EndCall e ∧ σ' = mkState σ.(shp) σ.(sst) (σ.(snc) :: σ.(scs)) σ.(snp) (S σ.(snc)).
+  e' = e ∧ σ' = mkState σ.(shp) σ.(sst) (σ.(snc) :: σ.(scs)) σ.(snp) (S σ.(snc)).
 Proof.
   intros ?. inv_tstep.
   symmetry in Eq. apply fill_init_call_decompose in Eq as [??]. subst.

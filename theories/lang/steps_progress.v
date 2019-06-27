@@ -422,13 +422,13 @@ Lemma call_head_step fns σ name el xl e HC e' :
   fns !! name = Some (@FunV xl e HC) →
   Forall (λ ei, is_Some (to_value ei)) el →
   subst_l xl el e = Some e' →
-  head_step fns (Call #[ScFnPtr name] el) σ [NewCallEvt name] (InitCall e') σ [].
+  head_step fns (Call #[ScFnPtr name] el) σ [NewCallEvt name] (EndCall (InitCall e')) σ [].
 Proof. by econstructor; econstructor. Qed.
 
 Lemma initcall_head_step fns σ e :
   let c := σ.(snc) in
   let σ' := mkState σ.(shp) σ.(sst) (σ.(snc) :: σ.(scs)) σ.(snp) (S σ.(snc)) in
-  head_step fns (InitCall e) σ [InitCallEvt c] (EndCall e) σ' [].
+  head_step fns (InitCall e) σ [InitCallEvt c] e σ' [].
 Proof. by econstructor; econstructor. Qed.
 
 Lemma end_call_head_step fns (σ: state) c cids v :

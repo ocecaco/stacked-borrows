@@ -299,7 +299,7 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
     Forall (λ ei, is_Some (to_value ei)) el →
     subst_l xl el e = Some e' →
     pure_expr_step FNs h (Call #[ScFnPtr fid] el)
-                         (NewCallEvt fid) (InitCall e').
+                         (NewCallEvt fid) (EndCall (InitCall e')).
 
 
 Inductive mem_expr_step (h: mem) : expr → event → mem → expr → Prop :=
@@ -307,7 +307,7 @@ Inductive mem_expr_step (h: mem) : expr → event → mem → expr → Prop :=
     mem_expr_step
               h (InitCall e)
               (InitCallEvt c)
-              h (EndCall e)
+              h e
 | EndCallBS (call: call_id) e v:
     to_result e = Some (ValR v) →
     mem_expr_step h (EndCall e) (EndCallEvt call v) h #v

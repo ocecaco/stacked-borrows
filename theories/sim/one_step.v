@@ -212,16 +212,16 @@ Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
   let r'  : resUR := (∅, {[σt.(snc) := to_callStateR (csOwned ∅)]}) in
-  r ⋅ r' ⊨{n,fs,ft} (EndCall es, σs') ≤ (EndCall et, σt') : Φ →
+  r ⋅ r' ⊨{n,fs,ft} (es, σs') ≤ (et, σt') : Φ →
   r ⊨{n,fs,ft} (InitCall es, σs) ≤ (InitCall et, σt) : Φ.
 Proof.
   intros σs' σt1 r' SIM. pfold.
   intros NT. intros. split; [|done|].
   { admit. }
   constructor 1. intros.
-  exists (EndCall es), σs', (r ⋅ r').
+  exists es, σs', (r ⋅ r').
   destruct (tstep_init_call_inv _ _ _ _ _ STEPT). subst et' σt'.
-  have STEPS: (InitCall es, σs) ~{fs}~> (EndCall es, σs').
+  have STEPS: (InitCall es, σs) ~{fs}~> (es, σs').
   { by eapply (head_step_fill_tstep _ []), initcall_head_step. }
   have FRESH: (r_f ⋅ r).2 !! σt.(snc) = None.
   { destruct ((r_f ⋅ r).2 !! σt.(snc)) as [cs|] eqn:Eqcs; [|done].
@@ -401,14 +401,14 @@ Lemma sim_body_step_into_call fs ft
   (FT: ft !! fid = Some (@FunV xlt et HCt))
   (VT : Forall (λ ei, is_Some (to_value ei)) elt)
   (ST: subst_l xlt elt et = Some et') :
-  r ⊨{n,fs,ft} (InitCall es', σs) ≤ (InitCall et', σt) : Φ →
+  r ⊨{n,fs,ft} (EndCall (InitCall es'), σs) ≤ (EndCall (InitCall et'), σt) : Φ →
   r ⊨{n,fs,ft} (Call #[ScFnPtr fid] els, σs) ≤ (Call #[ScFnPtr fid] elt, σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT. split; [|done|].
   { admit. }
   econstructor 1. intros et1 σt' STEPT.
   destruct (tstep_call_inv _ _ _ _ _ _ VT STEPT) as (?&?&?&?&?&?&?&?). subst; simplify_eq.
-  exists (InitCall es'), σs, r, n. split; last split; [|done|by left].
+  exists (EndCall (InitCall es')), σs, r, n. split; last split; [|done|by left].
   left. constructor 1.
   eapply (head_step_fill_tstep _ []). econstructor.
   by apply (CallBS _ _ _ els xls es HCs).
