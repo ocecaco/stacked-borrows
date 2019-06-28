@@ -917,6 +917,31 @@ Proof.
       apply Lt. by lia.
 Qed.
 
+Lemma write_mem_lookup_case l vl h l' :
+  (∃ (i: nat), (i < length vl)%nat ∧ l' = l +ₗ i ∧ write_mem l vl h !! (l +ₗ i) = vl !! i)
+  ∨ ((∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i) ∧ write_mem l vl h !! l' = h !! l').
+Proof.
+  destruct (write_mem_lookup l vl h) as [EQ1 EQ2].
+  case (decide (l'.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l'.2 < l.2 + length vl)) => [[Le Lt]|NIN]|].
+  - have Eql2: l' = l +ₗ Z.of_nat (Z.to_nat (l'.2 - l.2)). {
+      destruct l, l'. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    have Lt1: (Z.to_nat (l'.2 - l.2) < length vl)%nat
+      by rewrite -(Nat2Z.id (length _)) -Z2Nat.inj_lt; lia.
+    specialize (EQ1 _ Lt1).
+    rewrite -Eql2 in EQ1. left.
+    exists (Z.to_nat (l'.2 - l.2)). repeat split; [done..|by rewrite -Eql2].
+  - right.
+    have ?: (∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i).
+    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
+    split; [done|]. by apply EQ2.
+  - right.
+    have ?: (∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i).
+    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
+    split; [done|]. by apply EQ2.
+Qed.
+
 Lemma write_step_wf σ σ' e e' h0 l bor T vl :
   mem_expr_step σ.(shp) e (WriteEvt l bor T vl) h0 e' →
   bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)

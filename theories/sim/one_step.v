@@ -5,13 +5,13 @@ From stbor.sim Require Import local invariant.
 
 Set Default Proof Using "Type".
 
-Notation "r ⊨{ n , fs , ft } ( es , σs ) ≤ ( et , σt ) : Φ" :=
+Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
   (sim_local_body wsat vrel_expr fs ft r n%nat es%E σs et%E σt Φ)
-  (at level 70, format "r  ⊨{ n , fs , ft }  ( es ,  σs )  ≤  ( et ,  σt )  :  Φ").
+  (at level 70, format "r  ⊨{ n , fs , ft }  ( es ,  σs )  ≥  ( et ,  σt )  :  Φ").
 
-Notation "⊨{ fs , ft } f1 ≤ᶠ f2" :=
+Notation "⊨{ fs , ft } f1 ≥ᶠ f2" :=
   (sim_local_fun wsat vrel_expr fs ft f1 f2)
-  (at level 70, format "⊨{ fs , ft }  f1  ≤ᶠ  f2").
+  (at level 70, format "⊨{ fs , ft }  f1  ≥ᶠ  f2").
 
 Instance dom_proper `{Countable K} {A : cmraT} :
   Proper ((≡) ==> (≡)) (dom (M:=gmap K A) (gset K)).
@@ -74,10 +74,10 @@ Qed.
 Lemma sim_body_bind fs ft r n
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
   (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft))) es et σs σt Φ :
-  r ⊨{n,fs,ft} (es, σs) ≤ (et, σt)
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt)
     : (λ r' n' es' σs' et' σt',
-        r' ⊨{n',fs,ft} (fill Ks es', σs') ≤ (fill Kt et', σt') : Φ) →
-  r ⊨{n,fs,ft} (fill Ks es, σs) ≤ (fill Kt et, σt) : Φ.
+        r' ⊨{n',fs,ft} (fill Ks es', σs') ≥ (fill Kt et', σt') : Φ) →
+  r ⊨{n,fs,ft} (fill Ks es, σs) ≥ (fill Kt et, σt) : Φ.
 Proof.
   revert r n Ks Kt es et σs σt Φ. pcofix CIH.
   intros r1 n Ks Kt es et σs σt Φ SIM. pfold. punfold SIM. intros NT ??.
@@ -180,7 +180,7 @@ Lemma sim_body_copy fs ft r n l tg Ts Tt σs σt Φ
       let σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc) in
       let σt' := mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc) in
       Φ r n (ValR vs) σs' (ValR vt) σt' : Prop) →
-  r ⊨{n,fs,ft} (Copy (Place l tg Ts), σs) ≤ (Copy (Place l tg Tt), σt) : Φ.
+  r ⊨{n,fs,ft} (Copy (Place l tg Ts), σs) ≥ (Copy (Place l tg Tt), σt) : Φ.
 Proof.
   intros POST. pfold.
   intros NT. intros.
@@ -255,20 +255,127 @@ Proof.
   { left. by eexists. }
 Qed.
 
-Lemma sim_body_write fs ft r n l tg Ts Tt v σs σt Φ
-  (EQS: tsize Ts = tsize Tt) :
-  (∀ α', memory_written σt.(sst) σt.(scs) l tg (tsize Tt) = Some α' →
+Fixpoint write_heaplet (l: loc) (v: value) (h: gmapR loc (agreeR scalarC)) :=
+  match v with
+  | [] => h
+  | s :: v =>
+      write_heaplet (l +ₗ 1) v (if h !! l then <[l := to_agree s]> h else h)
+  end.
+
+Definition write_ptrmap (pm: ptrmapUR) (l: loc) (v: value) :=
+  fmap (λ kh, match kh with
+              | (k, h) => (k, write_heaplet l v h)
+              end) pm.
+
+(* TODO: move *)
+Instance insert_gmap_proper `{Countable K} {A : cmraT} (i: K) :
+  Proper ((≡) ==> (≡) ==> (≡)) (insert (M:=gmap K A) i).
+Proof.
+  intros m1 m2 Eq a1 a2 Eqa i'. case (decide (i = i')) => [->|?].
+  - by rewrite 2!lookup_insert Eq.
+  - do 2 (rewrite lookup_insert_ne //).
+Qed.
+
+Instance write_heaplet_proper (l: loc) (v: value) :
+  Proper ((≡) ==> (≡)) (write_heaplet l v).
+Proof.
+  intros h1 h2 Eq. revert l h1 h2 Eq.
+  induction v as [|s v IH]; intros l h1 h2 Eq; simpl; [done|].
+  apply IH. move : (Eq l).
+  destruct (h1 !! l) as [s1|] eqn:Eq1, (h2 !! l) as [s2|] eqn:Eq2; [..|done];
+    rewrite Eq1 Eq2; intros Eql; [by rewrite Eq|by inversion Eql..].
+Qed.
+
+Lemma write_heaplet_dom (l: loc) (v: value) h :
+  dom (gset loc) (write_heaplet l v h) ≡ dom (gset loc) h.
+Proof.
+  revert l h.
+  induction v as [|s v IH]; intros l h; simpl; [done|].
+  rewrite IH. destruct (h !! l) eqn:Eq; [|done].
+  rewrite dom_map_insert_is_Some //. by eexists.
+Qed.
+
+Lemma write_ptrmap_lookup_Some (pm: ptrmapUR) (l: loc) (v: value) (t: ptr_id) k h :
+  pm !! t ≡ Some (k, h) → write_ptrmap pm l v !! t ≡ Some (k, write_heaplet l v h).
+Proof.
+  intros HL. rewrite /write_ptrmap lookup_fmap.
+  destruct (pm !! t) as [[k' h']|] eqn:Eqt; [|by inversion HL].
+  rewrite Eqt /=.
+  apply Some_equiv_inj, pair_equiv_inj in HL as [HL1 HL2].
+  by rewrite HL1 HL2.
+Qed.
+
+Lemma write_ptrmap_lookup_None (pm: ptrmapUR) (l: loc) (v: value) (t: ptr_id) :
+  pm !! t ≡ None → write_ptrmap pm l v !! t ≡ None.
+Proof.
+  intros HL. rewrite /write_ptrmap lookup_fmap.
+  destruct (pm !! t) as [|] eqn:Eqt; [by inversion HL|]. by rewrite Eqt /=.
+Qed.
+
+Lemma write_heaplet_empty l v : write_heaplet l v ∅ ≡ ∅.
+Proof. revert l. induction v as [|?? IH]; [done|]; intros l. apply IH. Qed.
+
+Lemma write_ptrmap_lookup_op (pm1 pm2: ptrmapUR) l v (t: ptr_id) k h :
+  (pm1 ⋅ pm2) !! t ≡ Some (k, h) →
+  ∃ h1 h2, h ≡ h1 ⋅ h2 ∧
+  (pm1 ⋅ write_ptrmap pm2 l v) !! t ≡ Some (k, h1 ⋅ write_heaplet l v h2).
+Proof.
+  rewrite lookup_op.
+  destruct (pm1 !! t) as [[k1 h1]|] eqn:Eq1, (pm2 !! t) as [[k2 h2]|] eqn:Eq2;
+    rewrite Eq1 Eq2 /=.
+  - rewrite -Some_op pair_op. intros [Eqk Eqh]%Some_equiv_inj. simpl in *.
+    exists h1, h2. split; [done|].
+    rewrite lookup_op Eq1 (write_ptrmap_lookup_Some pm2 l v t k2 h2); [|by rewrite Eq2].
+    by rewrite -Some_op pair_op Eqk.
+  - rewrite right_id. intros [Eqk Eqh]%Some_equiv_inj. simpl in *.
+    exists h1, (∅ : gmap loc _). split; [by rewrite right_id|].
+    rewrite lookup_op Eq1 write_ptrmap_lookup_None; [|by rewrite Eq2].
+    by rewrite Eqk Eqh write_heaplet_empty 2!right_id.
+  - rewrite left_id. intros [Eqk Eqh]%Some_equiv_inj. simpl in *.
+    exists (∅ : gmap loc _), h2. split; [by rewrite left_id|].
+    rewrite lookup_op Eq1 (write_ptrmap_lookup_Some pm2 l v t k2 h2); [|by rewrite Eq2].
+    by rewrite 2!left_id Eqk.
+  - rewrite left_id. by inversion 1.
+Qed.
+
+Lemma write_heaplet_valid h1 h2 l v :
+  ✓ (h1 ⋅ h2) → ✓ (h1 ⋅ write_heaplet l v h2).
+Proof.
+  revert l h1 h2. induction v as [|s v IH]; intros l h1 h2 VL; simpl; [done|].
+  apply IH. destruct (h2 !! l) as [ss|] eqn:Eq2; [|done].
+Abort.
+Lemma write_ptrmap_valid (pm1 pm2: ptrmapUR) l v :
+  ✓ (pm1 ⋅ pm2) → ✓ (pm1 ⋅ write_ptrmap pm2 l v).
+Proof.
+  intros VALID t. move : (VALID t).
+  rewrite 2!lookup_op.
+  destruct (pm1 !! t) as [[k1 h1]|] eqn:Eq1, (pm2 !! t) as [[k2 h2]|] eqn:Eq2;
+    rewrite Eq1 Eq2 /=.
+  - rewrite -Some_op pair_op. move => [/= Vk Vh].
+    rewrite write_ptrmap_lookup_Some; [|by rewrite Eq2].
+    rewrite -Some_op pair_op. split; [done|]. simpl.
+Abort.
+
+Lemma sim_body_write fs ft (r: resUR) k0 h0 n l tg Ts Tt v σs σt Φ
+  (EQS: tsize Ts = tsize Tt)
+  (Eqtg: r.1 !! tg ≡ Some (to_tagKindR k0, h0)) :
+  let r' := match k0 with
+            | tkUnique => (write_ptrmap r.1 l v, r.2)
+            | tkPub => r
+            end in
+  (∀ α', memory_written σt.(sst) σt.(scs) l (Tagged tg) (tsize Tt) = Some α' →
       let σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
       let σt' := mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
-      Φ r n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
-  r ⊨{n,fs,ft} (Place l tg Ts <- #v, σs) ≤ (Place l tg Tt <- #v, σt) : Φ.
+      Φ r' n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
+  r ⊨{n,fs,ft} (Place l (Tagged tg) Ts <- #v, σs) ≥ (Place l (Tagged tg) Tt <- #v, σt) : Φ.
 Proof.
-  intros POST. pfold.
+  intros r' POST. pfold.
   intros NT. intros.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   split; [|done|].
   { right.
-    destruct (NT (Place l tg Ts <- #v)%E σs) as [[]|[es' [σs' STEPS]]]; [done..|].
+    destruct (NT (Place l (Tagged tg) Ts <- #v)%E σs)
+      as [[]|[es' [σs' STEPS]]]; [done..|].
     destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPS)
       as (α' & ? & Eqα' & EqD & IN & EQL & ?).
     subst es'. setoid_rewrite <-(srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
@@ -281,19 +388,20 @@ Proof.
   destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPT) as (α' & ? & Eqα' & EqD & IN & EQL & ?).
   subst et'.
   set σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc).
-  have STEPS: ((Place l tg Ts <- v)%E, σs) ~{fs}~> ((#[☠])%V, σs').
+  have STEPS: ((Place l (Tagged tg) Ts <- v)%E, σs) ~{fs}~> ((#[☠])%V, σs').
   { setoid_rewrite (srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
     destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
     rewrite -Eqst -Eqcs -EQS in Eqα'. rewrite -EQS in EQL.
     rewrite EQL in EqD. rewrite -Eqnp in IN.
     eapply (head_step_fill_tstep _ []), write_head_step'; eauto. }
-  exists (#[☠])%V, σs', r, (S n). split; last split.
+  exists (#[☠])%V, σs', r', (S n). split; last split.
   { left. by constructor 1. }
   { split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
-    - done.
-    - intros t k h Eqt. destruct (PINV t k h Eqt) as [Lt PI]. subst σt'. simpl.
+    - admit.
+    - intros t k h Eqt.
+      (* destruct (PINV t k h Eqt) as [Lt PI]. subst σt'. simpl.
       split; [done|]. intros l' s' Eqk' stk' Eqstk'.
       destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as (stk & Eqstk & SUB & ?).
@@ -302,34 +410,59 @@ Proof.
       destruct (PI _ _ Eqk' _ Eqstk it2.(perm) opro) as [Eql' HTOP].
       { simpl in *. rewrite /= Eqt2 Eqp2. by destruct it2. }
       { simpl in *. by rewrite (NDIS2 NDIS). }
-      (* split; [done|].
+      split. { admit. }
       destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
         as [?|[MR _]]; [by subst|]. clear -In' MR HTOP Eqstk WFT NDIS.
-      destruct (access1 stk AccessRead tg σt.(scs)) as [[n stk1]|] eqn:Eqstk';
+      destruct (access1 stk AccessWrite tg σt.(scs)) as [[n stk1]|] eqn:Eqstk';
         [|done]. simpl in MR. simplify_eq.
       destruct (state_wf_stack_item _ WFT _ _ Eqstk). move : Eqstk' HTOP.
       destruct k.
       + eapply access1_head_preserving; eauto.
       + eapply access1_active_SRO_preserving; eauto. *)
       admit.
-    - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
+    - intros c cs Eqc.
+      (* specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
       intros t InT k h Eqt l' Inh.
-      destruct (CINV _ InT _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+      specialize (CINV _ InT k). *)
+      (* destruct (CINV _ InT _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
-      exists stk, pm'. split; [done|]. by apply AS.
+      exists stk, pm'. split; [done|]. by apply AS. *)
+      admit.
     - subst σt'. rewrite /srel /=. destruct SREL as (?&?&?&?&Eq).
       repeat split; [done..|].
-      admit. }
+      intros l1 st1 Eq1.
+      destruct (write_mem_lookup l v σs.(shp)) as [EqN EqO].
+      destruct (write_mem_lookup_case l v σt.(shp) l1)
+        as [[i [Lti [Eqi Eqmi]]]|[NEql Eql]].
+      + admit.
+      + specialize (EqO _ NEql). rewrite EqO.
+        rewrite Eql in Eq1. specialize (Eq _ _ Eq1).
+        destruct Eq as [[ss [Eqss AREL]]|[t PV]]; [left|right].
+        { exists ss. split; [done|]. move : AREL. rewrite /arel.
+          destruct ss as [| |l0 t0|], st1 as [| |l3 t3|]; try done.
+          intros [? [? Eqt]]. subst l3 t3. repeat split.
+          destruct t0 as [t0|]; [|done].
+          move : Eqt. destruct r_f as [r_f1 r_f2]. simpl.
+          move => [h /(write_ptrmap_lookup_op _ _ l v)].
+          admit. }
+        { destruct PV as (c & T & h & Eqc & InT & Eqt & Inl).
+          exists t, c, T.
+          destruct (write_ptrmap_lookup_op _ _ l v _ _ _ Eqt) as (h1 & h2 & Eqh & Eqt').
+          eexists.
+          (* repeat split; [done..|].
+          rewrite dom_op write_heaplet_dom -dom_op -Eqh //. *)
+          admit. }
+  }
   left. pfold. split; last first.
   { constructor 1. intros vt' ? STEPT'. exfalso.
     have ?: to_result #[☠]%V = None.
     { eapply (tstep_reducible_not_result ft _ σt'); eauto. by do 2 eexists. }
     done. }
   { move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
-    exists (ValR [☠%S]), σs', r, n. split; last split.
+    exists (ValR [☠%S]), σs', r', n. split; last split.
     - right. split; [lia|]. eauto.
     - eauto.
     - by apply POST. }
@@ -341,8 +474,8 @@ Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
   let r'  : resUR := (∅, {[σt.(snc) := to_callStateR (csOwned ∅)]}) in
-  r ⋅ r' ⊨{n,fs,ft} (es, σs') ≤ (et, σt') : Φ →
-  r ⊨{n,fs,ft} (InitCall es, σs) ≤ (InitCall et, σt) : Φ.
+  r ⋅ r' ⊨{n,fs,ft} (es, σs') ≥ (et, σt') : Φ →
+  r ⊨{n,fs,ft} (InitCall es, σs) ≥ (InitCall et, σt) : Φ.
 Proof.
   intros σs' σt1 r' SIM. pfold.
   intros NT. intros. split; [|done|].
@@ -408,7 +541,7 @@ Lemma sim_body_end_call fs ft r n vs vt σs σt :
     ∀ h, (r_f ⋅ r).1 !! t ≡  Some (to_tagKindR tkUnique, h) →
     ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
     ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st)) →
-  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≤ (EndCall (Val vt), σt) :
+  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) :
     (λ r _ vs _ vt _, vrel_expr r (of_result vs) (of_result vt)).
 Proof.
   intros VREL Hr. pfold. intros NT r_f WSAT.
@@ -520,9 +653,9 @@ Lemma sim_body_step_over_call fs ft
   (VT : Forall (λ ei, is_Some (to_value ei)) elt)
   (ST: subst_l xlt elt et = Some et') :
   (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt), ∃ n',
-    rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≤ (fill Kt (Val vt), σt') : Φ) →
+    rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≥ (fill Kt (Val vt), σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
-    (fill Ks (Call #[ScFnPtr fid] els), σs) ≤ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
+    (fill Ks (Call #[ScFnPtr fid] els), σs) ≥ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT. split.
   { right. exists (fill Kt (EndCall (InitCall et'))), σt.
@@ -543,8 +676,8 @@ Lemma sim_body_step_into_call fs ft
   (FT: ft !! fid = Some (@FunV xlt et HCt))
   (VT : Forall (λ ei, is_Some (to_value ei)) elt)
   (ST: subst_l xlt elt et = Some et') :
-  r ⊨{n,fs,ft} (EndCall (InitCall es'), σs) ≤ (EndCall (InitCall et'), σt) : Φ →
-  r ⊨{n,fs,ft} (Call #[ScFnPtr fid] els, σs) ≤ (Call #[ScFnPtr fid] elt, σt) : Φ.
+  r ⊨{n,fs,ft} (EndCall (InitCall es'), σs) ≥ (EndCall (InitCall et'), σt) : Φ →
+  r ⊨{n,fs,ft} (Call #[ScFnPtr fid] els, σs) ≥ (Call #[ScFnPtr fid] elt, σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT. split; [|done|].
   { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
@@ -560,8 +693,8 @@ Qed.
 (** Let *)
 Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
   terminal es1 → terminal et1 →
-  r ⊨{n,fs,ft} (subst x es1 es2, σs) ≤ (subst x et1 et2, σt) : Φ →
-  r ⊨{n,fs,ft} (let: x := es1 in es2, σs) ≤ ((let: x := et1 in et2), σt) : Φ.
+  r ⊨{n,fs,ft} (subst x es1 es2, σs) ≥ (subst x et1 et2, σt) : Φ →
+  r ⊨{n,fs,ft} (let: x := es1 in es2, σs) ≥ ((let: x := et1 in et2), σt) : Φ.
 Proof.
   intros TS TT SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
@@ -577,8 +710,8 @@ Qed.
 
 (** Ref *)
 Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
-  r ⊨{n,fs,ft} (#[ScPtr l tgs], σs) ≤ (#[ScPtr l tgt], σt) : Φ →
-  r ⊨{n,fs,ft} ((& (Place l tgs Ts))%E, σs) ≤ ((& (Place l tgt Tt))%E, σt) : Φ.
+  r ⊨{n,fs,ft} (#[ScPtr l tgs], σs) ≥ (#[ScPtr l tgt], σt) : Φ →
+  r ⊨{n,fs,ft} ((& (Place l tgs Ts))%E, σs) ≥ ((& (Place l tgt Tt))%E, σt) : Φ.
 Proof.
   intros SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
@@ -604,8 +737,8 @@ Qed.
 (** Deref *)
 Lemma sim_body_deref fs ft r n l tgs tgt Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt) :
-  r ⊨{n,fs,ft} (Place l tgs Ts, σs) ≤ (Place l tgt Tt, σt) : Φ →
-  r ⊨{n,fs,ft} (( *{Ts} #[ScPtr l tgs])%E, σs) ≤ (( *{Tt} #[ScPtr l tgt])%E, σt) : Φ.
+  r ⊨{n,fs,ft} (Place l tgs Ts, σs) ≥ (Place l tgt Tt, σt) : Φ →
+  r ⊨{n,fs,ft} (( *{Ts} #[ScPtr l tgs])%E, σs) ≥ (( *{Tt} #[ScPtr l tgt])%E, σt) : Φ.
 Proof.
   intros SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
