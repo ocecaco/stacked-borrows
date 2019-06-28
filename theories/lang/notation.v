@@ -4,6 +4,9 @@ From stbor.lang Require Export lang_base.
 Coercion of_result : result >-> expr.
 Coercion Var : string >-> expr.
 
+Coercion Val : value >-> expr.
+Coercion ValR : value >-> result.
+
 Notation "[ ]" := (@nil binder) : binder_scope.
 Notation "a :: b" := (@cons binder a%binder b%binder)
   (at level 60, right associativity) : binder_scope.
@@ -26,8 +29,14 @@ Notation "#[ x1 ; x2 ; .. ; xn ]" :=
   (Val (@cons scalar x1%S (@cons scalar x2%S
         (..(@cons scalar xn%S (@nil scalar))..)))) : expr_scope.
 
-Notation "# l" := (ValR l%Z%S%R%L) (at level 8, format "# l") : result_scope.
-Notation "# l" := (Val l%Z%S%R%L) (at level 8, format "# l") : expr_scope.
+Notation "#[ ]" := (Val (@nil scalar)) : val_scope.
+Notation "#[ x ]" := (Val (@cons scalar x%S (@nil scalar))) : val_scope.
+Notation "#[ x1 ; x2 ; .. ; xn ]" :=
+  (Val (@cons scalar x1%S (@cons scalar x2%S
+        (..(@cons scalar xn%S (@nil scalar))..)))) : val_scope.
+
+Notation "# v" := (ValR v%V%R%L) (at level 8, format "# v") : result_scope.
+Notation "# v" := (Val v%V%R%L) (at level 8, format "# v") : expr_scope.
 
 (** Some common types *)
 Notation int := (FixedSize 1).

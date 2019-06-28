@@ -278,7 +278,7 @@ Qed.
 Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Prop :=
 | BinOpPS op (l1 l2 l': scalar) :
     bin_op_eval h op l1 l2 l' →
-    pure_expr_step FNs h (BinOp op (#[l1]) (#[l2])) SilentEvt (#[l'])
+    pure_expr_step FNs h (BinOp op #[l1] #[l2]) SilentEvt #[l']
 (* TODO: add more operations for values *)
 | ProjBS (i: Z) (v : value) (s : scalar)
     (DEFINED: 0 ≤ i ∧ v !! (Z.to_nat i) = Some s) :
@@ -318,7 +318,7 @@ Inductive mem_expr_step (h: mem) : expr → event → mem → expr → Prop :=
               h (InitCall e)
               (InitCallEvt c)
               h e
-| EndCallBS (call: call_id) e v:
+| EndCallBS (call: call_id) e v :
     to_result e = Some (ValR v) →
     mem_expr_step h (EndCall e) (EndCallEvt call v) h #v
 | CopyBS l lbor T (v: value)

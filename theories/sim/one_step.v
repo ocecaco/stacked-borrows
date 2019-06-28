@@ -255,6 +255,87 @@ Proof.
   { left. by eexists. }
 Qed.
 
+Lemma sim_body_write fs ft r n l tg Ts Tt v σs σt Φ
+  (EQS: tsize Ts = tsize Tt) :
+  (∀ α', memory_written σt.(sst) σt.(scs) l tg (tsize Tt) = Some α' →
+      let σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
+      let σt' := mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
+      Φ r n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
+  r ⊨{n,fs,ft} (Place l tg Ts <- #v, σs) ≤ (Place l tg Tt <- #v, σt) : Φ.
+Proof.
+  intros POST. pfold.
+  intros NT. intros.
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  split; [|done|].
+  { right.
+    destruct (NT (Place l tg Ts <- #v)%E σs) as [[]|[es' [σs' STEPS]]]; [done..|].
+    destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPS)
+      as (α' & ? & Eqα' & EqD & IN & EQL & ?).
+    subst es'. setoid_rewrite <-(srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
+    destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
+    rewrite Eqst Eqcs EQS in Eqα'. rewrite -EQL in EQS.
+    rewrite EQS in EqD. rewrite Eqnp in IN.
+    exists (#[☠])%V, (mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc)).
+    by eapply (head_step_fill_tstep _ []), write_head_step'. }
+  constructor 1. intros.
+  destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPT) as (α' & ? & Eqα' & EqD & IN & EQL & ?).
+  subst et'.
+  set σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc).
+  have STEPS: ((Place l tg Ts <- v)%E, σs) ~{fs}~> ((#[☠])%V, σs').
+  { setoid_rewrite (srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
+    destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
+    rewrite -Eqst -Eqcs -EQS in Eqα'. rewrite -EQS in EQL.
+    rewrite EQL in EqD. rewrite -Eqnp in IN.
+    eapply (head_step_fill_tstep _ []), write_head_step'; eauto. }
+  exists (#[☠])%V, σs', r, (S n). split; last split.
+  { left. by constructor 1. }
+  { split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - done.
+    - intros t k h Eqt. destruct (PINV t k h Eqt) as [Lt PI]. subst σt'. simpl.
+      split; [done|]. intros l' s' Eqk' stk' Eqstk'.
+      destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+        as (stk & Eqstk & SUB & ?).
+      intros pm opro In' NDIS.
+      destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2 & NDIS2).
+      destruct (PI _ _ Eqk' _ Eqstk it2.(perm) opro) as [Eql' HTOP].
+      { simpl in *. rewrite /= Eqt2 Eqp2. by destruct it2. }
+      { simpl in *. by rewrite (NDIS2 NDIS). }
+      (* split; [done|].
+      destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
+        as [?|[MR _]]; [by subst|]. clear -In' MR HTOP Eqstk WFT NDIS.
+      destruct (access1 stk AccessRead tg σt.(scs)) as [[n stk1]|] eqn:Eqstk';
+        [|done]. simpl in MR. simplify_eq.
+      destruct (state_wf_stack_item _ WFT _ _ Eqstk). move : Eqstk' HTOP.
+      destruct k.
+      + eapply access1_head_preserving; eauto.
+      + eapply access1_active_SRO_preserving; eauto. *)
+      admit.
+    - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
+      clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
+      destruct CINV as [IN CINV]. split; [done|].
+      intros t InT k h Eqt l' Inh.
+      destruct (CINV _ InT _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+      destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+        as [stk [Eqstk AS]].
+      exists stk, pm'. split; [done|]. by apply AS.
+    - subst σt'. rewrite /srel /=. destruct SREL as (?&?&?&?&Eq).
+      repeat split; [done..|].
+      admit. }
+  left. pfold. split; last first.
+  { constructor 1. intros vt' ? STEPT'. exfalso.
+    have ?: to_result #[☠]%V = None.
+    { eapply (tstep_reducible_not_result ft _ σt'); eauto. by do 2 eexists. }
+    done. }
+  { move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
+    exists (ValR [☠%S]), σs', r, n. split; last split.
+    - right. split; [lia|]. eauto.
+    - eauto.
+    - by apply POST. }
+  { left. by eexists. }
+Abort.
+
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
@@ -544,5 +625,3 @@ Proof.
     by econstructor; econstructor. }
   split; [done|]. by left.
 Qed.
-
-SearchAbout tstep fill.

@@ -278,7 +278,7 @@ Qed.
 
 Instance scalar_inhabited : Inhabited scalar := populate ScPoison.
 Instance expr_inhabited : Inhabited expr := populate (#[☠])%E.
-Instance result_inhabited : Inhabited result := populate (ValR [☠%S]).
+Instance result_inhabited : Inhabited result := populate (ValR [☠]%S).
 Instance state_Inhabited : Inhabited state.
 Proof. do 2!econstructor; exact: inhabitant. Qed.
 

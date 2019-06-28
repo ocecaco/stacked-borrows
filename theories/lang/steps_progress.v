@@ -400,6 +400,16 @@ Proof.
     destruct (access1_write_is_Some _ _ _ STK) as [? Eq2]. rewrite Eq2. by eexists.
 Qed.
 
+Lemma write_head_step' fns (σ: state) l bor T v α
+  (LEN: length v = tsize T)
+  (LOCVAL: v <<t σ.(snp))
+  (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) σ.(shp))
+  (BOR: memory_written σ.(sst) σ.(scs) l bor (tsize T) = Some α) :
+  let σ' := mkState (write_mem l v σ.(shp)) α σ.(scs) σ.(snp) σ.(snc) in
+  head_step fns (Write (Place l bor T) (Val v)) σ
+                [WriteEvt l bor T v] #[☠] σ' [].
+Proof. intros. econstructor 2; econstructor; eauto; by rewrite LEN. Qed.
+
 Lemma write_head_step fns (σ: state) l bor T v
   (WF: Wf σ)
   (LEN: length v = tsize T)
@@ -415,7 +425,7 @@ Lemma write_head_step fns (σ: state) l bor T v
 Proof.
   destruct (memory_written_is_Some σ.(sst) σ.(scs) l bor (tsize T)); [|done|].
   { move => ? /BLK. by rewrite (state_wf_dom _ WF). }
-  eexists. split; [done|]. econstructor; econstructor; [done|by rewrite LEN|done..].
+  eexists. split; [done|]. by eapply write_head_step'.
 Qed.
 
 Lemma call_head_step fns σ name el xl e HC e' :

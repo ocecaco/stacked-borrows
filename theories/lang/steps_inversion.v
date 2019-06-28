@@ -156,7 +156,7 @@ Qed.
 Lemma tstep_bin_op_terminal_inv op e1 e2 e' σ σ'
   (STEP: (BinOp op e1 e2, σ) ~{fns}~> (e', σ'))
   (TM1: terminal e1) (TM2: terminal e2):
-  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(shp) op l1 l2 l ∧ e' = (#[l%S])%E.
+  σ' = σ ∧ ∃ l1 l2 l, bin_op_eval σ.(shp) op l1 l2 l ∧ e' = (#[l])%E.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
@@ -449,6 +449,45 @@ Proof.
   eexists. split.
   - econstructor. econstructor; [exact Eq''|..|exact HS]. eauto.
   - by rewrite Eq' -fill_comp.
+Qed.
+
+(** Write *)
+Lemma fill_write_decompose K e e1 e2:
+  fill K e = Write e1 e2 →
+  K = [] ∧ e = Write e1 e2 ∨
+  (∃ K', K = K' ++ [WriteLCtx e2] ∧ fill K' e = e1) ∨
+  (∃ v1 K', K = K' ++ [WriteRCtx v1] ∧ fill K' e = e2 ∧ to_result e1 = Some v1).
+Proof.
+  revert e e1 e2.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e1 e2 EqK. right.
+  destruct (IH _ _ _ EqK) as [[? _]|[[K0 [? Eq0]]|[r1 [K' [? Eq']]]]].
+  - subst. simpl in *. destruct Ki; try done.
+    + simpl in EqK. simplify_eq. left. exists []. naive_solver.
+    + right. simpl in EqK. inversion EqK; subst.
+      exists r, []. naive_solver eauto using to_of_result.
+  - subst K. left. by exists (Ki :: K0).
+  - subst K. right. by exists r1, (Ki :: K').
+Qed.
+
+Lemma tstep_write_inv l tg T v e' σ σ'
+  (STEP: ((Place l tg T <- #v)%E, σ) ~{fns}~> (e', σ')) :
+  ∃ α', e' = (#[☠]%V) ∧
+    memory_written σ.(sst) σ.(scs) l tg (tsize T) = Some α' ∧
+    (∀ (i: nat), (i < length v)%nat → l +ₗ i ∈ dom (gset loc) σ.(shp)) ∧
+    (v <<t σ.(snp)) ∧ (length v = tsize T) ∧
+    σ' = mkState (write_mem l v σ.(shp)) α' σ.(scs) σ.(snp) σ.(snc).
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_write_decompose _ _ _ _ Eq)
+    as [[]|[[K' [? Eq']]|[? [K' [? [Eq' ?]]]]]]; subst.
+  - clear Eq. simpl in HS. inv_head_step. naive_solver.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq'. by eexists.
+    + by rewrite Eq1' in HS.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq'. by eexists.
+    + by rewrite Eq1' in HS.
 Qed.
 
 End inv.

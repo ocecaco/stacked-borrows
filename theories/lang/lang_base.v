@@ -10,6 +10,7 @@ Set Default Proof Using "Type".
 
 Delimit Scope loc_scope with L.
 Delimit Scope expr_scope with E.
+Delimit Scope val_scope with V.
 Delimit Scope sc_scope with S.
 Delimit Scope result_scope with R.
 
@@ -136,6 +137,7 @@ Inductive scalar :=
   ScPoison | ScInt (n: Z) | ScPtr (l: loc) (tg: tag) | ScFnPtr (fid: fn_id).
 Bind Scope sc_scope with scalar.
 Definition value := list scalar.
+Bind Scope val_scope with value.
 
 (** Expressions *)
 Inductive expr :=
