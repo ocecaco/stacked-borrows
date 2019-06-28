@@ -92,6 +92,10 @@ Proof.
     rewrite 2!fill_comp. econstructor. by econstructor.
 Qed.
 
+Lemma result_tstep_stuck e σ e' σ' :
+  (e, σ) ~{fns}~> (e', σ') → to_result e = None.
+Proof. intros. inv_tstep. by eapply fill_not_result, (result_head_stuck fns). Qed.
+
 (** PURE STEP ----------------------------------------------------------------*)
 
 (** BinOp *)

@@ -6,41 +6,14 @@ From stbor.sim Require Import behavior global local invariant sflib global_adequ
 
 Set Default Proof Using "Type".
 
-Lemma fill_step_rev
+Lemma fill_step_inv_2
       fn K e1 σ1 e2 σ2
       (STEP: (fill (Λ:=bor_ectxi_lang fn) K e1, σ1) ~{fn}~> (e2, σ2)):
-  (exists e2', e2 = fill K e2' /\ (e1, σ1) ~{fn}~> (e2', σ2)) \/
-  (exists v, to_result e1 = Some v).
+  (∃ e2', e2 = fill K e2' ∧ (e1, σ1) ~{fn}~> (e2', σ2)) ∨
+  (∃ v, to_result e1 = Some v).
 Proof.
-Admitted.
-
-Lemma fill_step
-      fn K e1 σ1 e2 σ2
-      (STEP: (e1, σ1) ~{fn}~> (e2, σ2)):
-  (fill (Λ:=bor_ectxi_lang fn) K e1, σ1) ~{fn}~> (fill K e2, σ2).
-Proof.
-Admitted.
-
-Lemma fill_item_steps
-      fn K e1 σ1 e2 σ2
-      (STEP: (e1, σ1) ~{fn}~>* (e2, σ2)):
-  (fill_item K e1, σ1) ~{fn}~>* (fill_item K e2, σ2).
-Proof.
-Admitted.
-
-Lemma fill_steps
-      fn K e1 σ1 e2 σ2
-      (STEP: (e1, σ1) ~{fn}~>* (e2, σ2)):
-  (fill (Λ:=bor_ectxi_lang fn) K e1, σ1) ~{fn}~>* (fill K e2, σ2).
-Proof.
-Admitted.
-
-Lemma fill_stepp
-      fn K e1 σ1 e2 σ2
-      (STEP: (e1, σ1) ~{fn}~>+ (e2, σ2)):
-  (fill (Λ:=bor_ectxi_lang fn) K e1, σ1) ~{fn}~>+ (fill K e2, σ2).
-Proof.
-Admitted.
+  destruct (to_result e1) eqn:Eq1; [right; by eexists|left; by apply fill_tstep_inv].
+Qed.
 
 Section local.
 Context {A: ucmraT}.
@@ -120,37 +93,44 @@ Proof.
     exploit sim_local_body_terminal; eauto. i. des.
     esplits; eauto; ss.
     + rewrite to_of_result. esplits; eauto.
-    + ii. clarify. admit. (* vrel, to_result *)
+    + ii. clarify. admit. (* vrel, to_result. HAI: property of vrel *)
   - guardH sim_local_body_stuck.
     i. destruct eσ2_tgt as [e2_tgt σ2_tgt].
 
-    exploit fill_step_rev; eauto. i. des; cycle 1.
+    exploit fill_step_inv_2; eauto. i. des; cycle 1.
     { (* return *)
       exploit sim_local_body_terminal; eauto. i. des.
 
       inv FRAMES; ss.
-      { admit. (* conflict: [(e_tgt0, σ_tgt) ~{fnt}~> (e2_tgt, σ2_tgt)] and [to_result e_tgt0 = Some v] *) }
-      apply fill_step_rev in H. des; ss. subst.
+      { exfalso. apply result_tstep_stuck in H. naive_solver. }
+      apply fill_step_inv_2 in H. des; ss. subst.
 
       apply tstep_end_call_inv in H0; cycle 1.
       { unfold terminal. rewrite x0. eauto. }
       des. subst.
 
       exploit CONTINUATION; eauto.
-      { admit. (* wsat assoc *) }
-      { admit. (* vrel #? *) }
+      { admit. (* wsat assoc HAI: property of wsat *) }
+      { admit. (* vrel #?  HAI: property of vrel *) }
       i. des.
 
       esplits.
       - left. eapply tc_rtc_l.
-        + apply fill_steps. instantiate (1 := σs'). instantiate (1 := EndCall vs').
-          admit. (* EndCallCtx *)
-        + econs 1. apply fill_step.
-          admit. (* EndCall step *)
+        + apply fill_tstep. instantiate (1 := σs'). instantiate (1 := EndCall vs').
+          (* EndCallCtx *)
+          clear -x.
+          unguardH x. destruct x as [STEP|[_ EQ]].
+          * by apply tc_rtc, (fill_tstep_tc _ [EndCallCtx]).
+          * inversion EQ. econs.
+        + (* EndCall step *)
+          econs 1. eapply (head_step_fill_tstep).
+          (* HAI: property of wsat and vrel *)
+          admit.
       - right. apply CIH. econs; eauto.
         + rewrite fill_app. eauto.
         + rewrite fill_app. eauto.
-        + admit. (* wsat after return *)
+        + admit. (* wsat after return HAI: property of wsat *)
+                 (* TODO: extract from sim_body_end_call *)
     }
 
     subst. clear H. inv sim_local_body_step.
@@ -159,16 +139,18 @@ Proof.
       pclearbot. esplits; eauto.
       * instantiate (1 := (fill K_src0 es', σs')). revert sim_local_body_stuck.
         des; [left|right]; esplits; eauto.
-        { apply fill_stepp. ss. }
+        { apply fill_tstep_tc. ss. }
         { inv STEP'0. ss. }
       * right. apply CIH. econs; eauto.
     + (* call *)
-      exploit fill_step_rev; eauto. i. des; ss.
+      exploit fill_step_inv_2; eauto. i. des; ss.
       exploit tstep_call_inv; try exact x2; eauto. i. des. subst.
       esplits.
       * left. eapply tc_rtc_l.
-        { apply fill_steps. eauto. }
-        { econs. apply fill_step.
+        { apply fill_tstep. eauto. }
+        { econs. rewrite -fill_app. eapply (head_step_fill_tstep). econstructor.
+          (* HAI: need to know more about fns and subst_l of el_src *)
+          (* econstructor; eauto. *)
           admit. (* Call #[fid] has a step *)
         }
       * right. apply CIH. econs.
@@ -176,10 +158,10 @@ Proof.
           destruct (CONT _ _ _ σ_src' σ_tgt' VRET).
           pclearbot. esplits; eauto.
         }
-        { admit. (* sim_local_body for the call init *) }
-        { s. rewrite fill_app. ss. }
-        { s. rewrite fill_app. eauto. }
-        { s. admit. (* from wsat_assoc *) }
+        { admit. (* sim_local_body for the call init HAI: I don't know what this is *) }
+        { s. ss. }
+        { s. rewrite -fill_app. eauto. }
+        { s. admit. (* from wsat_assoc HAI: property of wsat *) }
 Admitted.
 
 End local.
@@ -200,8 +182,8 @@ Proof.
   - econs 1.
   - ss.
   - ss.
-  - admit. (* sim_local_body for init_expr, init_state *)
-  - admit. (* wsat for init_state *)
+  - admit. (* sim_local_body for init_expr, init_state HAI: this should come from sim_local_funs of "main" *)
+  - admit. (* wsat for init_state HAI: property of wsat *)
 Admitted.
 
 End prog.

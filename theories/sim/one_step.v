@@ -111,11 +111,11 @@ Proof.
     exists vs2, σs2, r2, idx2. split; [|done].
     destruct SS2 as [|[Lt Eq]].
     - left. eapply tc_rtc_l; eauto.
-    - clear -SS' Eq Lt. inversion Eq as [Eq1]. clear Eq. subst. rewrite Eq1.
-      admit.
-      (* clear vs2 Eq1. destruct SS' as [SS'|[? SS']]. *)
-      (* + left. by apply fill_tstep_tc. *)
-      (* + simplify_eq. right. split; [|done]. lia. *)
+    - clear -SS' Eq Lt. sflib.unguardH SS'. sflib.unguard.
+      inversion Eq as [Eq1]. clear Eq. subst.
+      destruct SS' as [SS'|[? SS']].
+      + left. by apply fill_tstep_tc.
+      + simplify_eq. right. split; [|done]. lia.
   }
   (* Kt[et] makes a step *)
   inversion_clear ST as [|Ks1 Kt1].
@@ -166,7 +166,7 @@ Proof.
     destruct (CONT _ _ _ σs' σt' VREL') as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH. }
-Admitted.
+Qed.
 
 (** MEM STEP -----------------------------------------------------------------*)
 
@@ -544,3 +544,5 @@ Proof.
     by econstructor; econstructor. }
   split; [done|]. by left.
 Qed.
+
+SearchAbout tstep fill.
