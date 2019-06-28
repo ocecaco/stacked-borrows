@@ -262,11 +262,6 @@ Fixpoint write_heaplet (l: loc) (v: value) (h: gmapR loc (agreeR scalarC)) :=
       write_heaplet (l +ₗ 1) v (if h !! l then <[l := to_agree s]> h else h)
   end.
 
-Definition write_ptrmap (pm: ptrmapUR) (l: loc) (v: value) :=
-  fmap (λ kh, match kh with
-              | (k, h) => (k, write_heaplet l v h)
-              end) pm.
-
 (* TODO: move *)
 Instance insert_gmap_proper `{Countable K} {A : cmraT} (i: K) :
   Proper ((≡) ==> (≡) ==> (≡)) (insert (M:=gmap K A) i).
@@ -295,6 +290,15 @@ Proof.
   rewrite dom_map_insert_is_Some //. by eexists.
 Qed.
 
+Lemma write_heaplet_empty l v : write_heaplet l v ∅ ≡ ∅.
+Proof. revert l. induction v as [|?? IH]; [done|]; intros l. apply IH. Qed.
+
+(* 
+Definition write_ptrmap (pm: ptrmapUR) (l: loc) (v: value) :=
+  fmap (λ kh, match kh with
+              | (k, h) => (k, write_heaplet l v h)
+              end) pm.
+
 Lemma write_ptrmap_lookup_Some (pm: ptrmapUR) (l: loc) (v: value) (t: ptr_id) k h :
   pm !! t ≡ Some (k, h) → write_ptrmap pm l v !! t ≡ Some (k, write_heaplet l v h).
 Proof.
@@ -311,9 +315,6 @@ Proof.
   intros HL. rewrite /write_ptrmap lookup_fmap.
   destruct (pm !! t) as [|] eqn:Eqt; [by inversion HL|]. by rewrite Eqt /=.
 Qed.
-
-Lemma write_heaplet_empty l v : write_heaplet l v ∅ ≡ ∅.
-Proof. revert l. induction v as [|?? IH]; [done|]; intros l. apply IH. Qed.
 
 Lemma write_ptrmap_lookup_op (pm1 pm2: ptrmapUR) l v (t: ptr_id) k h :
   (pm1 ⋅ pm2) !! t ≡ Some (k, h) →
@@ -336,38 +337,42 @@ Proof.
     rewrite lookup_op Eq1 (write_ptrmap_lookup_Some pm2 l v t k2 h2); [|by rewrite Eq2].
     by rewrite 2!left_id Eqk.
   - rewrite left_id. by inversion 1.
+Qed. *)
+
+Lemma ptrmap_valid (r_f r: ptrmapUR) t h0 kh
+  (Eqtg: r !! t = Some (to_tagKindR tkUnique, h0)) (VN: ✓ kh) :
+  ✓ (r_f ⋅ r) → ✓ (r_f ⋅ (<[t:= kh]> r)).
+Proof.
+  intros VALID.
+  apply (local_update_discrete_valid_frame _ _ _ VALID).
+  have EQ := (ptrmap_insert_op_r _ _ _ _ kh VALID Eqtg). rewrite EQ.
+  eapply (insert_local_update _ _ _
+          (to_tagKindR tkUnique, h0) (to_tagKindR tkUnique, h0));
+          [|exact Eqtg|by apply exclusive_local_update].
+  by rewrite (ptrmap_lookup_op_r _ _ _ _ VALID Eqtg).
 Qed.
 
-Lemma write_heaplet_valid h1 h2 l v :
-  ✓ (h1 ⋅ h2) → ✓ (h1 ⋅ write_heaplet l v h2).
+Lemma write_heaplet_valid l v h:
+  ✓ h → ✓ (write_heaplet l v h).
 Proof.
-  revert l h1 h2. induction v as [|s v IH]; intros l h1 h2 VL; simpl; [done|].
-  apply IH. destruct (h2 !! l) as [ss|] eqn:Eq2; [|done].
-Abort.
-Lemma write_ptrmap_valid (pm1 pm2: ptrmapUR) l v :
-  ✓ (pm1 ⋅ pm2) → ✓ (pm1 ⋅ write_ptrmap pm2 l v).
-Proof.
-  intros VALID t. move : (VALID t).
-  rewrite 2!lookup_op.
-  destruct (pm1 !! t) as [[k1 h1]|] eqn:Eq1, (pm2 !! t) as [[k2 h2]|] eqn:Eq2;
-    rewrite Eq1 Eq2 /=.
-  - rewrite -Some_op pair_op. move => [/= Vk Vh].
-    rewrite write_ptrmap_lookup_Some; [|by rewrite Eq2].
-    rewrite -Some_op pair_op. split; [done|]. simpl.
-Abort.
+  revert l h. induction v as [|s v IH]; intros l h VALID; simpl; [done|].
+  apply IH. destruct (h !! l) eqn:Eql; [|done]. by apply insert_valid.
+Qed.
 
 Lemma sim_body_write fs ft (r: resUR) k0 h0 n l tg Ts Tt v σs σt Φ
   (EQS: tsize Ts = tsize Tt)
-  (Eqtg: r.1 !! tg ≡ Some (to_tagKindR k0, h0)) :
+  (Eqtg: r.1 !! tg = Some (to_tagKindR k0, h0)) :
   let r' := match k0 with
-            | tkUnique => (write_ptrmap r.1 l v, r.2)
+            | tkUnique =>
+              (<[tg := (to_tagKindR tkUnique,  write_heaplet l v h0)]> r.1, r.2)
             | tkPub => r
             end in
   (∀ α', memory_written σt.(sst) σt.(scs) l (Tagged tg) (tsize Tt) = Some α' →
       let σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
       let σt' := mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
       Φ r' n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
-  r ⊨{n,fs,ft} (Place l (Tagged tg) Ts <- #v, σs) ≥ (Place l (Tagged tg) Tt <- #v, σt) : Φ.
+  r ⊨{n,fs,ft}
+    (Place l (Tagged tg) Ts <- #v, σs) ≥ (Place l (Tagged tg) Tt <- #v, σt) : Φ.
 Proof.
   intros r' POST. pfold.
   intros NT. intros.
@@ -399,8 +404,13 @@ Proof.
   { split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
-    - admit.
-    - intros t k h Eqt.
+    - rewrite /r'. destruct k0; [|done]. split; simpl; [|apply VALID].
+      eapply ptrmap_valid; eauto; [|apply VALID]. split; [done|].
+      apply write_heaplet_valid.
+      have VL := (proj1 (cmra_valid_op_r _ _ VALID) tg).
+      rewrite Eqtg in VL. apply VL.
+    - intros t k h. rewrite /r'. destruct k0.
+      { intros Eqt. admit. }
       (* destruct (PINV t k h Eqt) as [Lt PI]. subst σt'. simpl.
       split; [done|]. intros l' s' Eqk' stk' Eqstk'.
       destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
@@ -419,7 +429,7 @@ Proof.
       destruct k.
       + eapply access1_head_preserving; eauto.
       + eapply access1_active_SRO_preserving; eauto. *)
-      admit.
+      { admit. }
     - intros c cs Eqc.
       (* specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
@@ -446,17 +456,20 @@ Proof.
           intros [? [? Eqt]]. subst l3 t3. repeat split.
           destruct t0 as [t0|]; [|done].
           move : Eqt. destruct r_f as [r_f1 r_f2]. simpl.
-          move => [h /(write_ptrmap_lookup_op _ _ l v)].
+          (* move => [h /(write_ptrmap_lookup_op _ _ l v)]. *)
           admit. }
         { destruct PV as (c & T & h & Eqc & InT & Eqt & Inl).
           exists t, c, T.
-          destruct (write_ptrmap_lookup_op _ _ l v _ _ _ Eqt) as (h1 & h2 & Eqh & Eqt').
-          eexists.
+          (* destruct (write_ptrmap_lookup_op _ _ l v _ _ _ Eqt)
+            as (h1 & h2 & Eqh & Eqt').
+            eexists. *)
           (* repeat split; [done..|].
           rewrite dom_op write_heaplet_dom -dom_op -Eqh //. *)
           admit. }
   }
-  left. pfold. split; last first.
+  left.
+  (* TODO: wp_value like rule *)
+  pfold. split; last first.
   { constructor 1. intros vt' ? STEPT'. exfalso.
     have ?: to_result #[☠]%V = None.
     { eapply (tstep_reducible_not_result ft _ σt'); eauto. by do 2 eexists. }

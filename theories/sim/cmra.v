@@ -47,7 +47,8 @@ Proof.
 Qed.
 
 Lemma cmap_lookup_op_r (cm1 cm2: cmapUR) c T (VALID: ✓ (cm1 ⋅ cm2)):
-  cm2 !! c = Some (Cinl (Excl T)) → (cm1 ⋅ cm2) !! c = Some (Cinl (Excl T)).
+  cm2 !! c = Some (to_callStateR (csOwned T)) →
+  (cm1 ⋅ cm2) !! c = Some (to_callStateR (csOwned T)).
 Proof.
   intros HL. move : (VALID c). rewrite lookup_op HL.
   destruct (cm1 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
@@ -56,7 +57,8 @@ Proof.
 Qed.
 
 Lemma cmap_lookup_op_l (cm1 cm2: cmapUR) c T (VALID: ✓ (cm1 ⋅ cm2)):
-  cm1 !! c = Some (Cinl (Excl T)) → (cm1 ⋅ cm2) !! c = Some (Cinl (Excl T)).
+  cm1 !! c = Some (to_callStateR (csOwned T)) →
+  (cm1 ⋅ cm2) !! c = Some (to_callStateR (csOwned T)).
 Proof.
   intros HL. move : (VALID c). rewrite lookup_op HL.
   destruct (cm2 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
@@ -65,7 +67,8 @@ Proof.
 Qed.
 
 Lemma cmap_lookup_op_l_equiv (cm1 cm2: cmapUR) c T (VALID: ✓ (cm1 ⋅ cm2)):
-  cm1 !! c ≡ Some (Cinl (Excl T)) → (cm1 ⋅ cm2) !! c ≡ Some (Cinl (Excl T)).
+  cm1 !! c ≡ Some (to_callStateR (csOwned T)) →
+  (cm1 ⋅ cm2) !! c ≡ Some (to_callStateR (csOwned T)).
 Proof.
   intros HL. move : (VALID c). rewrite lookup_op HL.
   destruct (cm2 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
@@ -74,7 +77,7 @@ Proof.
 Qed.
 
 Lemma cmap_insert_op_r (cm1 cm2: cmapUR) c T cs (VALID: ✓ (cm1 ⋅ cm2)):
-  cm2 !! c = Some (Cinl (Excl T)) →
+  cm2 !! c = Some (to_callStateR (csOwned T)) →
   cm1 ⋅ <[c:=cs]> cm2 = <[c:=cs]> (cm1 ⋅ cm2).
 Proof.
   intros HL. apply (map_eq (cm1 ⋅ <[c:=cs]> cm2)). intros c'.
@@ -84,4 +87,27 @@ Proof.
   case (decide (c' = c)) => [->|?].
   - by rewrite 2!lookup_insert Eqc.
   - do 2 (rewrite lookup_insert_ne //). by rewrite lookup_op.
+Qed.
+
+Lemma ptrmap_insert_op_r (pm1 pm2: ptrmapUR) t h0 kh (VALID: ✓ (pm1 ⋅ pm2)):
+  pm2 !! t = Some (to_tagKindR tkUnique, h0) →
+  pm1 ⋅ <[t:=kh]> pm2 = <[t:=kh]> (pm1 ⋅ pm2).
+Proof.
+  intros HL. apply (map_eq (pm1 ⋅ <[t:=kh]> pm2)). intros t'.
+  move : (VALID t). rewrite 2!lookup_op HL.
+  destruct (pm1 !! t) as [[k1 h1]|] eqn:Eqt; rewrite Eqt.
+  - rewrite -Some_op pair_op. intros [?%exclusive_r]; [done|apply _].
+  - intros VL.
+    case (decide (t' = t)) => [->|?].
+    + by rewrite 2!lookup_insert Eqt.
+    + do 2 (rewrite lookup_insert_ne //). by rewrite lookup_op.
+Qed.
+
+Lemma ptrmap_lookup_op_r (pm1 pm2: ptrmapUR) t h0 (VALID: ✓ (pm1 ⋅ pm2)):
+  pm2 !! t = Some (to_tagKindR tkUnique, h0) →
+  (pm1 ⋅ pm2) !! t = Some (to_tagKindR tkUnique, h0).
+Proof.
+  intros HL. move : (VALID t). rewrite lookup_op HL.
+  destruct (pm1 !! t) as [[k1 h1]|] eqn:Eqt; rewrite Eqt; [|done].
+  rewrite -Some_op pair_op. intros [?%exclusive_r]; [done|apply _].
 Qed.
