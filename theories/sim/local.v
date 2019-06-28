@@ -2,6 +2,7 @@ From Paco Require Export paco.
 From iris.algebra Require Import cmra gmap csum agree excl.
 
 From stbor.lang Require Import defs.
+From stbor.sim Require Import sflib.
 
 Set Default Proof Using "Type".
 
@@ -75,8 +76,8 @@ Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
     ∀ vt (TERM: to_result et = Some vt),
       (* then src can get terminal *)
       ∃ vs' σs' r' idx',
-        ((es, σs) ~{fns}~>+ (of_result vs', σs') ∨
-         ((idx' < idx)%nat ∧ (of_result vs', σs') = (es, σs))) ∧
+        sflib.__guard__ ((es, σs) ~{fns}~>+ (of_result vs', σs') ∨
+                         ((idx' < idx)%nat ∧ (es, σs) = (of_result vs', σs'))) ∧
         (* and re-establish wsat *)
         wsat (r_f ⋅ r') σs' σt ∧ Φ r' idx' vs' σs' vt σt ;
   sim_local_body_step :

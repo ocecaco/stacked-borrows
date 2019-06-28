@@ -1,7 +1,7 @@
 From Coq Require Import Program.Equality Lia.
 From Paco Require Import paco.
 
-From stbor.lang Require Import steps_wf.
+From stbor.lang Require Import steps_wf steps_inversion.
 From stbor.sim Require Import behavior global local invariant sflib global_adequacy.
 
 Set Default Proof Using "Type".
@@ -18,6 +18,13 @@ Lemma fill_step
       fn K e1 σ1 e2 σ2
       (STEP: (e1, σ1) ~{fn}~> (e2, σ2)):
   (fill (Λ:=bor_ectxi_lang fn) K e1, σ1) ~{fn}~> (fill K e2, σ2).
+Proof.
+Admitted.
+
+Lemma fill_item_steps
+      fn K e1 σ1 e2 σ2
+      (STEP: (e1, σ1) ~{fn}~>* (e2, σ2)):
+  (fill_item K e1, σ1) ~{fn}~>* (fill_item K e2, σ2).
 Proof.
 Admitted.
 
@@ -77,8 +84,8 @@ Inductive sim_local_frames:
                                 (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
-      (frame.(K_src) ++ K_f_src)
-      (frame.(K_tgt) ++ K_f_tgt)
+      (EndCallCtx :: frame.(K_src) ++ K_f_src)
+      (EndCallCtx :: frame.(K_tgt) ++ K_f_tgt)
       (frame :: frames)
 .
 
@@ -108,21 +115,44 @@ Proof.
   { admit. (* never_stuck *) }
   clear LOCAL. intro LOCAL. inv LOCAL. econs.
   - ii. admit. (* stuck_fill_rev *)
-  - s. i. subst. apply fill_result in H. revert sim_local_body_stuck. des.
-    unfold terminal in H. des. subst. ss.
-    exploit sim_local_body_terminal; eauto. intros ?. des.
-    clear NEVER_STUCK WSAT.
-    clear sim_local_body_terminal sim_local_body_step. intros _.
-    assert (VS': to_result vs' = Some x) by admit.
-    induction FRAMES; ss.
-    { esplits; eauto; ss. ii. clarify. }
-    admit. (* global sim should have generalized index *) 
-    admit.
-  - i. destruct eσ2_tgt as [e2_tgt σ2_tgt].
-    exploit fill_step_rev; eauto. i. revert sim_local_body_stuck. des; cycle 1.
+  - guardH sim_local_body_stuck.
+    s. i. apply fill_result in H. unfold terminal in H. des. subst. inv FRAMES. ss.
+    exploit sim_local_body_terminal; eauto. i. des.
+    esplits; eauto; ss.
+    + rewrite to_of_result. esplits; eauto.
+    + ii. clarify. admit. (* vrel, to_result *)
+  - guardH sim_local_body_stuck.
+    i. destruct eσ2_tgt as [e2_tgt σ2_tgt].
+
+    exploit fill_step_rev; eauto. i. des; cycle 1.
     { (* return *)
-      admit. (* similar to the above case *)
+      exploit sim_local_body_terminal; eauto. i. des.
+
+      inv FRAMES; ss.
+      { admit. (* conflict: [(e_tgt0, σ_tgt) ~{fnt}~> (e2_tgt, σ2_tgt)] and [to_result e_tgt0 = Some v] *) }
+      apply fill_step_rev in H. des; ss. subst.
+
+      apply tstep_end_call_inv in H0; cycle 1.
+      { unfold terminal. rewrite x0. eauto. }
+      des. subst.
+
+      exploit CONTINUATION; eauto.
+      { admit. (* wsat assoc *) }
+      { admit. (* vrel #? *) }
+      i. des.
+
+      esplits.
+      - left. eapply tc_rtc_l.
+        + apply fill_steps. instantiate (1 := σs'). instantiate (1 := EndCall vs').
+          admit. (* EndCallCtx *)
+        + econs 1. apply fill_step.
+          admit. (* EndCall step *)
+      - right. apply CIH. econs; eauto.
+        + rewrite fill_app. eauto.
+        + rewrite fill_app. eauto.
+        + admit. (* wsat after return *)
     }
+
     subst. clear H. inv sim_local_body_step.
     + (* step *)
       exploit STEP; eauto. intros (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
@@ -133,11 +163,13 @@ Proof.
         { inv STEP'0. ss. }
       * right. apply CIH. econs; eauto.
     + (* call *)
+      exploit fill_step_rev; eauto. i. des; ss.
+      exploit tstep_call_inv; try exact x2; eauto. i. des. subst.
       esplits.
       * left. eapply tc_rtc_l.
         { apply fill_steps. eauto. }
-        { instantiate (1 := (fill K_src0 (fill Ks _), _)).
-          admit. (* call has a matching step *)
+        { econs. apply fill_step.
+          admit. (* Call #[fid] has a step *)
         }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
@@ -146,8 +178,8 @@ Proof.
         }
         { admit. (* sim_local_body for the call init *) }
         { s. rewrite fill_app. ss. }
-        { s. rewrite fill_app. f_equal. admit. (* call ctx *) }
-        { s. admit. (* from WSAT0, x1 *) }
+        { s. rewrite fill_app. eauto. }
+        { s. admit. (* from wsat_assoc *) }
 Admitted.
 
 End local.

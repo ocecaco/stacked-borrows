@@ -112,9 +112,11 @@ Proof.
     destruct SS2 as [|[Lt Eq]].
     - left. eapply tc_rtc_l; eauto.
     - clear -SS' Eq Lt. inversion Eq as [Eq1]. clear Eq. subst. rewrite Eq1.
-      clear vs2 Eq1. destruct SS' as [SS'|[? SS']].
-      + left. by apply fill_tstep_tc.
-      + simplify_eq. right. split; [|done]. lia. }
+      admit.
+      (* clear vs2 Eq1. destruct SS' as [SS'|[? SS']]. *)
+      (* + left. by apply fill_tstep_tc. *)
+      (* + simplify_eq. right. split; [|done]. lia. *)
+  }
   (* Kt[et] makes a step *)
   inversion_clear ST as [|Ks1 Kt1].
   { (* step into Kt[et] *)
@@ -164,7 +166,7 @@ Proof.
     destruct (CONT _ _ _ σs' σt' VREL') as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH. }
-Qed.
+Admitted.
 
 (** MEM STEP -----------------------------------------------------------------*)
 

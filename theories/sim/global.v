@@ -1,6 +1,7 @@
 From Paco Require Import paco.
 
 From stbor.lang Require Export defs.
+From stbor.sim Require Export sflib.
 
 CoInductive diverges
   (step: expr * config → expr * config → Prop)
@@ -38,7 +39,7 @@ Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
   (* (2) If [eσ1_tgt] is terminal, then [eσ1_src] terminates with some steps. *)
   sim_terminal :
     terminal eσ1_tgt.1 → ∃ idx2 eσ2_src,
-      (eσ1_src ~{fns}~>+ eσ2_src ∨ ((idx2 < idx1)%nat ∧ eσ1_src = eσ2_src)) ∧
+      sflib.__guard__ (eσ1_src ~{fns}~>+ eσ2_src ∨ ((idx2 < idx1)%nat ∧ eσ1_src = eσ2_src)) ∧
       terminal eσ2_src.1 ∧ sim_expr_terminal eσ2_src.1 eσ1_tgt.1 ;
   (* (3) If [eσ1_tgt] steps to [eσ2_tgt] with 1 step,
        then exists [eσ2_src] s.t. [eσ1_src] steps to [eσ2_src] with * step. *)

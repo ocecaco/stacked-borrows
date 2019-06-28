@@ -75,12 +75,15 @@ Proof.
     clear SIM. intro SIM. inv SIM. inv MAT.
     + exfalso. destruct sim_stuck as [[v TE]|ST].
       * by apply (NT v).
-      * admit.
-    + exploit sim_terminal; eauto. i. revert sim_stuck. intros _. pfold. des.
-      * econs; eauto. etrans. apply tc_rtc; eauto.
-        rename x2 into SE.
-        admit.
-      * econs; eauto. admit.
+      * unfold reducible in ST. des. eapply NS.
+        destruct x. eauto.
+    + clear sim_stuck. exploit sim_terminal; eauto. i. des.
+      pfold. econs.
+      * instantiate (1 := eσ2_src). unguardH x0. des.
+        { apply tc_rtc. eauto. }
+        { subst. reflexivity. }
+      * unfold terminal in *. des.
+        econs 2. unfold term. erewrite x2; eauto.
     + pclearbot. exploit sim_step; eauto. i. revert sim_stuck. des.
       * inv x1; ss.
         exploit CIH; eauto. intros ?.
