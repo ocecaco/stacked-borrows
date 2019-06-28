@@ -430,17 +430,37 @@ Proof.
       + eapply access1_head_preserving; eauto.
       + eapply access1_active_SRO_preserving; eauto. *)
       { admit. }
-    - intros c cs Eqc.
-      (* specialize (CINV _ _ Eqc). subst σt'. simpl.
-      clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
+    - intros c cs Eqc'.
+      have Eqc: (r_f ⋅ r).2 !! c ≡ Some cs.
+      { move  : Eqc'. rewrite /r'. by destruct k0. }
+      specialize (CINV _ _ Eqc). subst σt'. simpl.
+      clear -Eqα' CINV Eqtg VALID. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
-      intros t InT k h Eqt l' Inh.
-      specialize (CINV _ InT k). *)
-      (* destruct (CINV _ InT _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
-      destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
-        as [stk [Eqstk AS]].
-      exists stk, pm'. split; [done|]. by apply AS. *)
-      admit.
+      intros t InT k h. specialize (CINV _ InT k).
+      (* TODO: duplicated proofs *)
+      rewrite /r'. destruct k0.
+      + rewrite (ptrmap_insert_op_r _ _ _ h0); [|apply VALID|done].
+        case (decide (t = tg)) => ?.
+        { subst tg. rewrite lookup_insert.
+          intros [Eqk Eqh]%Some_equiv_inj. simpl in Eqk, Eqh.
+          have Eqt : (r_f ⋅ r).1 !! t ≡ Some (k, h0)
+            by rewrite (ptrmap_lookup_op_r _ _ _ _ (proj1 VALID) Eqtg) -Eqk.
+          intros l'. rewrite -Eqh write_heaplet_dom. intros Inh.
+          destruct (CINV _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+          destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+            as [stk [Eqstk AS]].
+          exists stk, pm'. split; [done|]. by apply AS. }
+        { rewrite lookup_insert_ne //.
+          intros Eqt l' Inh.
+          destruct (CINV _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+          destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+            as [stk [Eqstk AS]].
+          exists stk, pm'. split; [done|]. by apply AS. }
+      + intros Eqt l' Inh.
+        destruct (CINV _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+        destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+          as [stk [Eqstk AS]].
+        exists stk, pm'. split; [done|]. by apply AS.
     - subst σt'. rewrite /srel /=. destruct SREL as (?&?&?&?&Eq).
       repeat split; [done..|].
       intros l1 st1 Eq1.
