@@ -403,17 +403,25 @@ Proof.
       rewrite Eqtg in VL. apply VL.
     - (* ptrmap_inv *)
       intros t k h Eqt.
-      have CASEt : (t = tg ∧ k0 = tkUnique ∧ k = k0 ∧ h ≡ write_heaplet l v h0 ∨
-                    (r_f ⋅ r).1 !! t ≡ Some (to_tagKindR k, h)).
-      { move : Eqt. rewrite /r'.
-        destruct k0; simpl; [|by right].
-        rewrite /= HL. case (decide (t = tg)) => [->|?];
-          [|rewrite lookup_insert_ne //; by right].
-        rewrite lookup_insert. intros [Eq1 Eq2]%Some_equiv_inj. left.
+      have Eqttg: t = tg → k0 = tkUnique → k = k0 ∧ h ≡ write_heaplet l v h0.
+      { intros. subst t k0. move  : Eqt. rewrite /= HL lookup_insert.
+        intros [Eq1 Eq2]%Some_equiv_inj.
         simpl in Eq1, Eq2. rewrite Eq2. repeat split; [|done].
         destruct k; [done|inversion Eq1]. }
+      have CASEt : (t = tg ∧ k0 = tkUnique ∧ k = k0 ∧ h ≡ write_heaplet l v h0 ∨
+                    (r_f ⋅ r).1 !! t ≡ Some (to_tagKindR k, h) ∧ (k = tkUnique → t ≠ tg)).
+      { move : Eqt. rewrite /r'.
+        destruct k0; simpl.
+        - rewrite /= HL.
+          case (decide (t = tg)) => ?; [subst t|rewrite lookup_insert_ne //].
+          + left. by destruct Eqttg.
+          + right. naive_solver.
+        - case (decide (t = tg)) => ?; [subst t|].
+          + intros Eqt. right. split; [done|]. intros ?. subst k.
+            move : Eqt. rewrite lookup_op Eqtg. by move => /tagKindR_exclusive_2.
+          + right. naive_solver. }
       split.
-      { subst σt'. simpl. destruct CASEt as [(?&?&?&?Eqh)|Eqh].
+      { subst σt'. simpl. destruct CASEt as [(?&?&?&?Eqh)|[Eqh NEQ]].
         - subst t k k0. apply (PINV tg tkUnique h0). by rewrite HL2.
         - move : Eqh. apply PINV. }
       intros l' s' Eqk' stk'. subst σt'. simpl.
@@ -422,7 +430,7 @@ Proof.
       { (* l' is NOT written to *)
         destruct (for_each_lookup _ _ _ _ _ Eqα') as [_ [_ EQ]].
         rewrite EQL in NEql. rewrite (EQ _ NEql) Eql.
-        destruct CASEt as [(?&?&?&?Eqh)|Eqh]; [|by apply (PINV t k h Eqh)].
+        destruct CASEt as [(?&?&?&?Eqh)|[Eqh ?]]; [|by apply (PINV t k h Eqh)].
         subst t k k0. apply (PINV tg tkUnique h0).
         - by rewrite HL2.
         - move : Eqk'. rewrite Eqh. rewrite -EQL in NEql.
@@ -432,7 +440,7 @@ Proof.
       destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as (stk & Eqstk & SUB & ?).
       destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2 & NDIS2). simpl in *.
-      destruct CASEt as [(?&?&?&?Eqh)|Eqh].
+      destruct CASEt as [(?&?&?&?Eqh)|[Eqh NEQ]].
       + (* t = tg *)
         subst t k k0. rewrite -> Eqh in Eqk'. split.
         * have Eqs' := proj1 (write_heaplet_lookup l v h0) _ _ Lti Eqk'.
@@ -460,15 +468,18 @@ Proof.
             as [[n stk1]|] eqn:Eqstk'; [|done]. simpl in MR. simplify_eq.
           destruct (state_wf_stack_item _ WFT _ _ Eqstk). move : Eqstk' HTOP.
           eapply access1_head_preserving; eauto.
-      + (* t is impossible: invoke PINV for t *)
-        exfalso. destruct (PINV t k h Eqh) as [Lt PI].
+      + (* invoke PINV for t *)
+        destruct (PINV t k h Eqh) as [Lt PI].
         destruct (PI _ _ Eqk' _ Eqstk it2.(perm) opro) as [Eql' HTOP].
         { rewrite /= Eqt2 Eqp2. by destruct it2. } { by rewrite (NDIS2 NDIS). }
-        (* if k is Unique => t ≠ tg, and writing with tg must have popped t
-           from top, contradicting In'. *)
-        (* if k is Public => t is for SRO, and must also have been popped,
-           contradicting In'. *)
-        admit.
+        destruct k.
+        * (* if k is Unique ∧ t ≠ tg, writing with tg must have popped t
+            from top, contradicting In'. *)
+          specialize (NEQ eq_refl).
+          admit.
+        * (* if k is Public => t is for SRO, and must also have been popped,
+             contradicting In'. *)
+          admit.
     - (* cmap_inv : make sure tags in the new resource are still on top *)
       intros c cs Eqc'.
       have Eqc: (r_f ⋅ r).2 !! c ≡ Some cs.

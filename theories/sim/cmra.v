@@ -134,6 +134,15 @@ Proof.
   - inversion Eq.
 Qed.
 
+Lemma tagKindR_exclusive_2 (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tagKindR tkPub, h0) ≡ Some (to_tagKindR tkUnique, h) → False.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq _]%Some_equiv_inj.
+  - destruct k as [[]| |]; inversion Eq.
+  - inversion Eq.
+Qed.
+
 Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
   mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → h0 ≡ h.
 Proof.
