@@ -9,6 +9,7 @@ Set Default Proof Using "Type".
 (* No case for poison *)
 Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
   match s1, s2 with
+  | ScPoison, ScPoison => True
   | ScInt n1, ScInt n2 => n1 = n2
   | ScFnPtr n1, ScFnPtr n2 => n1 = n2
   | ScPtr l1 tg1, ScPtr l2 tg2 =>

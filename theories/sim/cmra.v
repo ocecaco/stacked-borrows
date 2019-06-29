@@ -25,12 +25,13 @@ Definition cmapUR := gmapUR call_id callStateR.
 Definition to_cmapUR (cm: cmap) : cmapUR := fmap to_callStateR cm.
 
 Definition ptrmap := gmap ptr_id (tag_kind * mem).
+Definition heapletR := gmapR loc (agreeR scalarC).
 (* ptr_id ⇀ TagKid x (loc ⇀ Ag(Scalar)) *)
-Definition ptrmapUR := gmapUR ptr_id (prodR tagKindR (gmapR loc (agreeR scalarC))).
+Definition ptrmapUR := gmapUR ptr_id (prodR tagKindR heapletR).
 
-Definition to_heapUR (h: mem) : gmapR loc (agreeR scalarC) := fmap to_agree h.
+Definition to_heapletR (h: mem) : heapletR := fmap to_agree h.
 Definition to_ptrmapUR (pm: ptrmap) : ptrmapUR :=
-  fmap (λ tm, (to_tagKindR tm.1, to_heapUR tm.2)) pm.
+  fmap (λ tm, (to_tagKindR tm.1, to_heapletR tm.2)) pm.
 
 Definition res := (ptrmap * cmap)%type.
 Definition resUR := prodUR ptrmapUR cmapUR.
@@ -110,4 +111,33 @@ Proof.
   intros HL. move : (VALID t). rewrite lookup_op HL.
   destruct (pm1 !! t) as [[k1 h1]|] eqn:Eqt; rewrite Eqt; [|done].
   rewrite -Some_op pair_op. intros [?%exclusive_r]; [done|apply _].
+Qed.
+
+Lemma ptrmap_lookup_op_r_equiv_pub (pm1 pm2: ptrmapUR) t h2 (VALID: ✓ (pm1 ⋅ pm2)):
+  pm2 !! t ≡ Some (to_tagKindR tkPub, h2) →
+  ∃ h1, (pm1 ⋅ pm2) !! t ≡ Some (to_tagKindR tkPub, h1 ⋅ h2).
+Proof.
+  intros HL. move : (VALID t). rewrite lookup_op.
+  destruct (pm1 !! t) as [[k1 h1]|] eqn:Eqt; rewrite Eqt; rewrite -> HL.
+  - rewrite -Some_op pair_op. move => [ VL1 ?]. exists h1. simpl in VL1.
+    rewrite HL -Some_op pair_op.
+    by rewrite -(tag_kind_incl_eq (to_tagKindR tkPub) _ VL1 (cmra_included_r _ _)).
+  - intros _. exists (∅: gmap loc _). by rewrite 2!left_id HL.
+Qed.
+
+Lemma tagKindR_exclusive (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkPub, h) → False.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq _]%Some_equiv_inj.
+  - destruct k as [[]| |]; inversion Eq.
+  - inversion Eq.
+Qed.
+
+Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → h0 ≡ h.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq1 Eq2]%Some_equiv_inj; [|done].
+  destruct k as [[[]|]| |]; inversion Eq1; simplify_eq.
 Qed.
