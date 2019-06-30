@@ -469,17 +469,32 @@ Proof.
           destruct (state_wf_stack_item _ WFT _ _ Eqstk). move : Eqstk' HTOP.
           eapply access1_head_preserving; eauto.
       + (* invoke PINV for t *)
-        destruct (PINV t k h Eqh) as [Lt PI].
+        exfalso. destruct (PINV t k h Eqh) as [Lt PI].
         destruct (PI _ _ Eqk' _ Eqstk it2.(perm) opro) as [Eql' HTOP].
         { rewrite /= Eqt2 Eqp2. by destruct it2. } { by rewrite (NDIS2 NDIS). }
         destruct k.
         * (* if k is Unique ∧ t ≠ tg, writing with tg must have popped t
             from top, contradicting In'. *)
+          destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 _].
+          rewrite EQL in Lti. destruct (EQ1 _ _ Lti Eqstk) as [ss' [Eq' EQ2]].
+          have ?: ss' = stk'. { rewrite Eqstk' in Eq'. by inversion Eq'. }
+          subst ss'. clear Eq'. move : EQ2. case access1 as [[n1 stk1]|] eqn:EQ3; [|done].
+          simpl. intros ?. simplify_eq.
           specialize (NEQ eq_refl).
-          admit.
+          have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
+          move : In'.
+          eapply (access1_write_remove_incompatible_head _ tg t _ _ _ ND);
+            [by eexists|done..].
         * (* if k is Public => t is for SRO, and must also have been popped,
              contradicting In'. *)
-          admit.
+          destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 _].
+          rewrite EQL in Lti. destruct (EQ1 _ _ Lti Eqstk) as [ss' [Eq' EQ2]].
+          have ?: ss' = stk'. { rewrite Eqstk' in Eq'. by inversion Eq'. }
+          subst ss'. clear Eq'. move : EQ2. case access1 as [[n1 stk1]|] eqn:EQ3; [|done].
+          simpl. intros ?. simplify_eq.
+          have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
+          move : In'.
+          eapply (access1_write_remove_incompatible_active_SRO _ tg t _ _ _ ND); eauto.
     - (* cmap_inv : make sure tags in the new resource are still on top *)
       intros c cs Eqc'.
       have Eqc: (r_f ⋅ r).2 !! c ≡ Some cs.
@@ -589,7 +604,7 @@ Proof.
     - eauto.
     - by apply POST. }
   { left. by eexists. }
-Abort.
+Qed.
 
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :

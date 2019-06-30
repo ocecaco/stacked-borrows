@@ -845,6 +845,185 @@ Proof.
     eapply sublist_active_SRO_preserving; eauto. done.
 Qed.
 
+Lemma find_granting_incompatible_head stk kind t ti idx pm pmi oproi
+  (HD: is_stack_head (mkItem pmi (Tagged ti) oproi) stk)
+  (NEQ: t ≠ ti) :
+  find_granting stk kind (Tagged t) = Some (idx, pm) →
+  is_stack_head (mkItem pmi (Tagged ti) oproi) (take idx stk).
+Proof.
+  destruct HD as [stk' Eqi]. rewrite Eqi.
+  rewrite /find_granting /= decide_False; last (intros [_ Eq]; by inversion Eq).
+  case list_find => [[idx' pm'] /=|//]. intros . simplify_eq. simpl.
+  by eexists.
+Qed.
+
+Lemma find_first_write_incompatible_head stk pm idx t opro pmi
+  (HD: is_stack_head (mkItem pmi t opro) stk)
+  (NSRW: pmi ≠ SharedReadWrite) :
+  find_first_write_incompatible stk pm = Some idx → (0 < idx)%nat.
+Proof.
+  set it := (mkItem pmi t opro).
+  destruct HD as [stk' Eqi]. rewrite Eqi.
+  destruct pm; [..|done|done]; simpl.
+  - intros. simplify_eq. lia.
+  - rewrite reverse_cons.
+    destruct (list_find_elem_of (λ it, it.(perm) ≠ SharedReadWrite)
+                (reverse stk' ++ [it]) it) as [[id fnd] Eqf]; [set_solver|done|].
+    rewrite Eqf.
+    intros. simplify_eq. apply list_find_Some in Eqf as [Eqi ?].
+    apply lookup_lt_Some in Eqi.
+    rewrite app_length /= reverse_length Nat.add_1_r in Eqi. lia.
+Qed.
+
+Lemma remove_check_incompatible_items cids stk stk' stk0 n it i t
+  (ND: stack_item_tagged_NoDup (stk ++ stk0)) :
+  it.(tg) = Tagged t → stk !! i = Some it → (i < n)%nat →
+  remove_check cids stk n = Some stk' →
+  ∀ it', it'.(tg) = Tagged t → it' ∈ (stk' ++ stk0) → False.
+Proof.
+  intros Eqt. revert i stk stk0 ND.
+  induction n as [|n IH]; simpl; intros i stk stk0 ND Eqit Lt; [lia|].
+  destruct stk as [|it' stk]; [done|]. simpl.
+  case check_protector; [|done].
+  destruct i as [|i].
+  - simpl in Eqit. simplify_eq.
+    intros SUB%remove_check_sublist it' Eq' IN.
+    have SUB': stk' ++ stk0 `sublist_of` stk ++ stk0 by apply sublist_app.
+    rewrite -> SUB' in IN.
+    clear -ND Eqt Eq' IN.
+    move : ND.
+    rewrite /stack_item_tagged_NoDup filter_cons decide_True;
+            [|by rewrite /is_tagged Eqt].
+    rewrite fmap_cons NoDup_cons Eqt -Eq'.
+    intros [IN' _]. apply IN'. apply elem_of_list_fmap.
+    exists it'. split; [done|]. apply elem_of_list_filter. by rewrite /is_tagged Eq'.
+  - apply (IH i); [|done|lia]. by apply stack_item_tagged_NoDup_cons_1 in ND.
+Qed.
+
+Lemma access1_write_remove_incompatible_head stk t ti cids n stk'
+  (ND: stack_item_tagged_NoDup stk) :
+  (∃ oproi, is_stack_head (mkItem Unique (Tagged ti) oproi) stk) →
+  access1 stk AccessWrite (Tagged t) cids = Some (n, stk') →
+  t ≠ ti →
+  ∀ pm opro, (mkItem pm (Tagged ti) opro) ∈ stk' → False.
+Proof.
+  intros HD. rewrite /access1.
+  case find_granting as [[n' pm']|] eqn:GRANT; [|done]. simpl.
+  case find_first_write_incompatible as [idx|] eqn:INC; [|done]. simpl.
+  case remove_check as [stk1|] eqn:Eq; [|done].
+  simpl. intros ?. simplify_eq.
+  intros NEQ. destruct HD as [oproi HD].
+  have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
+  have Gt0 := find_first_write_incompatible_head _ _ _ _ _ _ HD' (ltac:(done)) INC.
+  rewrite -{1}(take_drop n stk) in ND.
+  intros pm opro.
+  have EQH : take n stk !! 0%nat = Some (mkItem Unique (Tagged ti) oproi).
+  { destruct HD' as [? Eq']. by rewrite Eq'. }
+  eapply (remove_check_incompatible_items _ _ _ _ idx
+            (mkItem Unique (Tagged ti) oproi) O ti ND); done.
+Qed.
+
+Lemma active_SRO_elem_of t stk :
+  t ∈ active_SRO stk → ∃ i it, stk !! i = Some it ∧ it.(tg) = Tagged t ∧
+  it.(perm) = SharedReadOnly ∧
+  ∀ j jt, (j < i)%nat → stk !! j = Some jt → jt.(perm) = SharedReadOnly.
+Proof.
+  induction stk as [|it' stk IH]; simpl; [set_solver|].
+  destruct it'.(perm) eqn:Eqp; [set_solver..| |set_solver].
+  destruct it'.(tg) eqn:Eqt;
+    [rewrite elem_of_union elem_of_singleton; intros [?|Eq]; [subst|]|].
+  - exists O, it'. repeat split; [done..|intros; lia].
+  - destruct (IH Eq) as (i & it1 & ? & ? & ? & HL).
+    exists (S i), it1. repeat split; [done..|].
+    intros j jt Lt. destruct j; simpl.
+    + intros. by simplify_eq.
+    + apply HL. lia.
+  - intros Eq. destruct (IH Eq) as (i & it1 & ? & ? & ? & HL).
+    exists (S i), it1. repeat split; [done..|].
+    intros j jt Lt. destruct j; simpl.
+    + intros. by simplify_eq.
+    + apply HL. lia.
+Qed.
+
+Lemma find_granting_incompatible_active_SRO stk t ti idx pm
+  (HD: ti ∈ active_SRO stk) :
+  find_granting stk AccessWrite (Tagged t) = Some (idx, pm) →
+  ti ∈ active_SRO (take idx stk).
+Proof.
+  revert idx. induction stk as [|it stk IH]; simpl; intros idx; [set_solver|].
+  move : HD. rewrite /find_granting /=.
+  destruct it.(perm) eqn:Eqp; [set_solver..| |set_solver].
+  rewrite decide_False; last (intros [PM _]; by rewrite Eqp in PM).
+  destruct (list_find (matched_grant AccessWrite (Tagged t)) stk)
+    as [[n' pm']|] eqn:Eql; [|done].
+  simpl. intros IN ?. simplify_eq. rewrite /= Eqp. move : IN.
+  destruct it.(tg) eqn:Eqt; simpl;
+    [rewrite elem_of_union elem_of_singleton; intros [|IN]; [subst|]|]; simpl.
+  - set_solver.
+  - rewrite elem_of_union. right. apply IH. done. by rewrite /find_granting Eql.
+  - intros ?. apply IH. done. by rewrite /find_granting Eql.
+Qed.
+
+Lemma reserve_lookup {A: Type} (l: list A) (i : nat) (a: A) :
+  l !! i = Some a → ∃ j, reverse l !! j = Some a ∧ (i + j + 1)%nat = length l.
+Proof.
+  revert i. induction l as [|b l IH]; simpl; intros i; [naive_solver|].
+  rewrite reverse_cons.
+  destruct i.
+  - simpl. intros. simplify_eq. exists (length l). split; [|lia].
+    rewrite lookup_app_r; rewrite reverse_length //.
+    by rewrite Nat.sub_diag.
+  - simpl. intros Eqi. have Lt := lookup_lt_Some _ _ _ Eqi.
+    move : Eqi => /IH [j [Eqj Eql]].
+    exists j. rewrite Eql. split; [|done]. rewrite lookup_app_l //.
+    rewrite reverse_length. lia.
+Qed.
+
+Lemma find_first_write_incompatible_active_SRO stk pm idx :
+  find_first_write_incompatible stk pm = Some idx →
+  ∀ t, t ∈ active_SRO stk → ∃ i it, stk !! i = Some it ∧
+    it.(tg) = Tagged t ∧ (i < idx)%nat.
+Proof.
+  intros EF t IN.
+  destruct (active_SRO_elem_of _ _ IN) as (i1 & it1 & Eqit1 & Eqt1 & Eqp1 & HL1).
+  move  : EF.
+  destruct pm; [| |done..].
+  { simpl. intros. simplify_eq. exists i1, it1.
+    repeat split; [done..|]. by eapply lookup_lt_Some. }
+  simpl.
+  destruct (list_find_elem_of (λ it, it.(perm) ≠ SharedReadWrite) (reverse stk) it1)
+    as [[n1 pm1] Eqpm1].
+  { rewrite elem_of_reverse. by eapply elem_of_list_lookup_2. }
+  { by rewrite Eqp1. }
+  rewrite Eqpm1. intros. simplify_eq.
+  exists i1, it1. repeat split; [done..|].
+  apply list_find_Some_not_earlier in Eqpm1 as (Eqrv & Eqpmv & HLv).
+  case (decide (i1 + n1 < length stk)%nat) => [?|]; [lia|].
+  rewrite Nat.nlt_ge => GE. exfalso.
+  destruct (reserve_lookup _ _ _ Eqit1) as (j & Eqj & Eql).
+  have Lt: (j < n1)%nat by lia.
+  specialize (HLv _ _ Lt Eqj). rewrite Eqp1 in HLv. by apply HLv.
+Qed.
+
+Lemma access1_write_remove_incompatible_active_SRO stk t ti cids n stk'
+  (ND: stack_item_tagged_NoDup stk) :
+  (ti ∈ active_SRO stk) →
+  access1 stk AccessWrite (Tagged t) cids = Some (n, stk') →
+  ∀ pm opro, (mkItem pm (Tagged ti) opro) ∈ stk' → False.
+Proof.
+  intros HD. rewrite /access1.
+  case find_granting as [[n' pm']|] eqn:GRANT; [|done]. simpl.
+  case find_first_write_incompatible as [idx|] eqn:INC; [|done]. simpl.
+  case remove_check as [stk1|] eqn:Eq; [|done].
+  simpl. intros ?. simplify_eq.
+  intros NEQ.
+  have HD' := find_granting_incompatible_active_SRO _ _ _ _ _ HD GRANT.
+  destruct (find_first_write_incompatible_active_SRO _ _ _ INC _ HD')
+    as (i & it & Eqi & Eqt & Lt).
+  rewrite -{1}(take_drop n stk) in ND. intros ?.
+  eapply (remove_check_incompatible_items _ _ _ _ idx it i ti ND); eauto.
+Qed.
+
 Lemma for_each_access1_stack_item α nxtc cids nxtp l n tg kind α' :
   for_each α l n false
           (λ stk, nstk' ← access1 stk kind tg cids; Some nstk'.2) = Some α' →
