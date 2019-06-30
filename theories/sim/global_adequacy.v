@@ -41,7 +41,8 @@ Proof.
 Qed.
 
 Lemma adequacy
-      prog_src prog_tgt idx conf_src conf_tgt
+      prog_src `{NSD: Decision (∀ e σ, never_stuck prog_src e σ)}
+      prog_tgt idx conf_src conf_tgt
       (SIM: sim prog_src prog_tgt idx conf_src conf_tgt)
   : behave tstep term prog_tgt conf_tgt <1= behave tstep term prog_src conf_src.
 Proof.

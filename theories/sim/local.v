@@ -118,7 +118,8 @@ Definition sim_local_fun (fn_src fn_tgt : function) : Prop :=
     (EQT: match fn_tgt with
           | FunV xl e => subst_l xl el_tgt e = Some et
           end),
-    ∃ idx, sim_local_body r idx (InitCall es) σs (InitCall et) σt
+    ∃ idx, sim_local_body r idx
+                          (EndCall (InitCall es)) σs (EndCall (InitCall et)) σt
                           (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)).
 
 Definition sim_local_funs : Prop :=

@@ -173,11 +173,12 @@ Variable (vrel: A → expr → expr → Prop).
 Variable (fns fnt: fn_env).
 
 Lemma sim_prog_sim
-      prog_src prog_tgt
+      prog_src `{NSD: Decision (∀ e σ, global.never_stuck prog_src e σ)}
+      prog_tgt
       (FUNS: sim_local_funs wsat vrel prog_src prog_tgt)
   : behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
-  unfold behave_prog. eapply adequacy. eapply sim_local_conf_sim; eauto.
+  unfold behave_prog. eapply adequacy. apply _. eapply sim_local_conf_sim; eauto.
   econs; eauto; swap 2 4.
   - econs 1.
   - ss.
