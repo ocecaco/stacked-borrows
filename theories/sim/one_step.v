@@ -27,49 +27,6 @@ Proof.
   apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
 Qed.
 
-Lemma tstep_reducible_fill_inv fs (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
-  to_result e = None →
-  reducible fs (fill K e) σ → reducible fs e σ.
-Proof.
-  intros TN (Ke'&σ'&STEP). inversion STEP. simpl in *.
-  have RED: language.reducible (Λ := bor_lang fs) (fill K e) σ by do 4 eexists.
-  destruct (reducible_fill _ σ TN RED) as (?&?&?&?&?).
-  do 2 eexists. by econstructor.
-Qed.
-
-Lemma tstep_reducible_fill
-  fs (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
-  reducible fs e σ → reducible fs (fill K e) σ.
-Proof. intros (e' & σ' & STEP). exists (fill K e'), σ'. by eapply fill_tstep_once. Qed.
-
-Lemma tstep_reducible_step fs e1 σ1 e2 σ2 :
-  (e1, σ1) ~{fs}~>* (e2, σ2) → reducible fs e2 σ2 → reducible fs e1 σ1.
-Proof.
-  intros STEP ?. inversion STEP as [|? [e3 σ3]]; simplify_eq; [done|].
-  by do 2 eexists.
-Qed.
-
-Lemma never_stuck_fill_inv fs
-  (K: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) e σ :
-  never_stuck fs (fill K e) σ → never_stuck fs e σ.
-Proof.
-  intros NT e' σ' STEP. specialize (NT _ _ (fill_tstep fs K _ _ _ _ STEP)).
-  destruct (to_result e') as [v'|] eqn:Eq'; [left; by eexists|right].
-  destruct NT as [NT|RED].
-  { exfalso. move : NT => [?]. apply (fill_not_result _ K) in Eq'. by rewrite Eq'. }
-  move : RED. by apply tstep_reducible_fill_inv.
-Qed.
-
-Lemma never_stuck_step fs e σ e' σ':
-  (e, σ) ~{fs}~>* (e', σ') → never_stuck fs e σ → never_stuck fs e' σ'.
-Proof.
-  intros ST. remember (e, σ) as x. remember (e', σ') as y.
-  revert x y ST e σ e' σ' Heqx Heqy.
-  induction 1 as [|? [e1 σ1] ? S1 ? IH];
-    intros e σ e' σ' H1 H2; subst; simplify_eq; [done|].
-  intros NT. eapply IH; eauto. clear IH ST e' σ'.
-  intros e' σ' STEP. apply NT. etrans; [by apply rtc_once|exact STEP].
-Qed.
 
 Lemma sim_body_bind fs ft r n
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
@@ -88,10 +45,10 @@ Proof.
       destruct (TM _ Eqvt) as (vs' & σs' & r' & idx' & SS' & WSAT' & CONT).
       have STEPK: (fill (Λ:=bor_ectxi_lang fs) Ks es, σs)
                 ~{fs}~>* (fill (Λ:=bor_ectxi_lang fs) Ks vs', σs').
-      { apply (fill_tstep fs Ks es). destruct SS' as [|[? Eq]].
+      { apply (fill_tstep_rtc fs Ks es). destruct SS' as [|[? Eq]].
         by apply tc_rtc. clear -Eq. by simplify_eq. }
       punfold CONT.
-      have NT3:= never_stuck_step _ _ _ _ _ STEPK NT.
+      have NT3:= never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
       destruct (CONT NT3 _ WSAT') as [NTT' _ _]. done.
     - right. by eapply tstep_reducible_fill. }
   { (* Kt[et] is a value *)
@@ -102,9 +59,9 @@ Proof.
     punfold CONT.
     have STEPK: (fill (Λ:=bor_ectxi_lang fs) Ks es, σs)
                 ~{fs}~>* (fill (Λ:=bor_ectxi_lang fs) Ks vs', σs').
-    { apply (fill_tstep fs Ks es). destruct SS' as [|[? Eq]].
+    { apply (fill_tstep_rtc fs Ks es). destruct SS' as [|[? Eq]].
       by apply tc_rtc. clear -Eq. by simplify_eq. }
-    have NT3:= never_stuck_step _ _ _ _ _ STEPK NT.
+    have NT3:= never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
     destruct (CONT NT3 _ WSAT') as [NTT' TM' ST'].
     destruct (TM' vt) as (vs2 & σs2 & r2 & idx2 & SS2 & ?);
       [by apply to_of_result|].
@@ -128,9 +85,9 @@ Proof.
       clear TM.
       have STEPK: (fill (Λ:=bor_ectxi_lang fs) Ks es, σs)
                   ~{fs}~>* (fill (Λ:=bor_ectxi_lang fs) Ks vs', σs').
-      { apply (fill_tstep fs Ks es). destruct SS' as [|[? Eq]].
+      { apply (fill_tstep_rtc fs Ks es). destruct SS' as [|[? Eq]].
         by apply tc_rtc. clear -Eq. by simplify_eq. }
-      have NT3:= never_stuck_step _ _ _ _ _ STEPK NT.
+      have NT3:= never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
       punfold CONT'.
       destruct (CONT' NT3 _ WSAT') as [NTT' TM' ST']. clear CONT' WSAT' STEP.
       inversion ST' as [|Ks1 Kt1].
@@ -161,7 +118,7 @@ Proof.
   { (* Kt[et] has a call, and we step over the call *)
     eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|..];
-            eauto; [rewrite fill_app; by apply fill_tstep|].
+            eauto; [rewrite fill_app; by apply fill_tstep_rtc|].
     intros r' vs' vt' σs' σt' VREL'.
     destruct (CONT _ _ _ σs' σt' VREL') as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.

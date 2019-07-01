@@ -1989,11 +1989,19 @@ Qed.
 Lemma tstep_wf fns eσ1 eσ2 :
   eσ1 ~{fns}~> eσ2 → Wf eσ1.2 → Wf eσ2.2.
 Proof. inversion 1. inversion PRIM. by eapply (head_step_wf fns). Qed.
-Lemma rtc_tstep_wf fns eσ1 eσ2 :
+Lemma tstep_rtc_wf fns eσ1 eσ2 :
   eσ1 ~{fns}~>* eσ2 → Wf eσ1.2 → Wf eσ2.2.
 Proof.
   intros SS. induction SS; [done|]. intros WF1. apply IHSS. revert WF1.
   by apply (tstep_wf fns).
+Qed.
+
+Lemma tstep_tc_wf fs (conf conf': expr * state) :
+  conf ~{fs}~>+ conf' → Wf conf.2 → Wf conf'.2.
+Proof.
+  induction 1 as [|????? IH].
+  - eapply tstep_wf; eauto.
+  - intros. apply IH. eapply tstep_wf; eauto.
 Qed.
 
 Lemma retag_nxtp_mono h α nxtp cids c l kind T h' α' nxtp' :

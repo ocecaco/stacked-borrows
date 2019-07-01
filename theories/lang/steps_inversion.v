@@ -34,7 +34,8 @@ Ltac inv_tstep :=
 
 Section inv.
 Variable (fns: fn_env).
-Implicit Type (e: ectx_language.expr (bor_ectx_lang fns)).
+Implicit Type (e: ectx_language.expr (bor_ectx_lang fns))
+              (K: list (ectxi_language.ectx_item (bor_ectxi_lang fns))).
 
 Lemma tstep_reducible_not_result e σ :
   reducible fns e σ → to_result e = None.
@@ -50,21 +51,29 @@ Lemma head_step_fill_tstep K
 Proof. intros ?. by econstructor; econstructor. Qed.
 
 Lemma fill_tstep_once K e σ e' σ' :
-  (e, σ) ~{fns}~> (e', σ') →
-  (fill K e, σ) ~{fns}~> (fill K e', σ').
+  (e, σ) ~{fns}~> (e', σ') → (fill K e, σ) ~{fns}~> (fill K e', σ').
 Proof. intros. inv_tstep. rewrite 2!fill_comp. by eapply head_step_fill_tstep. Qed.
 
-Lemma fill_tstep K e σ e' σ' :
-  (e, σ) ~{fns}~>* (e', σ') →
-  (fill K e, σ) ~{fns}~>* (fill K e', σ').
+Lemma fill_tstep_rtc' K eσ eσ' :
+  eσ ~{fns}~>* eσ' → (fill K eσ.1, eσ.2) ~{fns}~>* (fill K eσ'.1, eσ'.2).
 Proof.
-  intros ST. remember (e, σ) as x. remember (e', σ') as y.
-  revert x y ST e σ Heqx Heqy.
-  induction 1 as [|? [e1 σ1] ? S1 ? IH]; intros e σ H1 H2; subst; simplify_eq.
-  { constructor 1. }
-  etrans; last by apply IH. clear IH ST.
-  apply rtc_once. by eapply fill_tstep_once.
+  induction 1 as [[]|[][]??? IH]; [done|].
+  intros. etrans; last apply IH. apply rtc_once. by eapply fill_tstep_once.
 Qed.
+Lemma fill_tstep_rtc K e σ e' σ' :
+  (e, σ) ~{fns}~>* (e', σ') → (fill K e, σ) ~{fns}~>* (fill K e', σ').
+Proof. by apply fill_tstep_rtc'. Qed.
+
+Lemma fill_tstep_tc' K eσ eσ' :
+  eσ ~{fns}~>+ eσ' → (fill K eσ.1, eσ.2) ~{fns}~>+ (fill K eσ'.1, eσ'.2).
+Proof.
+  induction 1 as [[][]|[][]??? IH].
+  - by apply tc_once, fill_tstep_once.
+  - etrans; last apply IH. by apply tc_once, fill_tstep_once.
+Qed.
+Lemma fill_tstep_tc K e σ e' σ' :
+  (e, σ) ~{fns}~>+ (e', σ') → (fill K e, σ) ~{fns}~>+ (fill K e', σ').
+Proof. by apply fill_tstep_tc'. Qed.
 
 Lemma fill_tstep_inv K e1' σ1 e2 σ2 :
   to_result e1' = None →
@@ -79,22 +88,69 @@ Proof.
   exists e3. split; [done|]. by econstructor.
 Qed.
 
-Lemma fill_tstep_tc K e σ e' σ' :
-  (e, σ) ~{fns}~>+ (e', σ') →
-  (fill K e, σ) ~{fns}~>+ (fill K e', σ').
-Proof.
-  intros ST. remember (e, σ) as x. remember (e', σ') as y.
-  revert x y ST e σ Heqx Heqy.
-  induction 1 as [|? [e1 σ1] ? S1 ? IH]; intros e σ H1 H2; subst.
-  - constructor 1. inv_tstep.
-    rewrite 2!fill_comp. econstructor. by econstructor.
-  - econstructor 2; last by apply IH. inv_tstep.
-    rewrite 2!fill_comp. econstructor. by econstructor.
-Qed.
-
 Lemma result_tstep_stuck e σ e' σ' :
   (e, σ) ~{fns}~> (e', σ') → to_result e = None.
 Proof. intros. inv_tstep. by eapply fill_not_result, (result_head_stuck fns). Qed.
+
+Lemma tstep_reducible_fill_inv K e σ :
+  to_result e = None →
+  reducible fns (fill K e) σ → reducible fns e σ.
+Proof.
+  intros TN (Ke'&σ'&STEP). inversion STEP. simpl in *.
+  have RED: language.reducible (Λ := bor_lang fns) (fill K e) σ by do 4 eexists.
+  destruct (reducible_fill _ σ TN RED) as (?&?&?&?&?).
+  do 2 eexists. by econstructor.
+Qed.
+
+Lemma tstep_reducible_fill K e σ :
+  reducible fns e σ → reducible fns (fill K e) σ.
+Proof. intros (e' & σ' & STEP). exists (fill K e'), σ'. by eapply fill_tstep_once. Qed.
+
+Lemma tstep_reducible_step e1 σ1 e2 σ2 :
+  (e1, σ1) ~{fns}~>* (e2, σ2) → reducible fns e2 σ2 → reducible fns e1 σ1.
+Proof.
+  intros STEP ?. inversion STEP as [|? [e3 σ3]]; simplify_eq; [done|].
+  by do 2 eexists.
+Qed.
+
+Lemma never_stuck_fill_inv K e σ :
+  never_stuck fns (fill K e) σ → never_stuck fns e σ.
+Proof.
+  intros NT e' σ' STEP. specialize (NT _ _ (fill_tstep_rtc K _ _ _ _ STEP)).
+  destruct (to_result e') as [v'|] eqn:Eq'; [left; by eexists|right].
+  destruct NT as [NT|RED].
+  { exfalso. move : NT => [?]. apply (fill_not_result _ K) in Eq'. by rewrite Eq'. }
+  move : RED. by apply tstep_reducible_fill_inv.
+Qed.
+
+Lemma never_stuck_tstep_once e σ e' σ':
+  (e, σ) ~{fns}~> (e', σ') → never_stuck fns e σ → never_stuck fns e' σ'.
+Proof.
+  intros STEP1 NT e2 σ2 STEP. apply NT. etrans; [by apply rtc_once|exact STEP].
+Qed.
+
+Lemma never_stuck_tstep_rtc' eσ eσ':
+  eσ ~{fns}~>* eσ' → never_stuck fns eσ.1 eσ.2 → never_stuck fns eσ'.1 eσ'.2.
+Proof.
+  induction 1 as [[]|[][]??? IH]; [done|].
+  intros. apply IH. by eapply never_stuck_tstep_once.
+Qed.
+
+Lemma never_stuck_tstep_rtc e σ e' σ':
+  (e, σ) ~{fns}~>* (e', σ') → never_stuck fns e σ → never_stuck fns e' σ'.
+Proof. by apply never_stuck_tstep_rtc'. Qed.
+
+Lemma never_stuck_tstep_tc' eσ eσ':
+  eσ ~{fns}~>+ eσ' → never_stuck fns eσ.1 eσ.2 → never_stuck fns eσ'.1 eσ'.2.
+Proof.
+  induction 1 as [[] []|[][][]?? IH].
+  - by eapply never_stuck_tstep_once.
+  - intros. apply IH. by eapply never_stuck_tstep_once.
+Qed.
+
+Lemma never_stuck_tstep_tc e σ e' σ':
+  (e, σ) ~{fns}~>+ (e', σ') → never_stuck fns e σ → never_stuck fns e' σ'.
+Proof. apply never_stuck_tstep_tc'. Qed.
 
 (** PURE STEP ----------------------------------------------------------------*)
 

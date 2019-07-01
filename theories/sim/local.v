@@ -6,9 +6,6 @@ From stbor.sim Require Import sflib.
 
 Set Default Proof Using "Type".
 
-Definition never_stuck fs e σ :=
-  ∀ e' σ', (e, σ) ~{fs}~>* (e', σ') → terminal e' ∨ reducible fs e' σ'.
-
 Section local.
 Context {A: ucmraT}.
 Variable (wsat: A → state → state → Prop).

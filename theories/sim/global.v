@@ -49,10 +49,6 @@ Record sim_base (sim: SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state)
       sim idx2 eσ2_src eσ2_tgt;
 }.
 
-(* TODO: duplicate *)
-Definition never_stuck fs e σ :=
-  ∀ e' σ', (e, σ) ~{fs}~>* (e', σ') → terminal e' ∨ reducible fs  e' σ'.
-
 (* Generator for the actual simulation *)
 Definition _sim
   (sim : SIM_CONFIG) (idx1: nat) (eσ1_src eσ1_tgt: expr * state) : Prop :=
