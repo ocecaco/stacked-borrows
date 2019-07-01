@@ -68,7 +68,7 @@ Proof.
     exists vs2, σs2, r2, idx2. split; [|done].
     destruct SS2 as [|[Lt Eq]].
     - left. eapply tc_rtc_l; eauto.
-    - clear -SS' Eq Lt. sflib.unguardH SS'. sflib.unguard.
+    - clear -SS' Eq Lt.
       inversion Eq as [Eq1]. clear Eq. subst.
       destruct SS' as [SS'|[? SS']].
       + left. by apply fill_tstep_tc.

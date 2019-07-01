@@ -21,6 +21,11 @@ Variable (wsat: A → state → state → Prop).
 Variable (vrel: A → expr → expr → Prop).
 Variable (fns fnt: fn_env).
 
+Hypothesis WSAT_PROPER: Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
+Hypothesis VREL_RESULT: ∀ (r: A) (e1 e2: result), vrel r e1 e2 → to_result e1 = Some e2.
+Hypothesis VREL_VAL : ∀ (r: A) (e1 e2: result),  vrel r e1 e2 → ∃ v1 v2,
+                      e1 = ValR v1 ∧ e2 = ValR v2 ∧ vrel r (Val v1) (Val v2).
+
 Record frame: Type := mk_frame {
   rc: A;
   K_src: list (ectxi_language.ectx_item (bor_ectxi_lang fns));
@@ -85,7 +90,7 @@ Lemma sim_local_conf_sim
 Proof.
   revert idx e_src σ_src e_tgt σ_tgt SIM. pcofix CIH. i.
   pfold. ii. inv SIM. punfold LOCAL. exploit LOCAL; eauto.
-  { admit. (* never_stuck *) }
+  { eapply never_stuck_fill_inv; eauto. }
   clear LOCAL. intro LOCAL. inv LOCAL. econs.
   - ii. admit. (* stuck_fill_rev *)
   - guardH sim_local_body_stuck.
@@ -93,7 +98,7 @@ Proof.
     exploit sim_local_body_terminal; eauto. i. des.
     esplits; eauto; ss.
     + rewrite to_of_result. esplits; eauto.
-    + ii. clarify. admit. (* vrel, to_result. HAI: property of vrel *)
+    + ii. clarify. eapply VREL_RESULT; eauto.
   - guardH sim_local_body_stuck.
     i. destruct eσ2_tgt as [e2_tgt σ2_tgt].
 
@@ -110,13 +115,13 @@ Proof.
       des. subst.
 
       exploit CONTINUATION; eauto.
-      { admit. (* wsat assoc HAI: property of wsat *) }
+      { rewrite cmra_assoc; eauto. }
       { admit. (* vrel #?  HAI: property of vrel *) }
       i. des.
 
       esplits.
       - left. eapply tc_rtc_l.
-        + apply fill_tstep. instantiate (1 := σs'). instantiate (1 := EndCall vs').
+        + apply fill_tstep_rtc. instantiate (1 := σs'). instantiate (1 := EndCall vs').
           (* EndCallCtx *)
           clear -x.
           unguardH x. destruct x as [STEP|[_ EQ]].
@@ -127,6 +132,7 @@ Proof.
           (* HAI: property of wsat and vrel *)
           admit.
       - right. apply CIH. econs; eauto.
+        + admit.
         + rewrite fill_app. eauto.
         + rewrite fill_app. eauto.
         + admit. (* wsat after return HAI: property of wsat *)
@@ -147,7 +153,7 @@ Proof.
       exploit tstep_call_inv; try exact x2; eauto. i. des. subst.
       esplits.
       * left. eapply tc_rtc_l.
-        { apply fill_tstep. eauto. }
+        { apply fill_tstep_rtc. eauto. }
         { econs. rewrite -fill_app. eapply (head_step_fill_tstep). econstructor.
           (* HAI: need to know more about fns and subst_l of el_src *)
           (* econstructor; eauto. *)
@@ -161,7 +167,7 @@ Proof.
         { admit. (* sim_local_body for the call init HAI: I don't know what this is *) }
         { s. ss. }
         { s. rewrite -fill_app. eauto. }
-        { s. admit. (* from wsat_assoc HAI: property of wsat *) }
+        { s. rewrite -cmra_assoc; eauto. }
 Admitted.
 
 End local.
@@ -173,18 +179,22 @@ Variable (vrel: A → expr → expr → Prop).
 Variable (fns fnt: fn_env).
 
 Lemma sim_prog_sim
-      prog_src `{NSD: Decision (∀ e σ, global.never_stuck prog_src e σ)}
+      prog_src `{NSD: ∀ e σ, Decision (never_stuck prog_src e σ)}
       prog_tgt
       (FUNS: sim_local_funs wsat vrel prog_src prog_tgt)
   : behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
-  unfold behave_prog. eapply adequacy. apply _. eapply sim_local_conf_sim; eauto.
-  econs; eauto; swap 2 4.
-  - econs 1.
-  - ss.
-  - ss.
-  - admit. (* sim_local_body for init_expr, init_state HAI: this should come from sim_local_funs of "main" *)
-  - admit. (* wsat for init_state HAI: property of wsat *)
+  unfold behave_prog. eapply adequacy.
+  - apply _.
+  - eapply sim_local_conf_sim; eauto.
+    econs; eauto; swap 2 4.
+    + econs 1.
+    + ss.
+    + ss.
+    + admit. (* sim_local_body for init_expr, init_state HAI: this should come from sim_local_funs of "main" *)
+    + admit. (* wsat for init_state HAI: property of wsat *)
+  - admit.
+  - admit.
 Admitted.
 
 End prog.
