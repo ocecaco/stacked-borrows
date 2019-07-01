@@ -1,4 +1,4 @@
-From stbor.lang Require Export defs.
+From stbor.lang Require Export defs steps_wf.
 From stbor.sim Require Export cmra.
 
 Set Default Proof Using "Type".
@@ -93,6 +93,17 @@ Definition end_call_sat (r: resUR) (σs σt: state) : Prop :=
   ∀ h, (r_f ⋅ r).1 !! t ≡  Some (to_tagKindR tkUnique, h) →
   ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
   ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st).
+
+Lemma wsat_init_state : wsat ε init_state init_state.
+Proof.
+  split; last split; last split; last split; last split.
+  - apply wf_init_state.
+  - apply wf_init_state.
+  - done.
+  - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. inversion 1.
+  - intros ?? HL. exfalso. move : HL. rewrite /= lookup_empty. inversion 1.
+  - repeat split. simpl. set_solver.
+Qed.
 
 Lemma arel_eq (r: resUR) (s1 s2: scalar) :
   arel r s1 s2 → s1 = s2.
