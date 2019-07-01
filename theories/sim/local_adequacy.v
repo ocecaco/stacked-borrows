@@ -219,7 +219,9 @@ Section prog.
 Context {A: ucmraT}.
 Variable (wsat esat: A → state → state → Prop).
 Variable (vrel: A → expr → expr → Prop).
-Variable (fns fnt: fn_env).
+
+Hypothesis WSAT_PROPER: Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
+Hypothesis WSAT_EMPTY: wsat ε init_state init_state.
 
 Lemma sim_prog_sim
       prog_src `{NSD: ∀ e σ, Decision (never_stuck prog_src e σ)}
@@ -227,17 +229,23 @@ Lemma sim_prog_sim
       (FUNS: sim_local_funs wsat vrel prog_src prog_tgt esat)
   : behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
-  unfold behave_prog. eapply adequacy.
-  - apply _.
-  - eapply sim_local_conf_sim; eauto.
-    econs; eauto; swap 2 4.
-    + econs 1.
-    + ss.
-    + ss.
-    + admit. (* sim_local_body for init_expr, init_state HAI: this should come from sim_local_funs of "main" *)
-    + admit. (* wsat for init_state HAI: property of wsat *)
-  - admit.
-  - admit.
+  unfold behave_prog. eapply adequacy; [apply _| |by apply wf_init_state..].
+  eapply sim_local_conf_sim; eauto.
+  econs; eauto; swap 2 4.
+  - econs 1.
+  - ss.
+  - ss.
+  - pfold. intros NT.
+    destruct (NT init_expr init_state) as [[]|[es [σs RED]]]; [constructor|done|..].
+    (* apply tstep_call_inv in RED as (xls & ebs & HCs & ess & HL & HS & ? & ?).
+    subst es σs. *)
+    intros. econs; [|done|].
+    { right. admit. }
+    eapply (sim_local_body_step_over_call _ _ prog_src prog_tgt _ _ ε _
+              init_expr init_state init_expr init_state _ [] [] "main" [] []
+              init_state ε ε); [done|done|constructor|done|by rewrite left_id|done|].
+    admit.
+  - rewrite right_id. apply WSAT_EMPTY.
 Admitted.
 
 End prog.

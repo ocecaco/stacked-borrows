@@ -3,6 +3,12 @@ From stbor.lang Require Export defs.
 
 Set Default Proof Using "Type".
 
+Lemma wf_init_state : Wf init_state.
+Proof.
+  constructor; simpl; try (intros ?; set_solver).
+  by apply NoDup_nil.
+Qed.
+
 (** Steps preserve wellformedness *)
 
 Lemma init_mem_foldr' l n h (m: nat):
