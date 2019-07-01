@@ -10,7 +10,7 @@ Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
   (at level 70, format "r  ⊨{ n , fs , ft }  ( es ,  σs )  ≥  ( et ,  σt )  :  Φ").
 
 Notation "⊨{ fs , ft } f1 ≥ᶠ f2" :=
-  (sim_local_fun wsat vrel_expr fs ft f1 f2)
+  (sim_local_fun wsat vrel_expr fs ft end_call_sat f1 f2)
   (at level 70, format "⊨{ fs , ft }  f1  ≥ᶠ  f2").
 
 Instance dom_proper `{Countable K} {A : cmraT} :
@@ -45,10 +45,10 @@ Proof.
       destruct (TM _ Eqvt) as (vs' & σs' & r' & idx' & SS' & WSAT' & CONT).
       have STEPK: (fill (Λ:=bor_ectxi_lang fs) Ks es, σs)
                 ~{fs}~>* (fill (Λ:=bor_ectxi_lang fs) Ks vs', σs').
-      { apply (fill_tstep_rtc fs Ks es). destruct SS' as [|[? Eq]].
+      { apply fill_tstep_rtc. destruct SS' as [|[? Eq]].
         by apply tc_rtc. clear -Eq. by simplify_eq. }
-      punfold CONT.
       have NT3:= never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
+      punfold CONT.
       destruct (CONT NT3 _ WSAT') as [NTT' _ _]. done.
     - right. by eapply tstep_reducible_fill. }
   { (* Kt[et] is a value *)
@@ -625,35 +625,40 @@ Proof.
 Qed.
 
 (** EndCall *)
+Lemma end_call_tstep_src_tgt fs ft r σs σt (vs vt: value) es' σs' :
+  wsat r σs σt →
+  (EndCall vs, σs) ~{fs}~> (es', σs') →
+  reducible ft (EndCall vt) σt.
+Proof.
+  intros WSAT STEPS.
+  edestruct (tstep_end_call_inv _ vs _ _ _ (ltac:(by eexists))
+                STEPS) as (vs' & Eqvs & ? & c & cids & Eqc & Eqs).
+  subst. simpl in Eqvs. symmetry in Eqvs. simplify_eq.
+  destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs' & ?).
+  exists (#vt)%E, (mkState σt.(shp) σt.(sst) cids σt.(snp) σt.(snc)).
+  eapply (head_step_fill_tstep _ []).
+  econstructor. by econstructor. econstructor. by rewrite -Eqcs'.
+Qed.
+
 Lemma sim_body_end_call fs ft r n vs vt σs σt :
   (* return values are related *)
   vrel r vs vt →
   (* and any private location w.r.t to the current call id ownership must be related *)
-  (∀ c, hd_error σt.(scs) = Some c → is_Some (r.2 !! c) ∧
-    (∀ r_f, ✓ (r_f ⋅ r) →
-    ∀ T, (r_f ⋅ r).2 !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
-    ∀ h, (r_f ⋅ r).1 !! t ≡  Some (to_tagKindR tkUnique, h) →
-    ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
-    ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st)) →
+  end_call_sat r σs σt →
   r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) :
     (λ r _ vs _ vt _, vrel_expr r (of_result vs) (of_result vt)).
 Proof.
-  intros VREL Hr. pfold. intros NT r_f WSAT.
+  intros VREL ESAT. pfold. intros NT r_f WSAT.
   split; [|done|].
   { right.
     destruct (NT (EndCall #vs) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
-    destruct (tstep_end_call_inv _ #vs _ _ _ (ltac:(by eexists)) STEPS)
-      as (vs' & Eqvs & ? & c & cids & Eqc & Eqs).
-    subst. simpl in Eqvs. symmetry in Eqvs. simplify_eq.
-    destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs' & ?).
-    exists (#vt)%E, (mkState σt.(shp) σt.(sst) cids σt.(snp) σt.(snc)).
-    eapply (head_step_fill_tstep _ []).
-    econstructor. by econstructor. econstructor. by rewrite -Eqcs'. }
+    move : WSAT STEPS. apply end_call_tstep_src_tgt. }
   constructor 1. intros et' σt' STEPT.
   destruct (tstep_end_call_inv _ #vt _ _ _ (ltac:(by eexists)) STEPT)
     as (vt' & Eqvt & ? & c & cids & Eqc & Eqs).
   subst. simpl in Eqvt. symmetry in Eqvt. simplify_eq.
-  rewrite Eqc in Hr. destruct (Hr _ eq_refl) as [[cs Eqcs] Hr']. clear Hr.
+  rewrite /end_call_sat Eqc in ESAT.
+  destruct (ESAT _ eq_refl) as [[cs Eqcs] ESAT']. clear ESAT.
   set σs' := (mkState σs.(shp) σs.(sst) cids σs.(snp) σs.(snc)).
   have STEPS: (EndCall #vs, σs) ~{fs}~> ((#vs)%E, σs').
   { destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs' & ?).
@@ -718,9 +723,10 @@ Proof.
         have Eq2 := cmap_lookup_op_r r_f2 r.2 _ _ (proj2 VALID) Eqc2.
         rewrite Eq2 in Eqc'.
         apply Some_equiv_inj, Cinl_inj, Excl_inj, leibniz_equiv_iff in Eqc'.
-        subst T'. specialize (Hr' (r_f1, r_f2) VALID T). rewrite /= Eq2 in Hr'.
-        destruct (Hr' (ltac:(done)) _ InT' _ Eqt _ _ Inh Eqs) as [ss [Eqss AR]].
+        subst T'. specialize (ESAT' (r_f1, r_f2) VALID T). rewrite /= Eq2 in ESAT'.
+        destruct (ESAT' (ltac:(done)) _ InT' _ Eqt _ _ Inh Eqs) as [ss [Eqss AR]].
         left. by exists ss. }
+  (* TODO: wp_value like rule *)
   left. pfold. split; last first.
   { constructor 1. intros vt' σt' STEPT'. exfalso.
     have ?: to_result (Val vt) = None.

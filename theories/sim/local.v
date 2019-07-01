@@ -104,7 +104,8 @@ Definition sim_local_body := paco7 _sim_local_body bot7.
   - We start after the substitution.
   - We assume the arguments are values related by [r]
   - The returned result must also be values and related by [vrel]. *)
-Definition sim_local_fun (fn_src fn_tgt : function) : Prop :=
+Definition sim_local_fun
+  (esat: A → state → state → Prop) (fn_src fn_tgt : function) : Prop :=
   ∀ r es et el_src el_tgt σs σt
     (VALS: Forall (λ ei, is_Some (to_value ei)) el_src)
     (VALT: Forall (λ ei, is_Some (to_value ei)) el_tgt)
@@ -116,12 +117,16 @@ Definition sim_local_fun (fn_src fn_tgt : function) : Prop :=
           | FunV xl e => subst_l xl el_tgt e = Some et
           end),
     ∃ idx, sim_local_body r idx
-                          (EndCall (InitCall es)) σs (EndCall (InitCall et)) σt
-                          (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)).
+                          (InitCall es) σs (InitCall et) σt
+                          (λ r _ vs σs vt σt, esat r σs σt ∧ vrel r (of_result vs) (of_result vt)).
 
-Definition sim_local_funs : Prop :=
-  ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
-    fnt !! name = Some fn_tgt ∧ sim_local_fun fn_src fn_tgt.
+Definition sim_local_funs (esat: A → state → state → Prop) : Prop :=
+  ∀ name fn_tgt, fnt !! name = Some fn_tgt → ∃ fn_src,
+    fns !! name = Some fn_src ∧
+    match fn_src, fn_tgt with
+    | FunV xls _, FunV xlt _ => length xls = length xlt
+    end ∧
+    sim_local_fun esat fn_src fn_tgt.
 
 End local.
 

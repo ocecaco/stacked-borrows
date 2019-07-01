@@ -29,18 +29,6 @@ Proof.
   - i. apply lt_le_S in H. inv H; eauto.
 Qed.
 
-(* Lemma stuck_terminal prog (eσ: expr * state):
-  stuck (Λ:=bor_lang prog) eσ.1 eσ.2 ↔ (∀ r, ¬ term prog eσ r) ∧ ∀ eσ', ¬ eσ ~{prog}~> eσ'.
-Proof.
- split => [[NT NS]|[NT NS]]; split.
- - rewrite /term. move => ?. by rewrite NT.
- - move => eσ' ST. inversion ST. eapply (NS _ eσ'.1 eσ'.2); eauto.
- - destruct (language.to_val eσ.1) as [v|] eqn:Eqv; [|done]. exfalso.
-   apply (NT v Eqv).
- - intros ???? PRIM. apply (NS (e', σ')). by econstructor; eauto.
-Qed.
- *)
-
 Lemma adequacy_never_stuck
       prog_src
       prog_tgt idx conf_src conf_tgt

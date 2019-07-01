@@ -83,6 +83,17 @@ Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
 Definition vrel_expr (r: resUR) (e1 e2: expr) :=
   ∃ v1 v2, e1 = Val v1 ∧ e2 = Val v2 ∧ vrel r v1 v2.
 
+
+(** Condition for resource before EndCall *)
+(* Any private location w.r.t to the current call id ownership must be related *)
+Definition end_call_sat (r: resUR) (σs σt: state) : Prop :=
+  ∀ c, hd_error σt.(scs) = Some c → is_Some (r.2 !! c) ∧
+  (∀ r_f, ✓ (r_f ⋅ r) →
+  ∀ T, (r_f ⋅ r).2 !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
+  ∀ h, (r_f ⋅ r).1 !! t ≡  Some (to_tagKindR tkUnique, h) →
+  ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
+  ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st).
+
 Lemma arel_eq (r: resUR) (s1 s2: scalar) :
   arel r s1 s2 → s1 = s2.
 Proof. destruct s1 as [| |? []|], s2 as [| |? []|]; simpl; try done; naive_solver. Qed.

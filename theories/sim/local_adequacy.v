@@ -17,14 +17,19 @@ Qed.
 
 Section local.
 Context {A: ucmraT}.
-Variable (wsat: A → state → state → Prop).
+Variable (wsat esat: A → state → state → Prop).
 Variable (vrel: A → expr → expr → Prop).
 Variable (fns fnt: fn_env).
 
 Hypothesis WSAT_PROPER: Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
-Hypothesis VREL_RESULT: ∀ (r: A) (e1 e2: result), vrel r e1 e2 → to_result e1 = Some e2.
-Hypothesis VREL_VAL : ∀ (r: A) (e1 e2: result),  vrel r e1 e2 → ∃ v1 v2,
-                      e1 = ValR v1 ∧ e2 = ValR v2 ∧ vrel r (Val v1) (Val v2).
+Hypothesis VREL_RESULT:
+  ∀ (r: A) (e1 e2: result), vrel r e1 e2 → to_result e1 = Some e2.
+Hypothesis VREL_VAL :
+  ∀ (r: A) (e1 e2: result),
+  vrel r e1 e2 → ∃ v1 v2, e1 = ValR v1 ∧ e2 = ValR v2 ∧ vrel r (Val v1) (Val v2).
+Hypothesis ENDCALL_RED:
+  ∀ r σs σt (vs vt: value) es' σs',
+  wsat r σs σt → (EndCall vs, σs) ~{fns}~> (es', σs') → reducible fnt (EndCall vt) σt.
 
 Record frame: Type := mk_frame {
   rc: A;
@@ -59,7 +64,7 @@ Inductive sim_local_frames:
                                 (frame.(rc) ⋅ r') idx'
                                 (fill frame.(K_src) (Val v_src)) σ_src'
                                 (fill frame.(K_tgt) (Val v_tgt)) σ_tgt'
-                                (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)))
+                                (λ r _ vs σs vt σt, esat r σs σt ∧ vrel r (of_result vs) (of_result vt)))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
       (EndCallCtx :: frame.(K_src) ++ K_f_src)
@@ -75,14 +80,14 @@ Inductive sim_local_conf:
     Ke_src Ke_tgt
     (FRAMES: sim_local_frames r_f K_src K_tgt frames)
     (LOCAL: sim_local_body wsat vrel fns fnt rc idx e_src σ_src e_tgt σ_tgt
-                           (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)))
+                           (λ r _ vs σs vt σt, esat r σs σt ∧ vrel r (of_result vs) (of_result vt)))
     (KE_SRC: Ke_src = fill K_src e_src)
     (KE_TGT: Ke_tgt = fill K_tgt e_tgt)
     (WSAT: wsat (r_f ⋅ rc) σ_src σ_tgt)
   : sim_local_conf idx Ke_src σ_src Ke_tgt σ_tgt.
 
 Lemma sim_local_conf_sim
-      (FUNS: sim_local_funs wsat vrel fns fnt)
+      (FUNS: sim_local_funs wsat vrel fns fnt esat)
       (idx:nat) (e_src:expr) (σ_src:state) (e_tgt:expr) (σ_tgt:state)
       (SIM: sim_local_conf idx e_src σ_src e_tgt σ_tgt)
   : sim fns fnt idx (e_src, σ_src) (e_tgt, σ_tgt)
@@ -92,7 +97,28 @@ Proof.
   pfold. ii. inv SIM. punfold LOCAL. exploit LOCAL; eauto.
   { eapply never_stuck_fill_inv; eauto. }
   clear LOCAL. intro LOCAL. inv LOCAL. econs.
-  - ii. admit. (* stuck_fill_rev *)
+  - ii. simpl. des; last (right; by eapply tstep_reducible_fill).
+    destruct sim_local_body_stuck as [vt Eqvt].
+    rewrite -(of_to_result _ _ Eqvt).
+    destruct (sim_local_body_terminal _ Eqvt)
+      as (vs' & σs' & r' & idx' & SS' & WSAT' & ESAT' & VREL).
+    have STEPK: (fill (Λ:=bor_ectxi_lang fns) K_src0 e_src0, σ_src)
+              ~{fns}~>* (fill (Λ:=bor_ectxi_lang fns) K_src0 vs', σs').
+    { apply fill_tstep_rtc. destruct SS' as [|[? Eq]].
+      by apply tc_rtc. clear -Eq. simplify_eq. constructor. }
+    have NT3:= never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
+    clear -STEPK NT3 FRAMES WSAT' VREL ENDCALL_RED VREL_VAL.
+    inversion FRAMES. { left. rewrite to_of_result. by eexists. }
+    right. subst K_src0 K_tgt0.
+    move : NT3. simpl. intros NT3.
+    destruct (NT3 (fill (K_src frame0 ++ K_f_src) (EndCall vs')) σs')
+      as [[? TERM]|RED]; [constructor|..].
+    { by rewrite fill_not_result in TERM. }
+    apply tstep_reducible_fill_inv in RED; [|done].
+    apply tstep_reducible_fill.
+    destruct RED as [e2 [σ2 Eq2]].
+    apply VREL_VAL in VREL as (v1 & v2 & ? & ? & ?). subst vs' vt.
+    move : Eq2. eapply ENDCALL_RED; eauto.
   - guardH sim_local_body_stuck.
     s. i. apply fill_result in H. unfold terminal in H. des. subst. inv FRAMES. ss.
     exploit sim_local_body_terminal; eauto. i. des.
@@ -113,11 +139,29 @@ Proof.
       apply tstep_end_call_inv in H0; cycle 1.
       { unfold terminal. rewrite x0. eauto. }
       des. subst.
+      destruct (VREL_VAL _ _ _ x3) as (vs1 & v1 & Eqvs1 & Eqv1 & VREL1).
 
       exploit CONTINUATION; eauto.
       { rewrite cmra_assoc; eauto. }
-      { admit. (* vrel #?  HAI: property of vrel *) }
       i. des.
+
+      have STEPK: (fill (Λ:= bor_ectxi_lang fns)
+                        (EndCallCtx :: K_src frame0 ++ K_f_src) e_src0, σ_src)
+            ~{fns}~>* (fill (Λ:= bor_ectxi_lang fns)
+                        (EndCallCtx :: K_src frame0 ++ K_f_src) vs', σs').
+      { apply fill_tstep_rtc. destruct x as [|[? Eq]].
+        by apply tc_rtc. clear -Eq. simplify_eq. constructor. }
+      have NT3 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
+      edestruct NT3 as [[? TERM]|[es [σs1 STEP1]]].
+      { constructor 1. } { by rewrite /= fill_not_result in TERM. }
+
+      have Eqes: es = fill (K_src frame0 ++ K_f_src) (Val vs1).
+      { rewrite /= in STEP1.
+        apply fill_tstep_inv in STEP1 as [e2' [Eq2' STEP2']]; [|done]. subst es.
+        f_equal.
+        apply tstep_end_call_inv in STEP2' as [v3 [Eq3 [Eq4 ?]]];
+          [|rewrite to_of_result; by eexists].
+        rewrite Eq4. rewrite Eqvs1 /= in Eq3. by inversion Eq3. } subst es.
 
       esplits.
       - left. eapply tc_rtc_l.
@@ -128,15 +172,13 @@ Proof.
           * by apply tc_rtc, (fill_tstep_tc _ [EndCallCtx]).
           * inversion EQ. econs.
         + (* EndCall step *)
-          econs 1. eapply (head_step_fill_tstep).
-          (* HAI: property of wsat and vrel *)
-          admit.
-      - right. apply CIH. econs; eauto.
-        + admit.
+          apply tc_once; eauto.
+      - right. apply CIH. econs; eauto; cycle 1.
         + rewrite fill_app. eauto.
         + rewrite fill_app. eauto.
         + admit. (* wsat after return HAI: property of wsat *)
                  (* TODO: extract from sim_body_end_call *)
+        + admit.
     }
 
     subst. clear H. inv sim_local_body_step.
@@ -151,20 +193,21 @@ Proof.
     + (* call *)
       exploit fill_step_inv_2; eauto. i. des; ss.
       exploit tstep_call_inv; try exact x2; eauto. i. des. subst.
+      destruct (FUNS _ _ x3) as ([xls ebs HCss] & Eqfs & Eql & SIMf).
+      destruct (subst_l_is_Some xls el_src ebs) as [ess Eqss].
+      { by rewrite (Forall2_length _ _ _ VREL) -(subst_l_is_Some_length _ _ _ _ x4). }
+      specialize (SIMf _ _ _ _ _ σ1_src σ_tgt VSRC VTGT VREL Eqss x4) as [idx2 SIMf].
       esplits.
       * left. eapply tc_rtc_l.
         { apply fill_tstep_rtc. eauto. }
-        { econs. rewrite -fill_app. eapply (head_step_fill_tstep). econstructor.
-          (* HAI: need to know more about fns and subst_l of el_src *)
-          (* econstructor; eauto. *)
-          admit. (* Call #[fid] has a step *)
-        }
+        { econs. rewrite -fill_app. eapply (head_step_fill_tstep).
+          econs; econs; eauto. }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
           destruct (CONT _ _ _ σ_src' σ_tgt' VRET).
           pclearbot. esplits; eauto.
         }
-        { admit. (* sim_local_body for the call init HAI: I don't know what this is *) }
+        { eauto. }
         { s. ss. }
         { s. rewrite -fill_app. eauto. }
         { s. rewrite -cmra_assoc; eauto. }
@@ -174,14 +217,14 @@ End local.
 
 Section prog.
 Context {A: ucmraT}.
-Variable (wsat: A → state → state → Prop).
+Variable (wsat esat: A → state → state → Prop).
 Variable (vrel: A → expr → expr → Prop).
 Variable (fns fnt: fn_env).
 
 Lemma sim_prog_sim
       prog_src `{NSD: ∀ e σ, Decision (never_stuck prog_src e σ)}
       prog_tgt
-      (FUNS: sim_local_funs wsat vrel prog_src prog_tgt)
+      (FUNS: sim_local_funs wsat vrel prog_src prog_tgt esat)
   : behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
   unfold behave_prog. eapply adequacy.
