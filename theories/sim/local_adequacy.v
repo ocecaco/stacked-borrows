@@ -80,7 +80,7 @@ Inductive sim_local_conf:
     Ke_src Ke_tgt
     (FRAMES: sim_local_frames r_f K_src K_tgt frames)
     (LOCAL: sim_local_body wsat vrel fns fnt rc idx e_src σ_src e_tgt σ_tgt
-                           (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)))
+                           (λ r _ vs σs vt σt, esat r σs σt ∧ vrel r (of_result vs) (of_result vt)))
     (KE_SRC: Ke_src = fill K_src e_src)
     (KE_TGT: Ke_tgt = fill K_tgt e_tgt)
     (WSAT: wsat (r_f ⋅ rc) σ_src σ_tgt)
@@ -101,7 +101,7 @@ Proof.
     destruct sim_local_body_stuck as [vt Eqvt].
     rewrite -(of_to_result _ _ Eqvt).
     destruct (sim_local_body_terminal _ Eqvt)
-      as (vs' & σs' & r' & idx' & SS' & WSAT' & VREL).
+      as (vs' & σs' & r' & idx' & SS' & WSAT' & ESAT' & VREL).
     have STEPK: (fill (Λ:=bor_ectxi_lang fns) K_src0 e_src0, σ_src)
               ~{fns}~>* (fill (Λ:=bor_ectxi_lang fns) K_src0 vs', σs').
     { apply fill_tstep_rtc. destruct SS' as [|[? Eq]].
@@ -134,16 +134,13 @@ Proof.
 
       inv FRAMES; ss.
       { exfalso. apply result_tstep_stuck in H. naive_solver. }
+
       apply fill_step_inv_2 in H. des; ss. subst.
 
       apply tstep_end_call_inv in H0; cycle 1.
       { unfold terminal. rewrite x0. eauto. }
       des. subst.
-      destruct (VREL_VAL _ _ _ x2) as (vs1 & v1 & Eqvs1 & Eqv1 & VREL1).
-
-      exploit CONTINUATION; eauto.
-      { rewrite cmra_assoc; eauto. }
-      i. des.
+      destruct (VREL_VAL _ _ _ x3) as (vs1 & v1 & Eqvs1 & Eqv1 & VREL1).
 
       have STEPK: (fill (Λ:= bor_ectxi_lang fns)
                         (EndCallCtx :: K_src frame0 ++ K_f_src) e_src0, σ_src)
@@ -154,6 +151,11 @@ Proof.
       have NT3 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
       edestruct NT3 as [[? TERM]|[es [σs1 STEP1]]].
       { constructor 1. } { by rewrite /= fill_not_result in TERM. }
+
+
+      exploit CONTINUATION; eauto.
+      { rewrite cmra_assoc; eauto. }
+      i. des.
 
       have Eqes: es = fill (K_src frame0 ++ K_f_src) (Val vs1).
       { rewrite /= in STEP1.
@@ -173,7 +175,7 @@ Proof.
           * inversion EQ. econs.
         + (* EndCall step *)
           apply tc_once; eauto.
-      - right. apply CIH. econs; eauto; cycle 1.
+      - right. apply CIH. simpl in STEP1. econs; eauto; cycle 1.
         + rewrite fill_app. eauto.
         + rewrite fill_app. eauto.
         + admit. (* wsat after return HAI: property of wsat *)
@@ -205,8 +207,9 @@ Proof.
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
           destruct (CONT _ _ _ σ_src' σ_tgt' VRET).
-          pclearbot. esplits; eauto. }
-        { admit. }
+          pclearbot. esplits; eauto. admit. }
+        { (* eapply sim_local_body_post_mono; [|apply SIMf]. simpl. naive_solver. *)
+          eauto. }
         { s. ss. }
         { s. rewrite -fill_app. eauto. }
         { s. rewrite -cmra_assoc; eauto. }

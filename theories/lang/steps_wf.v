@@ -6,7 +6,8 @@ Set Default Proof Using "Type".
 Lemma wf_init_state : Wf init_state.
 Proof.
   constructor; simpl; try (intros ?; set_solver).
-  by apply NoDup_nil.
+  - by apply NoDup_singleton.
+  - intros ??%elem_of_list_singleton. subst. lia.
 Qed.
 
 (** Steps preserve wellformedness *)

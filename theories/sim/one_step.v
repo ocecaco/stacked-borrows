@@ -27,28 +27,6 @@ Proof.
   apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
 Qed.
 
-Lemma sim_body_post_mono fs ft r n es σs et σt Φ Φ' :
-  Φ' <6= Φ →
-  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ' →
-  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
-Proof.
-  revert r n es σs et σt Φ Φ'. pcofix CIH. intros r0 n es σs et σt Φ Φ' LE SIM.
-  pfold. punfold SIM.
-  intros NT r_f WSAT. specialize (SIM NT r_f WSAT) as [NOTS TE SIM].
-  constructor; [done|..].
-  { intros.
-    destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & HΦ').
-    naive_solver. }
-  inversion SIM.
-  - left. intros.
-    specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
-    exists es', σs', r', idx'. do 2 (split; [done|]).
-    pclearbot. right. eapply CIH; eauto.
-  - econstructor 2; eauto. intros.
-    destruct (CONT _ _ _ σs' σt' VRET) as [idx' SIM'].
-    exists idx'. pclearbot. right. eapply CIH; eauto.
-Qed.
-
 Lemma sim_body_bind fs ft r n
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
   (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft))) es et σs σt Φ :
@@ -123,8 +101,8 @@ Proof.
         { pclearbot. left. eapply paco7_mon_bot; eauto. }
       + eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks1 Kt1 fid el_tgt _ _ _ _ CALLTGT); eauto; [by etrans|].
-        intros r4 vs4 vt4 σs4 σt4 VREL4.
-        destruct (CONT _ _ _ σs4 σt4 VREL4) as [idx4 CONT4].
+        intros r4 vs4 vt4 σs4 σt4 VREL4 STACK4.
+        destruct (CONT _ _ _ σs4 σt4 VREL4 STACK4) as [idx4 CONT4].
         exists idx4. pclearbot. left.  eapply paco7_mon_bot; eauto.
     - (* et makes a step *)
       constructor 1. intros.
@@ -140,8 +118,8 @@ Proof.
     eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|..];
             eauto; [rewrite fill_app; by apply fill_tstep_rtc|].
-    intros r' vs' vt' σs' σt' VREL'.
-    destruct (CONT _ _ _ σs' σt' VREL') as [idx' CONT2]. clear CONT.
+    intros r' vs' vt' σs' σt' VREL' STACK'.
+    destruct (CONT _ _ _ σs' σt' VREL' STACK') as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH. }
 Qed.
@@ -773,7 +751,7 @@ Lemma sim_body_step_over_call fs ft
   (FT: ft !! fid = Some (@FunV xlt et HCt))
   (VT : Forall (λ ei, is_Some (to_value ei)) elt)
   (ST: subst_l xlt elt et = Some et') :
-  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt), ∃ n',
+  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt) (STACK: σt'.(sst) = σs.(sst)), ∃ n',
     rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≥ (fill Kt (Val vt), σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
     (fill Ks (Call #[ScFnPtr fid] els), σs) ≥ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
@@ -784,8 +762,11 @@ Proof.
   { intros vt. by rewrite fill_not_result. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks _ fid elt els); eauto; [done|].
-  intros r' ? ? σs' σt' (vs&vt&?&?&VR). simplify_eq.
-  destruct (CONT _ _ _ σs' σt' VR) as [n' ?]. exists n'. by left.
+  intros r' ? ? σs' σt' (vs&vt&?&?&VR) STK. simplify_eq.
+  destruct (CONT _ _ _ σs' σt' VR) as [n' ?].
+  - destruct WSAT as (?&?&?&?&?&SREL).
+    destruct SREL as (Eqst&?&?). by rewrite Eqst.
+  - exists n'. by left.
 Qed.
 
 (** Call - step into *)
