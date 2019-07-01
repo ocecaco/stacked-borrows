@@ -87,6 +87,9 @@ Definition reducible fs e σ := (∃ e' σ', (e,σ) ~{fs}~> (e', σ')).
 Definition never_stuck fs e σ :=
   ∀ e' σ', (e, σ) ~{fs}~>* (e', σ') → terminal e' ∨ reducible fs  e' σ'.
 
+Definition init_expr := (Call #["main"] []).
+Definition init_state := (mkState ∅ ∅ [] O O).
+
 (*=================================== UNUSED =================================*)
 (* Implicit Type (ρ: cfg bor_lang). *)
 

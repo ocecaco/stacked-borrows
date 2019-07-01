@@ -58,8 +58,6 @@ Hint Constructors behmatch.
 Hint Constructors behave_.
 Hint Resolve behave_mon: paco.
 
-Definition init_expr := (Call #["main"] []).
-Definition init_state := (mkState ∅ ∅ [] O O).
 Definition term (prog:fn_env) (s:expr * state) (v:result): Prop :=
   to_result s.1 = Some v.
 
