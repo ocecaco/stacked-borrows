@@ -54,6 +54,21 @@ Proof.
     right. eapply CIH; eauto.
 Qed.
 
+Lemma sim_body_frame fs ft n rf r es σs et σt Φ :
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
+  rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
+    (λ r' n' es' σs' et' σt', Φ r' n' es' σs' et' σt' ∧ rf ≼ r').
+Proof.
+  revert n rf r es σs et σt Φ. pcofix CIH.
+  intros n rf r0 es σs et σt Φ SIM.
+  pfold. punfold SIM.
+  intros NT r_f. rewrite cmra_assoc. intros WSAT.
+  specialize (SIM NT _ WSAT) as [SU TE ST]. split; [done|..].
+  - intros. destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & POST).
+    exists vs', σs', (rf ⋅ r'), idx'. admit.
+  - admit.
+Abort.
+
 Lemma sim_body_result fs ft r n es et σs σt Φ :
   (✓ r → vrel_expr r (of_result es) (of_result et) ∧ Φ r n es σs et σt : Prop) →
   r ⊨{S n,fs,ft} (of_result es, σs) ≥ (of_result et, σt) : Φ.
