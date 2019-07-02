@@ -57,7 +57,7 @@ Qed.
 Lemma sim_body_frame fs ft n rf r es σs et σt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
   rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
-    (λ r' n' es' σs' et' σt', Φ r' n' es' σs' et' σt' ∧ rf ≼ r').
+    (λ r' n' es' σs' et' σt', ∃ r0, r' = rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
 Proof.
   revert n rf r es σs et σt Φ. pcofix CIH.
   intros n rf r0 es σs et σt Φ SIM.
