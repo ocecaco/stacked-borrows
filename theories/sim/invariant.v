@@ -144,6 +144,10 @@ Proof.
   repeat split. exists v1, v2. naive_solver.
 Qed.
 
+Lemma vrel_expr_vrel r (v1 v2: value) :
+  vrel_expr r #v1 #v2 → vrel r v1 v2.
+Proof. intros (? & ? & Eq1 & Eq2 & ?). by simplify_eq. Qed.
+
 Lemma arel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
 Proof.

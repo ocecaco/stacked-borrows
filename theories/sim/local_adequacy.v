@@ -124,25 +124,38 @@ Proof.
       { exfalso. apply result_tstep_stuck in H. naive_solver. }
       destruct (fill_step_inv_2 _ _ _ _ _ _ H) as [?|?]; des; ss. subst.
 
+      (* Simulatin EndCall *)
+      rename σ_tgt into σt. rename σs' into σs. 
+      destruct (vrel_expr_result _ _ _ x3) as (vs1 & vt1 & Eqvs1 & Eqv1 & VREL1).
+      simplify_eq. have VR: vrel r' vs1 vt1 by apply vrel_expr_vrel.
+
+      set Φ : resUR → nat → result → state → result → state → Prop :=
+        λ r2 _ vs2 σs2 vt2 σt2,
+          ∃ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 ∧
+            σt.(scs) = c2 :: cids2 ∧
+            σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
+            σt2 = mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) ∧
+            r2 = (r'.1, match (r'.2 !! c2) with
+                        | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r'.2
+                        | _ => r'.2
+                        end).
+      have SIMEND : r' ⊨{idx',fns,fnt} (EndCall vs1, σs) ≥ (EndCall vt1, σt) : Φ. 
+      { apply sim_body_end_call; auto.
+        clear. intros. rewrite /Φ. naive_solver. }
+
       apply tstep_end_call_inv in H1; cycle 1.
       { unfold terminal. rewrite x0. eauto. }
       des. subst.
-      destruct (vrel_expr_result _ _ _ x3) as (vs1 & vt1 & Eqvs1 & Eqv1 & VREL1).
-      have VR: vrel r' vs1 vt1. { SearchAbout vrel_expr vrel. admit. }
-      sim_body_end_call fns fnt r' idx' vs1 vt1 σs' σ_tgt _ VR x2
-      
       have STEPK: (fill (Λ:= bor_ectxi_lang fns)
                         (EndCallCtx :: K_src frame0 ++ K_f_src) e_src0, σ_src)
             ~{fns}~>* (fill (Λ:= bor_ectxi_lang fns)
-                        (EndCallCtx :: K_src frame0 ++ K_f_src) vs', σs').
+                        (EndCallCtx :: K_src frame0 ++ K_f_src) vs1, σs).
       { apply fill_tstep_rtc. destruct x as [|[? Eq]].
         by apply tc_rtc. clear -Eq. simplify_eq. constructor. }
       have NT3 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
       edestruct NT3 as [[? TERM]|[es [σs1 STEP1]]].
       { constructor 1. } { by rewrite /= fill_not_result in TERM. }
 
-      
-      
       exploit CONTINUATION; eauto.
       { rewrite cmra_assoc; eauto. }
       i. des.

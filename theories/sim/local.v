@@ -122,6 +122,14 @@ Proof.
     exists idx'. pclearbot. right. eapply CIH; eauto.
 Qed.
 
+Lemma sim_local_elim_terminal r n es σs eσt eσt' Φ :
+  eσt ~{fnt}~>* eσt' → terminal eσt'.1 → never_stuck fns es σs →
+  sim_local_body r n es σs eσt.1 eσt.2 Φ →
+  ∃ es' σs' et' σt' r' idx', Φ r' idx' es' σs' et' σt'.
+Proof.
+  intros STEP. revert r n es σs. induction STEP.
+Abort.
+
 (* Simulating functions:
   - We start after the substitution.
   - We assume the arguments are values related by [r]
