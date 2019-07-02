@@ -2,7 +2,7 @@ From Coq Require Import Program.Equality Lia.
 From Paco Require Import paco.
 
 From stbor.lang Require Import steps_wf steps_inversion.
-From stbor.sim Require Import behavior global local invariant sflib global_adequacy.
+From stbor.sim Require Import behavior global local invariant sflib global_adequacy one_step.
 
 Set Default Proof Using "Type".
 
@@ -16,32 +16,16 @@ Proof.
 Qed.
 
 Section local.
-Context {A: ucmraT}.
-Variable (wsat esat: A → state → state → Prop).
-Variable (vrel: A → expr → expr → Prop).
 Variable (fns fnt: fn_env).
 
-Hypothesis WSAT_PROPER: Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
-Hypothesis VREL_RESULT:
-  ∀ (r: A) (e1 e2: result), vrel r e1 e2 → to_result e1 = Some e2.
-Hypothesis VREL_VAL :
-  ∀ (r: A) (e1 e2: result),
-  vrel r e1 e2 → ∃ v1 v2, e1 = ValR v1 ∧ e2 = ValR v2 ∧ vrel r (Val v1) (Val v2).
-Hypothesis ENDCALL_RED:
-  ∀ r σs σt (vs vt: value) es' σs',
-  wsat r σs σt → (EndCall vs, σs) ~{fns}~> (es', σs') → reducible fnt (EndCall vt) σt.
-
 Record frame: Type := mk_frame {
-  rc: A;
+  rc: resUR;
   K_src: list (ectxi_language.ectx_item (bor_ectxi_lang fns));
   K_tgt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt));
 }.
 
-(* TODO: move *)
-Notation PRED := (A → nat → result → state → result → state → Prop)%type.
-
 Inductive sim_local_frames:
-  forall (r_f:A)
+  forall (r_f: resUR)
     (K_src: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
     (K_tgt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt)))
     (frames:list frame),
@@ -59,12 +43,14 @@ Inductive sim_local_frames:
              our local resource r and have world satisfaction *)
          (WSAT' : wsat (r_f ⋅ (frame.(rc) ⋅ r')) σ_src' σ_tgt')
          (* and the returned values are related w.r.t. (r ⋅ r' ⋅ r_f) *)
-         (VRET  : vrel r' (Val v_src) (Val v_tgt)),
-         ∃ idx', sim_local_body wsat vrel fns fnt
+         (VRET  : vrel_expr r' (Val v_src) (Val v_tgt)),
+         ∃ idx', sim_local_body wsat vrel_expr fns fnt
                                 (frame.(rc) ⋅ r') idx'
                                 (fill frame.(K_src) (Val v_src)) σ_src'
                                 (fill frame.(K_tgt) (Val v_tgt)) σ_tgt'
-                                (λ r _ vs σs vt σt, vrel r (of_result vs) (of_result vt)))
+                                (λ r _ vs σs vt σt,
+                                  end_call_sat r σs σt ∧
+                                  vrel_expr r (of_result vs) (of_result vt)))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
       (EndCallCtx :: frame.(K_src) ++ K_f_src)
@@ -79,15 +65,17 @@ Inductive sim_local_conf:
     rc idx e_src σ_src e_tgt σ_tgt
     Ke_src Ke_tgt
     (FRAMES: sim_local_frames r_f K_src K_tgt frames)
-    (LOCAL: sim_local_body wsat vrel fns fnt rc idx e_src σ_src e_tgt σ_tgt
-                           (λ r _ vs _ vt _, vrel r (of_result vs) (of_result vt)))
+    (LOCAL: sim_local_body wsat vrel_expr fns fnt rc idx e_src σ_src e_tgt σ_tgt
+                           (λ r _ vs σs vt σt,
+                              end_call_sat r σs σt ∧
+                              vrel_expr r (of_result vs) (of_result vt)))
     (KE_SRC: Ke_src = fill K_src e_src)
     (KE_TGT: Ke_tgt = fill K_tgt e_tgt)
     (WSAT: wsat (r_f ⋅ rc) σ_src σ_tgt)
   : sim_local_conf idx Ke_src σ_src Ke_tgt σ_tgt.
 
 Lemma sim_local_conf_sim
-      (FUNS: sim_local_funs wsat vrel fns fnt esat)
+      (FUNS: sim_local_funs wsat vrel_expr fns fnt end_call_sat)
       (idx:nat) (e_src:expr) (σ_src:state) (e_tgt:expr) (σ_tgt:state)
       (SIM: sim_local_conf idx e_src σ_src e_tgt σ_tgt)
   : sim fns fnt idx (e_src, σ_src) (e_tgt, σ_tgt)
@@ -101,13 +89,13 @@ Proof.
     destruct sim_local_body_stuck as [vt Eqvt].
     rewrite -(of_to_result _ _ Eqvt).
     destruct (sim_local_body_terminal _ Eqvt)
-      as (vs' & σs' & r' & idx' & SS' & WSAT' & VREL).
+      as (vs' & σs' & r' & idx' & SS' & WSAT' & ESAT' & VREL).
     have STEPK: (fill (Λ:=bor_ectxi_lang fns) K_src0 e_src0, σ_src)
               ~{fns}~>* (fill (Λ:=bor_ectxi_lang fns) K_src0 vs', σs').
     { apply fill_tstep_rtc. destruct SS' as [|[? Eq]].
       by apply tc_rtc. clear -Eq. simplify_eq. constructor. }
     have NT3:= never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
-    clear -STEPK NT3 FRAMES WSAT' VREL ENDCALL_RED VREL_VAL.
+    clear -STEPK NT3 FRAMES WSAT' VREL.
     inversion FRAMES. { left. rewrite to_of_result. by eexists. }
     right. subst K_src0 K_tgt0.
     move : NT3. simpl. intros NT3.
@@ -117,14 +105,14 @@ Proof.
     apply tstep_reducible_fill_inv in RED; [|done].
     apply tstep_reducible_fill.
     destruct RED as [e2 [σ2 Eq2]].
-    apply VREL_VAL in VREL as (v1 & v2 & ? & ? & ?). subst vs' vt.
-    move : Eq2. eapply ENDCALL_RED; eauto.
+    apply vrel_expr_result in VREL as (v1 & v2 & ? & ? & ?). subst vs' vt.
+    move : Eq2. eapply end_call_tstep_src_tgt; eauto.
   - guardH sim_local_body_stuck.
     s. i. apply fill_result in H. unfold terminal in H. des. subst. inv FRAMES. ss.
     exploit sim_local_body_terminal; eauto. i. des.
     esplits; eauto; ss.
     + rewrite to_of_result. esplits; eauto.
-    + ii. clarify. eapply VREL_RESULT; eauto.
+    + ii. clarify. eapply vrel_expr_to_result; eauto.
   - guardH sim_local_body_stuck.
     i. destruct eσ2_tgt as [e2_tgt σ2_tgt].
 
@@ -134,17 +122,15 @@ Proof.
 
       inv FRAMES; ss.
       { exfalso. apply result_tstep_stuck in H. naive_solver. }
-      apply fill_step_inv_2 in H. des; ss. subst.
+      destruct (fill_step_inv_2 _ _ _ _ _ _ H) as [?|?]; des; ss. subst.
 
-      apply tstep_end_call_inv in H0; cycle 1.
+      apply tstep_end_call_inv in H1; cycle 1.
       { unfold terminal. rewrite x0. eauto. }
       des. subst.
-      destruct (VREL_VAL _ _ _ x2) as (vs1 & v1 & Eqvs1 & Eqv1 & VREL1).
-
-      exploit CONTINUATION; eauto.
-      { rewrite cmra_assoc; eauto. }
-      i. des.
-
+      destruct (vrel_expr_result _ _ _ x3) as (vs1 & vt1 & Eqvs1 & Eqv1 & VREL1).
+      have VR: vrel r' vs1 vt1. { SearchAbout vrel_expr vrel. admit. }
+      sim_body_end_call fns fnt r' idx' vs1 vt1 σs' σ_tgt _ VR x2
+      
       have STEPK: (fill (Λ:= bor_ectxi_lang fns)
                         (EndCallCtx :: K_src frame0 ++ K_f_src) e_src0, σ_src)
             ~{fns}~>* (fill (Λ:= bor_ectxi_lang fns)
@@ -155,6 +141,12 @@ Proof.
       edestruct NT3 as [[? TERM]|[es [σs1 STEP1]]].
       { constructor 1. } { by rewrite /= fill_not_result in TERM. }
 
+      
+      
+      exploit CONTINUATION; eauto.
+      { rewrite cmra_assoc; eauto. }
+      i. des.
+
       have Eqes: es = fill (K_src frame0 ++ K_f_src) (Val vs1).
       { rewrite /= in STEP1.
         apply fill_tstep_inv in STEP1 as [e2' [Eq2' STEP2']]; [|done]. subst es.
@@ -162,6 +154,7 @@ Proof.
         apply tstep_end_call_inv in STEP2' as [v3 [Eq3 [Eq4 ?]]];
           [|rewrite to_of_result; by eexists].
         rewrite Eq4. rewrite Eqvs1 /= in Eq3. by inversion Eq3. } subst es.
+
 
       esplits.
       - left. eapply tc_rtc_l.
@@ -173,7 +166,8 @@ Proof.
           * inversion EQ. econs.
         + (* EndCall step *)
           apply tc_once; eauto.
-      - right. apply CIH. econs; eauto; cycle 1.
+      - right. apply CIH. simpl in STEP1.
+        econs; eauto; cycle 1.
         + rewrite fill_app. eauto.
         + rewrite fill_app. eauto.
         + admit. (* wsat after return HAI: property of wsat *)
@@ -204,9 +198,17 @@ Proof.
           econs; econs; eauto. }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
+          destruct (CONT _ _ _ σ_src' σ_tgt' VRET). admit.
+          pclearbot. esplits; eauto.
+          (* eapply sim_local_body_post_mono; [|apply H]. simpl. naive_solver. *) }
+        { rewrite -(fill_app [EndCallCtx]). eauto. }
+        { rewrite -(fill_app [EndCallCtx]). eauto. }
+        
+        { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
           destruct (CONT _ _ _ σ_src' σ_tgt' VRET).
-          pclearbot. esplits; eauto. }
-        { admit. }
+          pclearbot. esplits; eauto.
+          (* eapply sim_local_body_post_mono; [|apply H]. simpl. naive_solver. *) }
+        { eapply sim_local_body_post_mono; [|apply SIMf]. simpl. naive_solver. }
         { s. ss. }
         { s. rewrite -fill_app. eauto. }
         { s. rewrite -cmra_assoc; eauto. }

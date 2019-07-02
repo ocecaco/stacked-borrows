@@ -27,28 +27,6 @@ Proof.
   apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
 Qed.
 
-Lemma sim_body_post_mono fs ft r n es σs et σt Φ Φ' :
-  Φ' <6= Φ →
-  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ' →
-  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
-Proof.
-  revert r n es σs et σt Φ Φ'. pcofix CIH. intros r0 n es σs et σt Φ Φ' LE SIM.
-  pfold. punfold SIM.
-  intros NT r_f WSAT. specialize (SIM NT r_f WSAT) as [NOTS TE SIM].
-  constructor; [done|..].
-  { intros.
-    destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & HΦ').
-    naive_solver. }
-  inversion SIM.
-  - left. intros.
-    specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
-    exists es', σs', r', idx'. do 2 (split; [done|]).
-    pclearbot. right. eapply CIH; eauto.
-  - econstructor 2; eauto. intros.
-    destruct (CONT _ _ _ σs' σt' VRET) as [idx' SIM'].
-    exists idx'. pclearbot. right. eapply CIH; eauto.
-Qed.
-
 Lemma sim_body_bind fs ft r n
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
   (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft))) es et σs σt Φ :
@@ -123,8 +101,8 @@ Proof.
         { pclearbot. left. eapply paco7_mon_bot; eauto. }
       + eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks1 Kt1 fid el_tgt _ _ _ _ CALLTGT); eauto; [by etrans|].
-        intros r4 vs4 vt4 σs4 σt4 VREL4.
-        destruct (CONT _ _ _ σs4 σt4 VREL4) as [idx4 CONT4].
+        intros r4 vs4 vt4 σs4 σt4 VREL4 STACK4.
+        destruct (CONT _ _ _ σs4 σt4 VREL4 STACK4) as [idx4 CONT4].
         exists idx4. pclearbot. left.  eapply paco7_mon_bot; eauto.
     - (* et makes a step *)
       constructor 1. intros.
@@ -140,8 +118,8 @@ Proof.
     eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|..];
             eauto; [rewrite fill_app; by apply fill_tstep_rtc|].
-    intros r' vs' vt' σs' σt' VREL'.
-    destruct (CONT _ _ _ σs' σt' VREL') as [idx' CONT2]. clear CONT.
+    intros r' vs' vt' σs' σt' VREL' STACK'.
+    destruct (CONT _ _ _ σs' σt' VREL' STACK') as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH. }
 Qed.
@@ -149,6 +127,20 @@ Qed.
 (** MEM STEP -----------------------------------------------------------------*)
 
 (** Copy *)
+Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ
+  (EQS: tsize Ts = tsize Tt)
+  (PUBLIC: ∃ (h: heapletR), r.1 !! t ≡ Some (to_tagKindR tkPub, h)) :
+  (∀ vs vt,
+    read_mem l (tsize Ts) σs.(shp) = Some vs →
+    read_mem l (tsize Tt) σt.(shp) = Some vt →
+    ∀ α', memory_read σt.(sst) σt.(scs) l (Tagged t) (tsize Tt) = Some α' →
+      let σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc) in
+      let σt' := mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc) in
+      vrel r vs vt → Φ r n (ValR vs) σs' (ValR vt) σt' : Prop) →
+  r ⊨{n,fs,ft} (Copy (Place l (Tagged t) Ts), σs) ≥ (Copy (Place l (Tagged t) Tt), σt) : Φ.
+Proof.
+Abort.
+
 Lemma sim_body_copy fs ft r n l tg Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt) :
   (∀ vs vt,
@@ -773,15 +765,22 @@ Proof.
   econstructor. by econstructor. econstructor. by rewrite -Eqcs'.
 Qed.
 
-Lemma sim_body_end_call fs ft r n vs vt σs σt :
+Lemma sim_body_end_call fs ft r n vs vt σs σt Φ :
   (* return values are related *)
   vrel r vs vt →
   (* and any private location w.r.t to the current call id ownership must be related *)
   end_call_sat r σs σt →
-  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) :
-    (λ r _ vs _ vt _, vrel_expr r (of_result vs) (of_result vt)).
+  (∀ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 → σt.(scs) = c2 :: cids2 →
+      let σs' := mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) in
+      let σt' := mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) in
+      let r2' := match (r.2 !! c2) with
+                 | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r.2
+                 | _ => r.2
+                 end in
+      Φ (r.1, r2') n (ValR vs) σs' (ValR vt) σt' : Prop) →
+  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ.
 Proof.
-  intros VREL ESAT. pfold. intros NT r_f WSAT.
+  intros VREL ESAT POST. pfold. intros NT r_f WSAT.
   split; [|done|].
   { right.
     destruct (NT (EndCall #vs) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
@@ -802,10 +801,11 @@ Proof.
              | Some (Cinl (Excl T)) => <[c := to_callStateR csPub]> r.2
              | _ => r.2
              end.
-  exists (r.1, r2'), (S n). split; last split.
+  exists (r.1, r2'), (S n).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  split; last split.
   { left. by constructor 1. }
-  { destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
-    destruct r_f as [r_f1 r_f2].
+  { destruct r_f as [r_f1 r_f2].
     have VALID': ✓ ((r_f1, r_f2) ⋅ (r.1, r2')).
     { apply (local_update_discrete_valid_frame _ _ _ VALID).
       destruct (r.2 !! c) as [[[T|]| |]|] eqn:Eqr2; rewrite /r2'; [|by destruct r..].
@@ -869,7 +869,8 @@ Proof.
     exists (ValR vs). do 2 eexists. exists n. split; last split.
     { right. split; [lia|]. eauto. }
     { eauto. }
-    exists vs, vt. do 2 (split; [done|]). by apply (Forall2_impl _ _ _ _ VREL). }
+    destruct SREL as (?&?&Eqs&?).
+    eapply POST; eauto. by rewrite Eqs. }
   { left. by eexists. }
 Qed.
 
@@ -897,7 +898,8 @@ Proof.
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks _ fid elt els); eauto; [done|].
   intros r' ? ? σs' σt' (vs&vt&?&?&VR). simplify_eq.
-  destruct (CONT _ _ _ σs' σt' VR) as [n' ?]. exists n'. by left.
+  destruct (CONT _ _ _ σs' σt' VR) as [n' ?].
+  exists n'. by left.
 Qed.
 
 (** Call - step into *)

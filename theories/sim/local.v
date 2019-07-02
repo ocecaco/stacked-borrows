@@ -59,7 +59,8 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
     (CONT: ∀ r' v_src v_tgt σs' σt'
              (* For any new resource r' that supports the returned values are
                 related w.r.t. (r ⋅ r' ⋅ r_f) *)
-             (VRET: vrel r' (Val v_src) (Val v_tgt)),
+             (VRET: vrel r' (Val v_src) (Val v_tgt))
+             (STACK: σt'.(scs) = σt.(scs)),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
                                (fill Ks (Val v_src)) σs'
                                (fill Kt (Val v_tgt)) σt' Φ).
@@ -100,6 +101,27 @@ Qed.
 
 Definition sim_local_body := paco7 _sim_local_body bot7.
 
+Lemma sim_local_body_post_mono r n es σs et σt Φ Φ' :
+  Φ <6= Φ' →
+  sim_local_body r n es σs et σt Φ → sim_local_body r n es σs et σt Φ'.
+Proof.
+  revert r n es σs et σt Φ Φ'. pcofix CIH. intros r0 n es σs et σt Φ Φ' LE SIM.
+  pfold. punfold SIM; [|apply sim_local_body_mono].
+  intros NT r_f WSAT. specialize (SIM NT r_f WSAT) as [NOTS TE SIM].
+  constructor; [done|..].
+  { intros.
+    destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & HΦ).
+    naive_solver. }
+  inversion SIM.
+  - left. intros.
+    specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
+    exists es', σs', r', idx'. do 2 (split; [done|]).
+    pclearbot. right. eapply CIH; eauto.
+  - econstructor 2; eauto. intros.
+    destruct (CONT _ _ _ σs' σt' VRET STACK) as [idx' SIM'].
+    exists idx'. pclearbot. right. eapply CIH; eauto.
+Qed.
+
 (* Simulating functions:
   - We start after the substitution.
   - We assume the arguments are values related by [r]
@@ -118,7 +140,10 @@ Definition sim_local_fun
           end),
     ∃ idx, sim_local_body r idx
                           (InitCall es) σs (InitCall et) σt
-                          (λ r _ vs σs vt σt, esat r σs σt ∧ vrel r (of_result vs) (of_result vt)).
+                          (λ r' _ vs' σs' vt' σt',
+                            (∃ c, σt'.(scs) = c :: σt.(scs)) ∧
+                            esat r' σs' σt' ∧
+                            vrel r' (of_result vs') (of_result vt')).
 
 Definition sim_local_funs (esat: A → state → state → Prop) : Prop :=
   ∀ name fn_tgt, fnt !! name = Some fn_tgt → ∃ fn_src,

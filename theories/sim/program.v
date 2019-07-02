@@ -16,16 +16,30 @@ Proof.
   specialize (SIMf ε ebs ebt [] [] init_state init_state) as [idx SIM]; [done..|].
   unfold behave_prog. eapply (adequacy _ _ idx); [apply _| |by apply wf_init_state..].
   eapply sim_local_conf_sim; eauto.
-  econs; eauto; swap 2 4.
+  econs; swap 2 4.
   - econs 1.
   - ss.
   - ss.
   - eapply (sim_body_step_into_call _ _ _ _ _ [] ebs HCs [] ebs [] ebt HCt [] ebt);
       [done..|].
     eapply (sim_body_bind _ _ _ _ [EndCallCtx] [EndCallCtx] (InitCall ebs) (InitCall ebt)).
-    eapply sim_body_post_mono; [|exact SIM].
+    eapply sim_local_body_post_mono; [|exact SIM].
+    clear SIM. simpl.
+    intros r1 idx1 vs σs vt σt ([c Eqc] & ESAT & (v1 & v2 & Eq1 & Eq2 & VREL)).
+    rewrite Eq1 Eq2. eapply (sim_body_end_call); [done..|].
+    intros c1 c2 cids1 cids2 Eqcs1 Eqcs2 σs' σt' r'.
+    split; last by do 2 eexists.
+    rewrite Eqc in Eqcs2. simplify_eq.
+    rewrite /end_call_sat /=.
+    intros ??. simplify_eq.
+    intros.
+    admit.
+    (* eapply (sim_body_step_into_call _ _ _ _ _ [] ebs HCs [] ebs [] ebt HCt [] ebt);
+      [done..|].
+    eapply (sim_body_bind _ _ _ _ [EndCallCtx] [EndCallCtx] (InitCall ebs) (InitCall ebt)).
+    eapply sim_local_body_post_mono; [|exact SIM].
     clear SIM. simpl.
     intros r1 idx1 vs σs vt σt [ESAT (v1 & v2 & Eq1 & Eq2 & VREL)].
-    rewrite Eq1 Eq2. by apply sim_body_end_call.
-  - rewrite right_id. apply wsat_init_state.
+    rewrite Eq1 Eq2. by apply sim_body_end_call. *)
+  - instantiate (1:=init_res). rewrite right_id. apply wsat_init_state.
 Qed.

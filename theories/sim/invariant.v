@@ -94,14 +94,20 @@ Definition end_call_sat (r: resUR) (σs σt: state) : Prop :=
   ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
   ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st).
 
-Lemma wsat_init_state : wsat ε init_state init_state.
+Definition init_res : resUR := (ε, {[O := to_callStateR csPub]}).
+Lemma wsat_init_state : wsat init_res init_state init_state.
 Proof.
   split; last split; last split; last split; last split.
   - apply wf_init_state.
   - apply wf_init_state.
-  - done.
+  - split; [done|]. intros ?; simpl. destruct i.
+    + rewrite lookup_singleton //.
+    + rewrite lookup_singleton_ne //.
   - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. inversion 1.
-  - intros ?? HL. exfalso. move : HL. rewrite /= lookup_empty. inversion 1.
+  - intros ??. simpl. destruct c.
+    + rewrite lookup_singleton. intros Eq%Some_equiv_inj.
+      destruct cs as [[]| |]; [..|lia|]; inversion Eq.
+    + rewrite lookup_singleton_ne //. inversion 1.
   - repeat split. simpl. set_solver.
 Qed.
 
