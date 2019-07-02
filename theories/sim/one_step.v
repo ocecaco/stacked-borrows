@@ -5,6 +5,7 @@ From stbor.sim Require Import local invariant.
 
 Set Default Proof Using "Type".
 
+
 Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
   (sim_local_body wsat vrel_expr fs ft r n%nat es%E σs et%E σt Φ)
   (at level 70, format "r  ⊨{ n , fs , ft }  ( es ,  σs )  ≥  ( et ,  σt )  :  Φ").
@@ -25,6 +26,48 @@ Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
 Proof.
   intros VALID UPD. apply cmra_discrete_valid.
   apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
+Qed.
+
+Lemma sim_body_res_proper fs ft n es σs et σt Φ r1 r2:
+  r1 ≡ r2 →
+  r1 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
+  r2 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
+Proof.
+  revert r1 r2 n es σs et σt Φ. pcofix CIH.
+  intros r1 r2 n es σs et σt Φ EQ SIM.
+  pfold. punfold SIM.
+  intros NT r_f WSAT. rewrite <-EQ in WSAT.
+  specialize (SIM NT r_f WSAT) as [NOTS TE SIM].
+  constructor; [done|..].
+  { intros.
+    destruct (TE _ TERM) as (vs' & σs' & r'' & idx' & STEP' & WSAT' & HΦ).
+    naive_solver. }
+  inversion SIM.
+  - left. intros.
+    specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
+    exists es', σs', r', idx'. do 2 (split; [done|]).
+    pclearbot. right. eapply CIH; eauto.
+  - econstructor 2; eauto.
+    intros.
+    destruct (CONT _ _ _ σs' σt' VRET (* STACK *)) as [idx' SIM'].
+    exists idx'. pclearbot.
+    right. eapply CIH; eauto.
+Qed.
+
+Lemma sim_body_result fs ft r n es et σs σt Φ :
+  (✓ r → vrel_expr r (of_result es) (of_result et) ∧ Φ r n es σs et σt : Prop) →
+  r ⊨{S n,fs,ft} (of_result es, σs) ≥ (of_result et, σt) : Φ.
+Proof.
+  intros POST. pfold.  split; last first.
+  { constructor 1. intros vt' ? STEPT'. exfalso.
+    apply result_tstep_stuck in STEPT'. by rewrite to_of_result in STEPT'. }
+  { move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
+    exists es, σs, r, n. split; last split.
+    - right. split; [lia|]. eauto.
+    - eauto.
+    - rewrite to_of_result in Eqvt'. simplify_eq.
+      apply POST. by destruct WSAT as (?&?&?%cmra_valid_op_r &?). }
+  { left. rewrite to_of_result. by eexists. }
 Qed.
 
 Lemma sim_body_bind fs ft r n
@@ -101,8 +144,8 @@ Proof.
         { pclearbot. left. eapply paco7_mon_bot; eauto. }
       + eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks1 Kt1 fid el_tgt _ _ _ _ CALLTGT); eauto; [by etrans|].
-        intros r4 vs4 vt4 σs4 σt4 VREL4 STACK4.
-        destruct (CONT _ _ _ σs4 σt4 VREL4 STACK4) as [idx4 CONT4].
+        intros r4 vs4 vt4 σs4 σt4 VREL4 (* STACK4 *).
+        destruct (CONT _ _ _ σs4 σt4 VREL4 (* STACK4 *)) as [idx4 CONT4].
         exists idx4. pclearbot. left.  eapply paco7_mon_bot; eauto.
     - (* et makes a step *)
       constructor 1. intros.
@@ -118,8 +161,8 @@ Proof.
     eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|..];
             eauto; [rewrite fill_app; by apply fill_tstep_rtc|].
-    intros r' vs' vt' σs' σt' VREL' STACK'.
-    destruct (CONT _ _ _ σs' σt' VREL' STACK') as [idx' CONT2]. clear CONT.
+    intros r' vs' vt' σs' σt' VREL' (* STACK' *).
+    destruct (CONT _ _ _ σs' σt' VREL' (* STACK' *)) as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH. }
 Qed.
@@ -674,18 +717,10 @@ Proof.
           { exists h. rewrite HL lookup_insert_ne //. }
   }
   left.
-  (* TODO: wp_value like rule *)
-  pfold. split; last first.
-  { constructor 1. intros vt' ? STEPT'. exfalso.
-    have ?: to_result #[☠]%V = None.
-    { eapply (tstep_reducible_not_result ft _ σt'); eauto. by do 2 eexists. }
-    done. }
-  { move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
-    exists (ValR [☠%S]), σs', r', n. split; last split.
-    - right. split; [lia|]. eauto.
-    - eauto.
-    - by apply POST. }
-  { left. by eexists. }
+  eapply (sim_body_result fs ft r' n (ValR [☠%S]) (ValR [☠%S])).
+  intros. split.
+  { do 2 eexists. do 2 (split; [done|]). constructor; done. }
+  { simpl. subst σt'. by apply POST. }
 Qed.
 
 (** InitCall *)
@@ -777,6 +812,7 @@ Lemma sim_body_end_call fs ft r n vs vt σs σt Φ :
                  | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r.2
                  | _ => r.2
                  end in
+      Wf σt → vrel_expr (r.1, r2') vs vt →
       Φ (r.1, r2') n (ValR vs) σs' (ValR vt) σt' : Prop) →
   r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ.
 Proof.
@@ -870,8 +906,130 @@ Proof.
     { right. split; [lia|]. eauto. }
     { eauto. }
     destruct SREL as (?&?&Eqs&?).
-    eapply POST; eauto. by rewrite Eqs. }
+    eapply POST; eauto.
+    - by rewrite Eqs.
+    - do 2 eexists. eauto. }
   { left. by eexists. }
+Qed.
+
+Lemma never_stuck_val fs v σ :
+  never_stuck fs (Val v) σ.
+Proof.
+  intros ??. inversion 1 as [|? [] ? ST].
+  - left. by eexists.
+  - by apply (result_tstep_stuck) in ST.
+Qed.
+
+Lemma sim_body_val_elim fs ft r n vs σs vt σt Φ :
+  r ⊨{n,fs,ft} ((Val vs), σs) ≥ ((Val vt), σt) : Φ →
+  ∀ r_f (WSAT: wsat (r_f ⋅ r) σs σt),
+  ∃ r' idx', Φ r' idx' (ValR vs) σs (ValR vt) σt ∧ wsat (r_f ⋅ r') σs σt.
+Proof.
+  intros SIM r_f WSAT. punfold SIM.
+  specialize (SIM (never_stuck_val fs vs σs) _ WSAT) as [ST TE STEPSS].
+  specialize (TE (ValR vt) eq_refl)
+    as (vs' & σs' & r' & idx' & STEP' & WSAT' & POST).
+  exists r', idx'.
+  assert (σs' = σs ∧ vs' = vs) as [].
+  { destruct STEP' as [STEP'|[Eq1 Eq2]]; [|simplify_eq].
+    - by apply result_tstep_tc_stuck in STEP'.
+    - split; [done|].
+      have Eq := to_of_result vs'. rewrite -H /= in Eq. by simplify_eq. }
+  subst σs' vs'. done.
+Qed.
+
+Lemma sim_body_end_call_elim' fs ft r n vs vt σs σt Φ :
+  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ →
+  ∀ r_f et' σt' (WSAT: wsat (r_f ⋅ r) σs σt)
+    (NT: never_stuck fs (EndCall (Val vs)) σs)
+    (STEPT: (EndCall (Val vt), σt) ~{ft}~> (et', σt')),
+  ∃ r' idx' σs', (EndCall (Val vs), σs) ~{fs}~>+ (Val vs, σs') ∧ et' = Val vt ∧
+    Φ r' idx' (ValR vs) σs' (ValR vt) σt' ∧
+    wsat (r_f ⋅ r') σs' σt'.
+Proof.
+  intros SIM r_f et' σt' WSAT NT STEPT.
+  punfold SIM.
+  specialize (SIM NT _ WSAT) as [NOSK TERM STEPSS].
+  inversion STEPSS; last first.
+  { exfalso. clear -CALLTGT. symmetry in CALLTGT.
+    apply fill_end_call_decompose in CALLTGT as [[]|[K' [? Eq]]]; [done|].
+    destruct (fill_result ft K' (Call #[ScFnPtr fid] el_tgt)) as [[] ?];
+      [rewrite Eq; by eexists|done]. }
+  specialize (STEP _ _ STEPT) as (es1 & σs1 & r1 & n1 & STEP1 & WSAT1 & SIMV).
+  have STEPK: (EndCall #vs, σs) ~{fs}~>* (es1, σs1).
+  { destruct STEP1 as [|[]]. by apply tc_rtc. by simplify_eq. }
+  have NT1 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
+  pclearbot. punfold SIMV.
+  specialize (SIMV NT1 _ WSAT1) as [ST1 TE1 STEPS1].
+  apply tstep_end_call_inv in STEPT as (? & Eq1 &? & ? & ? & ? & ?);
+        [|by eexists]. simpl in Eq1. symmetry in Eq1. simplify_eq.
+  specialize (TE1 vt eq_refl) as (vs2 & σs2 & r2 & idx2 & STEP2 & WSAT2 & POST).
+  exists r2, idx2, σs2.
+  have ?: vs2 = vs.
+  { clear -STEP1 STEP2.
+    destruct STEP1 as [STEP1|[Eq11 Eq12]]; [|simplify_eq].
+    - apply tstep_end_call_inv_tc in STEP1 as (? & Eq1 &? & ? & ? & ? & ?);
+        [|by eexists]. simpl in Eq1.
+      simplify_eq. destruct STEP2 as [?%result_tstep_tc_stuck|[]]; [done|].
+      simplify_eq.
+      have Eq := to_of_result vs2. rewrite -H1 /= in Eq. by simplify_eq.
+    - have Eq := to_of_result vs2.
+      destruct STEP2 as [STEP2|[? STEP2]].
+      + apply tstep_end_call_inv_tc in STEP2 as (? & Eq' &? & ? & ? & ? & ?);
+          [|by eexists].
+        simpl in Eq'. simplify_eq.
+        rewrite H /= in Eq. by simplify_eq.
+      + simplify_eq. by rewrite -H0 in Eq. }
+  subst vs2. split; [|done].
+  destruct STEP1 as [|[]], STEP2 as [|[]]; simplify_eq.
+  - eapply tc_rtc_l; eauto.
+  - done.
+  - done.
+Qed.
+
+Lemma sim_body_end_call_elim fs ft r n vs vt σs σt Φ :
+  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ →
+  ∀ r_f σs' σt' (WSAT: wsat (r_f ⋅ r) σs σt)
+    (NT: never_stuck fs (EndCall (Val vs)) σs)
+    (STEPS: (EndCall (Val vs), σs) ~{fs}~> (Val vs, σs'))
+    (STEPT: (EndCall (Val vt), σt) ~{ft}~> (Val vt, σt')),
+  ∃ r' idx', Φ r' idx' (ValR vs) σs' (ValR vt) σt' ∧ wsat (r_f ⋅ r') σs' σt'.
+Proof.
+  intros SIM r_f σs' σt' WSAT NT STEPS STEPT.
+  punfold SIM.
+  specialize (SIM NT _ WSAT) as [NOSK TERM STEPSS].
+  inversion STEPSS; last first.
+  { exfalso. clear -CALLTGT. symmetry in CALLTGT.
+    apply fill_end_call_decompose in CALLTGT as [[]|[K' [? Eq]]]; [done|].
+    destruct (fill_result ft K' (Call #[ScFnPtr fid] el_tgt)) as [[] ?];
+      [rewrite Eq; by eexists|done]. }
+  specialize (STEP _ _ STEPT) as (es1 & σs1 & r1 & n1 & STEP1 & WSAT1 & SIMV).
+  have STEPK: (EndCall #vs, σs) ~{fs}~>* (es1, σs1).
+  { destruct STEP1 as [|[]]. by apply tc_rtc. by simplify_eq. }
+  have NT1 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
+  pclearbot. punfold SIMV.
+  specialize (SIMV NT1 _ WSAT1) as [ST1 TE1 STEPS1].
+  specialize (TE1 vt eq_refl) as (vs2 & σs2 & r2 & idx2 & STEP2 & WSAT2 & POST).
+  exists r2, idx2.
+  assert (σs2 = σs' ∧ vs2 = vs) as [].
+  { clear -STEP1 STEP2 STEPS.
+    apply tstep_end_call_inv in STEPS as (? & ? &? & ? & ? & ? & ?);
+      [|by eexists].
+    destruct STEP1 as [STEP1|[Eq11 Eq12]]; [|simplify_eq].
+    - apply tstep_end_call_inv_tc in STEP1 as (? & ? &? & ? & ? & ? & ?);
+        [|by eexists].
+      simplify_eq. destruct STEP2 as [?%result_tstep_tc_stuck|[]]; [done|].
+      simplify_eq.
+      rewrite H1 in H5. simplify_eq. split; [done|].
+      have Eq := to_of_result vs2. rewrite -H2 in Eq. by simplify_eq.
+    - have Eq := to_of_result vs2. 
+      destruct STEP2 as [STEP2|[? STEP2]].
+      + apply tstep_end_call_inv_tc in STEP2 as (? & ? &? & ? & ? & ? & ?);
+          [|by eexists].
+        rewrite H1 in H3. simplify_eq. split; [done|].
+        rewrite H2 in Eq. by simplify_eq.
+      + simplify_eq. by rewrite -H2 in Eq. }
+  subst σs2 vs2. done.
 Qed.
 
 (** PURE STEP ----------------------------------------------------------------*)

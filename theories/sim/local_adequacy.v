@@ -122,15 +122,14 @@ Proof.
 
       inv FRAMES; ss.
       { exfalso. apply result_tstep_stuck in H. naive_solver. }
-      destruct (fill_step_inv_2 _ _ _ _ _ _ H) as [?|?]; des; ss. subst.
 
       (* Simulatin EndCall *)
-      rename σ_tgt into σt. rename σs' into σs. 
+      rename σ_tgt into σt. rename σs' into σs.
       destruct (vrel_expr_result _ _ _ x3) as (vs1 & vt1 & Eqvs1 & Eqv1 & VREL1).
       simplify_eq. have VR: vrel r' vs1 vt1 by apply vrel_expr_vrel.
 
       set Φ : resUR → nat → result → state → result → state → Prop :=
-        λ r2 _ vs2 σs2 vt2 σt2,
+        λ r2 _ vs2 σs2 vt2 σt2, vrel_expr r2 vs2 vt2 ∧
           ∃ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 ∧
             σt.(scs) = c2 :: cids2 ∧
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
@@ -139,13 +138,14 @@ Proof.
                         | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r'.2
                         | _ => r'.2
                         end).
-      have SIMEND : r' ⊨{idx',fns,fnt} (EndCall vs1, σs) ≥ (EndCall vt1, σt) : Φ. 
+      have SIMEND : r' ⊨{idx',fns,fnt} (EndCall vs1, σs) ≥ (EndCall vt1, σt) : Φ.
       { apply sim_body_end_call; auto.
         clear. intros. rewrite /Φ. naive_solver. }
 
-      apply tstep_end_call_inv in H1; cycle 1.
-      { unfold terminal. rewrite x0. eauto. }
-      des. subst.
+      have NONE : to_result (EndCall e_tgt0) = None. by done.
+      destruct (fill_tstep_inv _ _ _ _ _ _ NONE H) as [et2 [? STEPT2]].
+      subst e2_tgt.
+
       have STEPK: (fill (Λ:= bor_ectxi_lang fns)
                         (EndCallCtx :: K_src frame0 ++ K_f_src) e_src0, σ_src)
             ~{fns}~>* (fill (Λ:= bor_ectxi_lang fns)
@@ -153,39 +153,25 @@ Proof.
       { apply fill_tstep_rtc. destruct x as [|[? Eq]].
         by apply tc_rtc. clear -Eq. simplify_eq. constructor. }
       have NT3 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
-      edestruct NT3 as [[? TERM]|[es [σs1 STEP1]]].
-      { constructor 1. } { by rewrite /= fill_not_result in TERM. }
+      rewrite /= in NT3.
+      have NT4 := never_stuck_fill_inv _ _ _ _ NT3.
+      rewrite -(of_to_result _ _ x0) in STEPT2.
+      destruct (sim_body_end_call_elim' _ _ _ _ _ _ _ _ _ SIMEND _ _ _ x1 NT4 STEPT2)
+        as (r2 & idx2 & σs2 & STEPS & ? & HΦ2 & WSAT2). subst et2.
 
-      exploit CONTINUATION; eauto.
+      exploit (CONTINUATION r2); eauto.
       { rewrite cmra_assoc; eauto. }
-      i. des.
+      { apply HΦ2. }
+      intros [idx3 SIMFR]. rename σ2_tgt into σt2.
+      do 2 eexists. split.
+      - left. apply fill_tstep_tc. eapply tc_rtc_l; [|apply STEPS].
+        apply (fill_tstep_rtc _ [EndCallCtx]).
+        clear -x. destruct x as [|[]]. by apply tc_rtc. simplify_eq; constructor.
 
-      have Eqes: es = fill (K_src frame0 ++ K_f_src) (Val vs1).
-      { rewrite /= in STEP1.
-        apply fill_tstep_inv in STEP1 as [e2' [Eq2' STEP2']]; [|done]. subst es.
-        f_equal.
-        apply tstep_end_call_inv in STEP2' as [v3 [Eq3 [Eq4 ?]]];
-          [|rewrite to_of_result; by eexists].
-        rewrite Eq4. rewrite Eqvs1 /= in Eq3. by inversion Eq3. } subst es.
-
-
-      esplits.
-      - left. eapply tc_rtc_l.
-        + apply fill_tstep_rtc. instantiate (1 := σs'). instantiate (1 := EndCall vs').
-          (* EndCallCtx *)
-          clear -x.
-          unguardH x. destruct x as [STEP|[_ EQ]].
-          * by apply tc_rtc, (fill_tstep_tc _ [EndCallCtx]).
-          * inversion EQ. econs.
-        + (* EndCall step *)
-          apply tc_once; eauto.
-      - right. apply CIH. simpl in STEP1.
-        econs; eauto; cycle 1.
+      - right. apply CIH. econs; eauto.
         + rewrite fill_app. eauto.
         + rewrite fill_app. eauto.
-        + admit. (* wsat after return HAI: property of wsat *)
-                 (* TODO: extract from sim_body_end_call *)
-        + admit.
+        + rewrite <-cmra_assoc in WSAT2; eauto.
     }
 
     subst. clear H. inv sim_local_body_step.
@@ -211,20 +197,13 @@ Proof.
           econs; econs; eauto. }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
-          destruct (CONT _ _ _ σ_src' σ_tgt' VRET). admit.
-          pclearbot. esplits; eauto.
-          (* eapply sim_local_body_post_mono; [|apply H]. simpl. naive_solver. *) }
-        { rewrite -(fill_app [EndCallCtx]). eauto. }
-        { rewrite -(fill_app [EndCallCtx]). eauto. }
-        
-        { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
           destruct (CONT _ _ _ σ_src' σ_tgt' VRET).
           pclearbot. esplits; eauto.
           (* eapply sim_local_body_post_mono; [|apply H]. simpl. naive_solver. *) }
         { eapply sim_local_body_post_mono; [|apply SIMf]. simpl. naive_solver. }
-        { s. ss. }
+        { done. }
         { s. rewrite -fill_app. eauto. }
-        { s. rewrite -cmra_assoc; eauto. }
-Admitted.
+        { ss. rewrite -cmra_assoc; eauto. }
+Qed.
 
 End local.

@@ -88,9 +88,25 @@ Proof.
   exists e3. split; [done|]. by econstructor.
 Qed.
 
+Lemma fill_tstep_inv' K e1 σ1 e2 σ2 :
+  to_result e1 = None →
+  (fill K e1, σ1) ~{fns}~> (fill K e2, σ2) →
+  (e1, σ1) ~{fns}~> (e2, σ2).
+Proof.
+  intros EqN STEP. apply fill_tstep_inv in STEP as [? [? ?]]; [|done].
+  by simplify_eq.
+Qed.
+
 Lemma result_tstep_stuck e σ e' σ' :
   (e, σ) ~{fns}~> (e', σ') → to_result e = None.
 Proof. intros. inv_tstep. by eapply fill_not_result, (result_head_stuck fns). Qed.
+
+Lemma result_tstep_tc_stuck e σ e' σ' :
+  (e, σ) ~{fns}~>+ (e', σ') → to_result e = None.
+Proof.
+  inversion 1 as [?? ST|?[]? ST]; inv_tstep;
+    by eapply fill_not_result, (result_head_stuck fns).
+Qed.
 
 Lemma tstep_reducible_fill_inv K e σ :
   to_result e = None →
@@ -462,6 +478,20 @@ Proof.
   - apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
     + by eexists.
     + by rewrite /= HS in Eq1'.
+Qed.
+
+Lemma tstep_end_call_inv_tc vr e' σ σ'
+  (TERM: terminal vr)
+  (STEP: (EndCall vr, σ) ~{fns}~>+ (e', σ')) :
+  ∃ v, to_result vr = Some (ValR v) ∧ e' = Val v ∧
+  ∃ c cids, σ.(scs) = c :: cids ∧
+  σ' = mkState σ.(shp) σ.(sst) cids σ.(snp) σ.(snc).
+Proof.
+  inversion STEP as [?? ST|?[]? ST STT]; simplify_eq.
+  - apply tstep_end_call_inv in ST; done.
+  - apply tstep_end_call_inv in ST as (?&?&?&?); [|done].
+    simplify_eq.
+    inversion STT as [?? STT2|?[]? STT2]; by apply result_tstep_stuck in STT2.
 Qed.
 
 (** Copy *)

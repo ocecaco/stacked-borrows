@@ -60,7 +60,7 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
              (* For any new resource r' that supports the returned values are
                 related w.r.t. (r ⋅ r' ⋅ r_f) *)
              (VRET: vrel r' (Val v_src) (Val v_tgt))
-             (STACK: σt'.(scs) = σt.(scs)),
+             (* (STACK: σt'.(scs) = σt.(scs)) *),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
                                (fill Ks (Val v_src)) σs'
                                (fill Kt (Val v_tgt)) σt' Φ).
@@ -118,17 +118,9 @@ Proof.
     exists es', σs', r', idx'. do 2 (split; [done|]).
     pclearbot. right. eapply CIH; eauto.
   - econstructor 2; eauto. intros.
-    destruct (CONT _ _ _ σs' σt' VRET STACK) as [idx' SIM'].
+    destruct (CONT _ _ _ σs' σt' VRET (* STACK *)) as [idx' SIM'].
     exists idx'. pclearbot. right. eapply CIH; eauto.
 Qed.
-
-Lemma sim_local_elim_terminal r n es σs eσt eσt' Φ :
-  eσt ~{fnt}~>* eσt' → terminal eσt'.1 → never_stuck fns es σs →
-  sim_local_body r n es σs eσt.1 eσt.2 Φ →
-  ∃ es' σs' et' σt' r' idx', Φ r' idx' es' σs' et' σt'.
-Proof.
-  intros STEP. revert r n es σs. induction STEP.
-Abort.
 
 (* Simulating functions:
   - We start after the substitution.

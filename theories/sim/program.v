@@ -20,26 +20,28 @@ Proof.
   - econs 1.
   - ss.
   - ss.
-  - eapply (sim_body_step_into_call _ _ _ _ _ [] ebs HCs [] ebs [] ebt HCt [] ebt);
+  - eapply (sim_body_step_over_call _ _ [] [] init_res ε _ _ [] [] ebt ebt [] ).
+    done. done. done. done. done.
+    intros. simpl. exists 1%nat.
+    apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).
+    intros.
+    have ?: vrel_expr (init_res ⋅ r') (of_result #vs) (of_result #vt).
+    { do 2 eexists. do 2 (split; [done|]).
+      eapply vrel_mono; [done|apply cmra_included_r|done]. }
+    split; last split; [done| |done].
+    (* 
+     eapply (sim_body_step_into_call _ _ _ _ _ [] ebs HCs [] ebs [] ebt HCt [] ebt);
       [done..|].
     eapply (sim_body_bind _ _ _ _ [EndCallCtx] [EndCallCtx] (InitCall ebs) (InitCall ebt)).
     eapply sim_local_body_post_mono; [|exact SIM].
     clear SIM. simpl.
     intros r1 idx1 vs σs vt σt ([c Eqc] & ESAT & (v1 & v2 & Eq1 & Eq2 & VREL)).
     rewrite Eq1 Eq2. eapply (sim_body_end_call); [done..|].
-    intros c1 c2 cids1 cids2 Eqcs1 Eqcs2 σs' σt' r'.
-    split; last by do 2 eexists.
+    intros c1 c2 cids1 cids2 Eqcs1 Eqcs2 σs' σt' r' WF VREL'. split; [|done].
     rewrite Eqc in Eqcs2. simplify_eq.
     rewrite /end_call_sat /=.
     intros ??. simplify_eq.
-    intros.
+    intros. *)
     admit.
-    (* eapply (sim_body_step_into_call _ _ _ _ _ [] ebs HCs [] ebs [] ebt HCt [] ebt);
-      [done..|].
-    eapply (sim_body_bind _ _ _ _ [EndCallCtx] [EndCallCtx] (InitCall ebs) (InitCall ebt)).
-    eapply sim_local_body_post_mono; [|exact SIM].
-    clear SIM. simpl.
-    intros r1 idx1 vs σs vt σt [ESAT (v1 & v2 & Eq1 & Eq2 & VREL)].
-    rewrite Eq1 Eq2. by apply sim_body_end_call. *)
   - instantiate (1:=init_res). rewrite right_id. apply wsat_init_state.
 Qed.
