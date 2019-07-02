@@ -546,4 +546,36 @@ Proof.
     + by rewrite Eq1' in HS.
 Qed.
 
+(** Retag *)
+
+Lemma fill_retag_decompose K e kind e':
+  fill K e = Retag e' kind →
+  K = [] ∧ e = Retag e' kind ∨ (∃ K', K = K' ++ [RetagCtx kind] ∧ fill K' e = e').
+Proof.
+  revert e e'.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e' EqK. right.
+  destruct (IH _ _ EqK) as [[? _]|[K0 [? Eq0]]].
+  - subst. simpl in *. destruct Ki; try done.
+    simpl in EqK. simplify_eq. exists []. naive_solver.
+  - subst K. by exists (Ki :: K0).
+Qed.
+
+Lemma tstep_retag_inv x tg T pk rk e' σ σ'
+  (STEP: (Retag (Place x tg (Reference pk T)) rk, σ) ~{fns}~> (e', σ')) :
+  ∃ c cids h' α' nxtp',
+  σ.(scs) = c :: cids ∧
+  retag σ.(shp) σ.(sst) σ.(snp) σ.(scs) c x rk (Reference pk T)
+    = Some (h', α', nxtp') ∧
+  e' = #[☠]%V ∧
+  σ' = mkState h' α' σ.(scs) nxtp' σ.(snc).
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_retag_decompose _ _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
+  - clear Eq. simpl in HS. inv_head_step. naive_solver.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq'. by eexists.
+    + by rewrite Eq1' in HS.
+Qed.
+
 End inv.

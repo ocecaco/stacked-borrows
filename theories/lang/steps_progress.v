@@ -1146,6 +1146,17 @@ Proof.
   econstructor.
 Abort.
 
+Lemma retag1_head_step' fns σ x xbor pk T kind c' cids' h' α' nxtp':
+  σ.(scs) = c' :: cids' →
+  retag σ.(shp) σ.(sst) σ.(snp) σ.(scs) c' x kind (Reference pk T) = Some (h', α', nxtp') →
+  let σ' := mkState h' α' σ.(scs) nxtp' σ.(snc) in
+  head_step fns (Retag (Place x xbor (Reference pk T)) kind) σ
+            [RetagEvt x (Reference pk T) kind] #[☠] σ' [].
+Proof.
+  econstructor. { econstructor; eauto. } simpl.
+  econstructor; eauto.
+Qed.
+
 Lemma retag1_head_step fns σ x xbor pk T kind
   (BAR: ∃ c, c ∈ σ.(scs))
   (LOC: valid_location σ.(shp) σ.(sst) σ.(scs) x pk T)
@@ -1162,9 +1173,9 @@ Proof.
   destruct (retag1_is_freeze_is_Some h α nxtp (c::cids') c x kind pk T) as [[[h' α'] nxtp'] Eq];
     [apply WF|by destruct kind..|done|].
   exists c, cids', h', α' , nxtp'. do 2 (split; [done|]).
-  econstructor. { econstructor; eauto. } simpl.
-  econstructor; eauto.
+  eapply retag1_head_step'; eauto.
 Qed.
+
 
 (* Lemma syscall_head_step σ id :
   head_step (SysCall id) σ [SysCallEvt id] #☠ σ [].

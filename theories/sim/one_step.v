@@ -318,6 +318,119 @@ Proof.
       apply Lt. by lia.
 Qed.
 
+Lemma retag_ref_change_1 h α cids c nxtp x rk mut T h' α' nxtp'
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
+  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
+  ∃ rk' new,
+    h' = <[x := ScPtr l new]>h ∧
+    retag_ref h α cids nxtp l otag T rk' (adding_protector rk c) =
+      Some (new, α', nxtp') ∧
+    rk' = if mut then UniqueRef (is_two_phase rk) else SharedRef.
+Proof.
+  rewrite retag_equation_2 /=.
+  destruct (h !! x) as [[| |l t|]|]; simpl; [done..| |done|done].
+  destruct mut; (case retag_ref as [[[t1 α1] n1]|] eqn:Eq => [/=|//]);
+    intros; simplify_eq; exists l, t; (split; [done|]);
+    eexists; exists t1; done.
+Qed.
+
+Lemma retag_ref_change_2
+  h α cids c nxtp l otag rk (mut: mutability) T new α' nxtp'
+  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  let rk' := if mut then UniqueRef false else SharedRef in
+  let opro := (adding_protector rk c) in
+  retag_ref h α cids nxtp l otag T rk' opro = Some (new, α', nxtp') →
+  nxtp' = S nxtp ∧ new = Tagged nxtp ∧
+  reborrowN α cids l (tsize T) otag (Tagged nxtp)
+            (if mut then Unique else SharedReadOnly) opro = Some α'.
+Proof.
+  intros rk' opro. rewrite /retag_ref. destruct (tsize T) as [|n] eqn:EqT; [lia|].
+  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //];
+    case reborrowN as [α1|] eqn:Eq1 => [/=|//]; intros; simplify_eq; by rewrite -EqT.
+Qed.
+
+Lemma retag_ref_change h α cids c nxtp x rk mut T h' α' nxtp'
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
+  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
+    h' = <[x := ScPtr l (Tagged nxtp)]>h ∧
+    nxtp' = S nxtp ∧
+    reborrowN α cids l (tsize T) otag (Tagged nxtp)
+            (if mut then Unique else SharedReadOnly) (adding_protector rk c) = Some α'.
+Proof.
+  intros RT.
+  apply retag_ref_change_1 in RT
+    as (l & otag & EqL & rk' & new & Eqh & RT &?); [|done..].
+  subst. exists l, otag. split; [done|].
+  rewrite (_: is_two_phase rk = false) in RT; [|by destruct rk].
+  apply retag_ref_change_2 in RT as (?&?&?); [|done..]. by subst new.
+Qed.
+
+Lemma retag_ref_reborrowN
+  (h: mem) α t cids c x l otg T rk (mut: mutability) α'
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  h !! x = Some (ScPtr l otg) →
+  reborrowN α cids l (tsize T) otg (Tagged t)
+     (if mut then Unique else SharedReadOnly) (adding_protector rk c) =
+     Some α' →
+  retag h α t cids c x rk (Reference (RefPtr mut) T) = Some (<[x:=ScPtr l (Tagged t)]> h, α', S t).
+Proof.
+  intros Eqx RB. rewrite retag_equation_2 Eqx /= /retag_ref.
+  destruct (tsize T) eqn:EqT; [lia|].
+  rewrite (_: is_two_phase rk = false); [|by destruct rk].
+  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //]; rewrite EqT RB /= //.
+Qed.
+
+Lemma sim_body_retag_default fs ft r n x xtag mut T σs σt Φ
+  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) (Eqx: σs.(shp) = σt.(shp)) :
+  let Tr := (Reference (RefPtr mut) T) in
+  (∀ c cids hs' αs' nps' ht' αt' npt' (STACK: σt.(scs) = c :: cids),
+    retag σt.(shp) σt.(sst) σt.(snp) σt.(scs) c x Default Tr
+      = Some (ht', αt', npt') →
+    retag σs.(shp) σs.(sst) σs.(snp) σs.(scs) c x Default Tr
+      = Some (hs', αs', nps') →
+    let σs' := mkState hs' αs' σs.(scs) nps' σs.(snc) in
+    let σt' := mkState ht' αt' σt.(scs) npt' σt.(snc) in
+      Φ r n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
+  r ⊨{n,fs,ft}
+    (Retag (Place x xtag Tr) Default, σs) ≥
+    (Retag (Place x xtag Tr) Default, σt) : Φ.
+Proof.
+  intros Tr POST. pfold. intros NT. intros.
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  split; [|done|].
+  { right.
+    edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
+    (* inversion retag of src *)
+    destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPS)
+      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst es'.
+    apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
+    subst h' nxtp'. destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
+    rewrite Eqx in Eqx'. rewrite Eqst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
+    (* retag of tgt *)
+    exists (#[☠])%V,
+      (mkState (<[x:=ScPtr l (Tagged σt.(snp))]> σt.(shp)) α' σt.(scs) (S σt.(snp)) σt.(snc)).
+    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
+    eapply retag_ref_reborrowN; eauto. }
+  constructor 1.
+  intros.
+  (* inversion retag of tgt *)
+  destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPT)
+      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst et'.
+  apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
+  subst h' nxtp'.
+  exists (#[☠])%V,
+      (mkState (<[x:=ScPtr l (Tagged σs.(snp))]> σs.(shp)) α' σs.(scs) (S σs.(snp)) σs.(snc)).
+  exists r, n. split; last split.
+  { left. apply tc_once.
+    destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
+    rewrite -Eqx in Eqx'. rewrite -Eqst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
+    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
+    eapply retag_ref_reborrowN; eauto. }
+  { split.
+Abort.
+
 Lemma sim_body_write_related_values
   fs ft (r: resUR) k0 h0 n l tg Ts Tt v σs σt Φ
   (EQS: tsize Ts = tsize Tt)
@@ -330,9 +443,9 @@ Lemma sim_body_write_related_values
             (<[tg := (to_tagKindR tkUnique,  write_heaplet l v h0)]> r.1, r.2)
             else r in
   (∀ α', memory_written σt.(sst) σt.(scs) l (Tagged tg) (tsize Tt) = Some α' →
-      let σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
-      let σt' := mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
-      Φ r' n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
+    let σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
+    let σt' := mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
+    Φ r' n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
   r ⊨{n,fs,ft}
     (Place l (Tagged tg) Ts <- #v, σs) ≥ (Place l (Tagged tg) Tt <- #v, σt) : Φ.
 Proof.
@@ -341,8 +454,7 @@ Proof.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   split; [|done|].
   { right.
-    destruct (NT (Place l (Tagged tg) Ts <- #v)%E σs)
-      as [[]|[es' [σs' STEPS]]]; [done..|].
+    edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
     destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPS)
       as (α' & ? & Eqα' & EqD & IN & EQL & ?).
     subst es'. setoid_rewrite <-(srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
