@@ -60,8 +60,7 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
              (* For any new resource r' that supports the returned values are
                 related w.r.t. (r ⋅ r' ⋅ r_f) *)
              (VRET: vrel r' (Val v_src) (Val v_tgt))
-             (* Stack unchanged *)
-             (STACK: σt'.(sst) = σt.(sst)),
+             (STACK: σt'.(scs) = σt.(scs)),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
                                (fill Ks (Val v_src)) σs'
                                (fill Kt (Val v_tgt)) σt' Φ).
@@ -141,7 +140,10 @@ Definition sim_local_fun
           end),
     ∃ idx, sim_local_body r idx
                           (InitCall es) σs (InitCall et) σt
-                          (λ r _ vs σs vt σt, esat r σs σt ∧ vrel r (of_result vs) (of_result vt)).
+                          (λ r' _ vs' σs' vt' σt',
+                            (∃ c, σt'.(scs) = c :: σt.(scs)) ∧
+                            esat r' σs' σt' ∧
+                            vrel r' (of_result vs') (of_result vt')).
 
 Definition sim_local_funs (esat: A → state → state → Prop) : Prop :=
   ∀ name fn_tgt, fnt !! name = Some fn_tgt → ∃ fn_src,

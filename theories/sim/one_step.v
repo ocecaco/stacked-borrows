@@ -127,6 +127,20 @@ Qed.
 (** MEM STEP -----------------------------------------------------------------*)
 
 (** Copy *)
+Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ
+  (EQS: tsize Ts = tsize Tt)
+  (PUBLIC: ∃ (h: heapletR), r.1 !! t ≡ Some (to_tagKindR tkPub, h)) :
+  (∀ vs vt,
+    read_mem l (tsize Ts) σs.(shp) = Some vs →
+    read_mem l (tsize Tt) σt.(shp) = Some vt →
+    ∀ α', memory_read σt.(sst) σt.(scs) l (Tagged t) (tsize Tt) = Some α' →
+      let σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc) in
+      let σt' := mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc) in
+      vrel r vs vt → Φ r n (ValR vs) σs' (ValR vt) σt' : Prop) →
+  r ⊨{n,fs,ft} (Copy (Place l (Tagged t) Ts), σs) ≥ (Copy (Place l (Tagged t) Tt), σt) : Φ.
+Proof.
+Abort.
+
 Lemma sim_body_copy fs ft r n l tg Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt) :
   (∀ vs vt,
@@ -639,15 +653,22 @@ Proof.
   econstructor. by econstructor. econstructor. by rewrite -Eqcs'.
 Qed.
 
-Lemma sim_body_end_call fs ft r n vs vt σs σt :
+Lemma sim_body_end_call fs ft r n vs vt σs σt Φ :
   (* return values are related *)
   vrel r vs vt →
   (* and any private location w.r.t to the current call id ownership must be related *)
   end_call_sat r σs σt →
-  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) :
-    (λ r _ vs _ vt _, vrel_expr r (of_result vs) (of_result vt)).
+  (∀ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 → σt.(scs) = c2 :: cids2 →
+      let σs' := mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) in
+      let σt' := mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) in
+      let r2' := match (r.2 !! c2) with
+                 | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r.2
+                 | _ => r.2
+                 end in
+      Φ (r.1, r2') n (ValR vs) σs' (ValR vt) σt' : Prop) →
+  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ.
 Proof.
-  intros VREL ESAT. pfold. intros NT r_f WSAT.
+  intros VREL ESAT POST. pfold. intros NT r_f WSAT.
   split; [|done|].
   { right.
     destruct (NT (EndCall #vs) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
@@ -668,10 +689,11 @@ Proof.
              | Some (Cinl (Excl T)) => <[c := to_callStateR csPub]> r.2
              | _ => r.2
              end.
-  exists (r.1, r2'), (S n). split; last split.
+  exists (r.1, r2'), (S n).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  split; last split.
   { left. by constructor 1. }
-  { destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
-    destruct r_f as [r_f1 r_f2].
+  { destruct r_f as [r_f1 r_f2].
     have VALID': ✓ ((r_f1, r_f2) ⋅ (r.1, r2')).
     { apply (local_update_discrete_valid_frame _ _ _ VALID).
       destruct (r.2 !! c) as [[[T|]| |]|] eqn:Eqr2; rewrite /r2'; [|by destruct r..].
@@ -735,7 +757,8 @@ Proof.
     exists (ValR vs). do 2 eexists. exists n. split; last split.
     { right. split; [lia|]. eauto. }
     { eauto. }
-    exists vs, vt. do 2 (split; [done|]). by apply (Forall2_impl _ _ _ _ VREL). }
+    destruct SREL as (?&?&Eqs&?).
+    eapply POST; eauto. by rewrite Eqs. }
   { left. by eexists. }
 Qed.
 
@@ -751,7 +774,7 @@ Lemma sim_body_step_over_call fs ft
   (FT: ft !! fid = Some (@FunV xlt et HCt))
   (VT : Forall (λ ei, is_Some (to_value ei)) elt)
   (ST: subst_l xlt elt et = Some et') :
-  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt) (STACK: σt'.(sst) = σs.(sst)), ∃ n',
+  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt), ∃ n',
     rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≥ (fill Kt (Val vt), σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
     (fill Ks (Call #[ScFnPtr fid] els), σs) ≥ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
@@ -762,11 +785,9 @@ Proof.
   { intros vt. by rewrite fill_not_result. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks _ fid elt els); eauto; [done|].
-  intros r' ? ? σs' σt' (vs&vt&?&?&VR) STK. simplify_eq.
+  intros r' ? ? σs' σt' (vs&vt&?&?&VR). simplify_eq.
   destruct (CONT _ _ _ σs' σt' VR) as [n' ?].
-  - destruct WSAT as (?&?&?&?&?&SREL).
-    destruct SREL as (Eqst&?&?). by rewrite Eqst.
-  - exists n'. by left.
+  exists n'. by left.
 Qed.
 
 (** Call - step into *)
