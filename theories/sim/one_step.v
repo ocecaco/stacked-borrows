@@ -270,7 +270,7 @@ Proof.
     destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc & PRIV).
     destruct (read_mem_values _ _ _ _ Eqvs) as [Eqls HLs].
     destruct (read_mem_values _ _ _ _ Eqvt) as [Eqlt HLt].
-    (* apply Forall2_same_length_lookup. split; [by rewrite Eqls Eqlt|].
+    apply Forall2_same_length_lookup. split; [by rewrite Eqls Eqlt|].
     intros i ss st Hss Hst.
     have HLLs := lookup_lt_Some _ _ _ Hss. have HLLt := lookup_lt_Some _ _ _ Hst.
     rewrite -Eqls in HLs. specialize (HLs _ HLLs). rewrite Hss in HLs.
@@ -279,8 +279,10 @@ Proof.
     { rewrite HLs in Eqss'. symmetry in Eqss'. simplify_eq. move: AREL.
       destruct ss as [| |l1 [t1|]|], st as [| |l2 [t2|]|]; auto; simpl; [|by intros [?[]]].
       intros [? [? [h' Eqh']]]. simplify_eq. do 2 (split; [done|]).
-         admit. }
-    destruct PV as (c' & T' & h' & Eqci & InT'). *)
+      exists h'. by apply ptrmap_lookup_core_pub. }
+    destruct PV as (c' & T' & h' & Eqci & InT').
+    (* impossible: t' is protected by c' which is still active.
+      So t ≠ t' and protected(t',c') is on top of (l +ₗ i), so access with t is UB *)
     admit.
   }
   exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), (S n). split; last split.

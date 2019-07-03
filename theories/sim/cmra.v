@@ -182,8 +182,5 @@ Qed.
 
 Lemma ptrmap_lookup_core_pub (pm: ptrmapUR) t h:
   pm !! t ≡ Some (to_tagKindR tkPub, h) →
-  (pm ⋅ core pm) !! t ≡ Some (to_tagKindR tkPub, h).
-Proof.
-  intros Eq. rewrite lookup_op lookup_core Eq /core /=. rewrite core_id.
-  by rewrite -Some_op pair_op Cinr_op agree_idemp -(heaplet_core h) -cmra_core_dup.
-Qed.
+  core pm !! t ≡ Some (to_tagKindR tkPub, h).
+Proof. intros Eq. rewrite lookup_core Eq /core /= core_id //. Qed.
