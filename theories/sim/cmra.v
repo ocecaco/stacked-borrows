@@ -170,3 +170,20 @@ Proof.
     intros [Eq1 Eq2]%Some_equiv_inj; [|done].
   destruct k as [[[]|]| |]; inversion Eq1; simplify_eq.
 Qed.
+
+(** The Core *)
+
+Lemma heaplet_core (h: heapletR) : core h = h.
+Proof.
+  apply (map_eq (M:=gmap loc)).
+  intros l. rewrite lookup_core.
+  by destruct (h !! l) as [s|] eqn:Eql; rewrite Eql.
+Qed.
+
+Lemma ptrmap_lookup_core_pub (pm: ptrmapUR) t h:
+  pm !! t ≡ Some (to_tagKindR tkPub, h) →
+  (pm ⋅ core pm) !! t ≡ Some (to_tagKindR tkPub, h).
+Proof.
+  intros Eq. rewrite lookup_op lookup_core Eq /core /=. rewrite core_id.
+  by rewrite -Some_op pair_op Cinr_op agree_idemp -(heaplet_core h) -cmra_core_dup.
+Qed.

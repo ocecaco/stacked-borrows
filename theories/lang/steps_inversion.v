@@ -129,6 +129,14 @@ Proof.
   by do 2 eexists.
 Qed.
 
+Lemma never_stuck_val v σ :
+  never_stuck fns (Val v) σ.
+Proof.
+  intros ??. inversion 1 as [|? [] ? ST].
+  - left. by eexists.
+  - simplify_eq. by apply result_tstep_stuck in ST.
+Qed.
+
 Lemma never_stuck_fill_inv K e σ :
   never_stuck fns (fill K e) σ → never_stuck fns e σ.
 Proof.
