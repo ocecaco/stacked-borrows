@@ -22,6 +22,7 @@ theories/sim/local_adequacy.v
 theories/sim/program.v
 theories/sim/sflib.v
 theories/sim/one_step.v
-theories/opt/foo.v
+theories/opt/ex1.v
 theories/opt/ex1_2.v
+theories/opt/ex2.v
 theories/opt/ex2_2.v

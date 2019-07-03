@@ -40,7 +40,6 @@ Notation "# v" := (Val v%V%R%L) (at level 8, format "# v") : expr_scope.
 
 (** Some common types *)
 Notation int := (FixedSize 1).
-Notation int_arr n := (FixedSize n).
 Notation "'&mut' T" := (Reference (RefPtr Mutable) T%T)
   (at level 8, format "&mut  T") : lrust_type.
 Notation "'&' T" := (Reference (RefPtr Immutable) T%T)
