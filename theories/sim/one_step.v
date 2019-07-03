@@ -1059,7 +1059,7 @@ Lemma sim_body_step_over_call fs ft
   (FT: ft !! fid = Some (@FunV xlt et HCt))
   (VT : Forall (λ ei, is_Some (to_value ei)) elt)
   (ST: subst_l xlt elt et = Some et') :
-  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt), ∃ n',
+  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt) (STACK: σt.(scs) = σt'.(scs)), ∃ n',
     rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≥ (fill Kt (Val vt), σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
     (fill Ks (Call #[ScFnPtr fid] els), σs) ≥ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
@@ -1070,8 +1070,8 @@ Proof.
   { intros vt. by rewrite fill_not_result. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks _ fid elt els); eauto; [done|].
-  intros r' ? ? σs' σt' (vs&vt&?&?&VR). simplify_eq.
-  destruct (CONT _ _ _ σs' σt' VR) as [n' ?].
+  intros r' ? ? σs' σt' (vs&vt&?&?&VR) STACK. simplify_eq.
+  destruct (CONT _ _ _ σs' σt' VR STACK) as [n' ?].
   exists n'. by left.
 Qed.
 

@@ -77,6 +77,17 @@ Proof.
   destruct cs' as [[]|c2|]; auto; try inversion 1.
 Qed.
 
+Lemma cmap_lookup_op_l_equiv_pub (cm1 cm2: cmapUR) c (VALID: ✓ (cm1 ⋅ cm2)):
+  cm1 !! c ≡ Some (to_callStateR csPub) →
+  (cm1 ⋅ cm2) !! c ≡ Some (to_callStateR csPub).
+Proof.
+  intros HL. move : (VALID c). rewrite lookup_op HL.
+  destruct (cm2 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
+  rewrite -Some_op Some_valid.
+  destruct cs' as [[]|c2|]; auto; try inversion 1.
+  rewrite /= Cinr_op. intros Eq2%agree_op_inv. by rewrite -Eq2 agree_idemp.
+Qed.
+
 Lemma cmap_insert_op_r (cm1 cm2: cmapUR) c T cs (VALID: ✓ (cm1 ⋅ cm2)):
   cm2 !! c = Some (to_callStateR (csOwned T)) →
   cm1 ⋅ <[c:=cs]> cm2 = <[c:=cs]> (cm1 ⋅ cm2).
@@ -88,6 +99,15 @@ Proof.
   case (decide (c' = c)) => [->|?].
   - by rewrite 2!lookup_insert Eqc.
   - do 2 (rewrite lookup_insert_ne //). by rewrite lookup_op.
+Qed.
+
+Lemma callStateR_exclusive_2 T mb :
+  mb ⋅ Some (to_callStateR csPub) ≡ Some (to_callStateR (csOwned T)) → False.
+Proof.
+  destruct mb as [cs|]; [rewrite -Some_op|rewrite left_id];
+    intros Eq%Some_equiv_inj.
+  - destruct cs; inversion Eq.
+  - inversion Eq.
 Qed.
 
 Lemma ptrmap_insert_op_r (pm1 pm2: ptrmapUR) t h0 kh (VALID: ✓ (pm1 ⋅ pm2)):
