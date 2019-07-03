@@ -54,31 +54,39 @@ Proof.
     right. eapply CIH; eauto.
 Qed.
 
-Lemma sim_body_frame fs ft n rf r es σs et σt Φ :
-  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
-  rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
+Lemma sim_body_frame' fs ft n (rf r: resUR) es σs et σt Φ :
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
+  ∀ (r': resUR), r' ≡ rf ⋅ r →
+    r' ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
     (λ r' n' es' σs' et' σt', ∃ r0, r' ≡ rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
 Proof.
   revert n rf r es σs et σt Φ. pcofix CIH.
-  intros n rf r0 es σs et σt Φ SIM.
+  intros n rf r0 es σs et σt Φ SIM r' EQ'.
   pfold. punfold SIM.
-  intros NT r_f. rewrite cmra_assoc. intros WSAT.
+  intros NT r_f WSAT.
+  rewrite ->EQ', ->(cmra_assoc r_f rf r0) in WSAT.
   specialize (SIM NT _ WSAT) as [SU TE ST]. split; [done|..].
-  { intros. destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & POST).
-    exists vs', σs', (rf ⋅ r'), idx'.
-    split; last split; [done|by rewrite cmra_assoc|by exists r']. }
+  { intros. destruct (TE _ TERM) as (vs' & σs' & r2 & idx' & STEP' & WSAT' & POST).
+    exists vs', σs', (rf ⋅ r2), idx'.
+    split; last split; [done|by rewrite cmra_assoc|by exists r2]. }
   inversion ST.
   - constructor 1. intros.
-    specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEPS' & WSAT' & SIM').
-    exists es', σs', (rf ⋅ r'), idx'.
+    specialize (STEP _ _ STEPT) as (es' & σs' & r2 & idx' & STEPS' & WSAT' & SIM').
+    exists es', σs', (rf ⋅ r2), idx'.
     split; last split; [done|by rewrite cmra_assoc|].
-    pclearbot. right. by apply CIH.
+    pclearbot. right. by eapply CIH.
   - econstructor 2; eauto.
     { instantiate (1:= (rf ⋅ rc)). by rewrite -cmra_assoc (cmra_assoc r_f). }
     intros.
     specialize (CONT _ _ _ σs' σt' VRET STACK) as [idx' SIM'].
-    exists idx'. pclearbot. right. Fail apply CIH.
-Abort.
+    exists idx'. pclearbot. right. eapply CIH; eauto. by rewrite cmra_assoc.
+Qed.
+
+Lemma sim_body_frame fs ft n (rf r: resUR) es σs et σt Φ :
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
+  rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
+    (λ r' n' es' σs' et' σt', ∃ r0, r' ≡ rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
+Proof. intros. eapply sim_body_frame'; eauto. Qed.
 
 Lemma sim_body_result fs ft r n es et σs σt Φ :
   (✓ r → vrel_expr r (of_result es) (of_result et) ∧ Φ r n es σs et σt : Prop) →
