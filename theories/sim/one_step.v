@@ -49,7 +49,7 @@ Proof.
     pclearbot. right. eapply CIH; eauto.
   - econstructor 2; eauto.
     intros.
-    destruct (CONT _ _ _ σs' σt' VRET (* STACK *)) as [idx' SIM'].
+    destruct (CONT _ _ _ σs' σt' VRET STACK) as [idx' SIM'].
     exists idx'. pclearbot.
     right. eapply CIH; eauto.
 Qed.
@@ -159,8 +159,8 @@ Proof.
         { pclearbot. left. eapply paco7_mon_bot; eauto. }
       + eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             Ks1 Kt1 fid el_tgt _ _ _ _ CALLTGT); eauto; [by etrans|].
-        intros r4 vs4 vt4 σs4 σt4 VREL4 (* STACK4 *).
-        destruct (CONT _ _ _ σs4 σt4 VREL4 (* STACK4 *)) as [idx4 CONT4].
+        intros r4 vs4 vt4 σs4 σt4 VREL4 STACK4.
+        destruct (CONT _ _ _ σs4 σt4 VREL4 STACK4) as [idx4 CONT4].
         exists idx4. pclearbot. left.  eapply paco7_mon_bot; eauto.
     - (* et makes a step *)
       constructor 1. intros.
@@ -176,8 +176,8 @@ Proof.
     eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             (Ks1 ++ Ks) (Kt1 ++ Kt) fid el_tgt); [by rewrite CALLTGT fill_app|..];
             eauto; [rewrite fill_app; by apply fill_tstep_rtc|].
-    intros r' vs' vt' σs' σt' VREL' (* STACK' *).
-    destruct (CONT _ _ _ σs' σt' VREL' (* STACK' *)) as [idx' CONT2]. clear CONT.
+    intros r' vs' vt' σs' σt' VREL' STACK'.
+    destruct (CONT _ _ _ σs' σt' VREL' STACK') as [idx' CONT2]. clear CONT.
     exists idx'. rewrite 2!fill_app.
     pclearbot. right. by apply CIH. }
 Qed.

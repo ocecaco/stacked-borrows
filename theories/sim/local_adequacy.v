@@ -20,39 +20,44 @@ Variable (fns fnt: fn_env).
 
 Record frame: Type := mk_frame {
   rc: resUR;
+  callids: list nat;
   K_src: list (ectxi_language.ectx_item (bor_ectxi_lang fns));
   K_tgt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt));
 }.
 
 Inductive sim_local_frames:
   forall (r_f: resUR)
+    (callids: list nat)
     (K_src: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
     (K_tgt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt)))
     (frames:list frame),
     Prop :=
 | sim_local_frames_nil
     r_f
-  : sim_local_frames r_f nil nil nil
+  : sim_local_frames r_f nil nil nil nil
 | sim_local_frames_cons
-    r_f K_f_src K_f_tgt
+    r_f cids K_f_src K_f_tgt
     frame frames
-    (FRAMES: sim_local_frames r_f K_f_src K_f_tgt frames)
+    (FRAMES: sim_local_frames r_f cids K_f_src K_f_tgt frames)
     (CONTINUATION:
        ∀ r' v_src v_tgt σ_src' σ_tgt'
          (* For any new resource r' that are compatible with
              our local resource r and have world satisfaction *)
          (WSAT' : wsat (r_f ⋅ (frame.(rc) ⋅ r')) σ_src' σ_tgt')
          (* and the returned values are related w.r.t. (r ⋅ r' ⋅ r_f) *)
-         (VRET  : vrel_expr r' (Val v_src) (Val v_tgt)),
+         (VRET  : vrel_expr r' (Val v_src) (Val v_tgt))
+         (CIDS: σ_tgt'.(scs) = frame.(callids)),
          ∃ idx', sim_local_body wsat vrel_expr fns fnt
                                 (frame.(rc) ⋅ r') idx'
                                 (fill frame.(K_src) (Val v_src)) σ_src'
                                 (fill frame.(K_tgt) (Val v_tgt)) σ_tgt'
                                 (λ r _ vs σs vt σt,
+                                  (∃ c, σt.(scs) = c :: cids) ∧
                                   end_call_sat r σs σt ∧
                                   vrel_expr r (of_result vs) (of_result vt)))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
+      frame.(callids)
       (EndCallCtx :: frame.(K_src) ++ K_f_src)
       (EndCallCtx :: frame.(K_tgt) ++ K_f_tgt)
       (frame :: frames)
@@ -61,12 +66,13 @@ Inductive sim_local_frames:
 Inductive sim_local_conf:
   forall (idx:nat) (e_src:expr) (σ_src:state) (e_tgt:expr) (σ_tgt:state), Prop :=
 | sim_local_conf_intro
-    r_f K_src K_tgt frames
+    r_f cids K_src K_tgt frames
     rc idx e_src σ_src e_tgt σ_tgt
     Ke_src Ke_tgt
-    (FRAMES: sim_local_frames r_f K_src K_tgt frames)
+    (FRAMES: sim_local_frames r_f cids K_src K_tgt frames)
     (LOCAL: sim_local_body wsat vrel_expr fns fnt rc idx e_src σ_src e_tgt σ_tgt
                            (λ r _ vs σs vt σt,
+                              (∃ c, σt.(scs) = c :: cids) ∧
                               end_call_sat r σs σt ∧
                               vrel_expr r (of_result vs) (of_result vt)))
     (KE_SRC: Ke_src = fill K_src e_src)
@@ -89,7 +95,7 @@ Proof.
     destruct sim_local_body_stuck as [vt Eqvt].
     rewrite -(of_to_result _ _ Eqvt).
     destruct (sim_local_body_terminal _ Eqvt)
-      as (vs' & σs' & r' & idx' & SS' & WSAT' & ESAT' & VREL).
+      as (vs' & σs' & r' & idx' & SS' & WSAT' & CALLIDS & ESAT' & VREL).
     have STEPK: (fill (Λ:=bor_ectxi_lang fns) K_src0 e_src0, σ_src)
               ~{fns}~>* (fill (Λ:=bor_ectxi_lang fns) K_src0 vs', σs').
     { apply fill_tstep_rtc. destruct SS' as [|[? Eq]].
@@ -125,7 +131,7 @@ Proof.
 
       (* Simulatin EndCall *)
       rename σ_tgt into σt. rename σs' into σs.
-      destruct (vrel_expr_result _ _ _ x3) as (vs1 & vt1 & Eqvs1 & Eqv1 & VREL1).
+      destruct (vrel_expr_result _ _ _ x4) as (vs1 & vt1 & Eqvs1 & Eqv1 & VREL1).
       simplify_eq. have VR: vrel r' vs1 vt1 by apply vrel_expr_vrel.
 
       set Φ : resUR → nat → result → state → result → state → Prop :=
@@ -159,9 +165,12 @@ Proof.
       destruct (sim_body_end_call_elim' _ _ _ _ _ _ _ _ _ SIMEND _ _ _ x1 NT4 STEPT2)
         as (r2 & idx2 & σs2 & STEPS & ? & HΦ2 & WSAT2). subst et2.
 
-      exploit (CONTINUATION r2); eauto.
+      exploit (CONTINUATION r2).
       { rewrite cmra_assoc; eauto. }
       { apply HΦ2. }
+      { exploit tstep_end_call_inv; try exact STEPT2; eauto. i. des. subst. ss.
+        rewrite x2 in x7. inv x7. ss.
+      }
       intros [idx3 SIMFR]. rename σ2_tgt into σt2.
       do 2 eexists. split.
       - left. apply fill_tstep_tc. eapply tc_rtc_l; [|apply STEPS].
@@ -196,10 +205,11 @@ Proof.
         { econs. rewrite -fill_app. eapply (head_step_fill_tstep).
           econs; econs; eauto. }
       * right. apply CIH. econs.
-        { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _). ss.
+        { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _ _). ss.
           destruct (CONT _ _ _ σ_src' σ_tgt' VRET).
+          { rewrite CIDS. eauto. }
           pclearbot. esplits; eauto.
-          (* eapply sim_local_body_post_mono; [|apply H]. simpl. naive_solver. *) }
+        }
         { eapply sim_local_body_post_mono; [|apply SIMf]. simpl. naive_solver. }
         { done. }
         { s. rewrite -fill_app. eauto. }

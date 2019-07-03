@@ -95,13 +95,20 @@ Qed.
 Lemma adequacy
       prog_src
       prog_tgt idx conf_src conf_tgt
-      `{NSD: ∀ e σ, Decision (never_stuck prog_src e σ)}
+      `{NSD: ∀ e σ, never_stuck prog_src e σ \/
+                    exists e' σ', (e, σ) ~{prog_src}~>* (e', σ') /\
+                             ~ terminal e' /\
+                             ~ reducible prog_src e' σ'}
       (SIM: sim prog_src prog_tgt idx conf_src conf_tgt)
       (WFS: Wf conf_src.2)
       (WFT: Wf conf_tgt.2)
   : behave tstep term prog_tgt conf_tgt <1= behave tstep term prog_src conf_src.
 Proof.
   destruct (NSD conf_src.1 conf_src.2); cycle 1.
-  { admit. }
+  { i. des. destruct conf_src as [e σ]. ss.
+    pfold. econs; eauto. econs 1.
+    - ii. eapply H0. unfold terminal, term in *. rewrite H2. eauto.
+    - ii. apply H1. unfold reducible. destruct s'. eauto.
+  }
   eapply adequacy_never_stuck; eauto.
-Admitted.
+Qed.
