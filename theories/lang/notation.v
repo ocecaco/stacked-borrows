@@ -54,10 +54,8 @@ Notation "'Box<' T '>'" := (Reference RawPtr T%T)
 
 (** Pointer operations *)
 Notation "& e" := (Ref e%E) (at level 8, format "& e") : expr_scope.
-Notation "*{ T } e" := (Deref e%E T%T)
+Notation "*{ T } e" := (Deref (Proj (Copy e%E) #[0]) T%T)
   (at level 9, format "*{ T }  e") : expr_scope.
-
-Notation "'Copy1' e" := (Proj (Copy e%E) #[0]) (at level 10) : expr_scope.
 
 (** Syntax inspired by Coq/Ocaml. Constructions with higher precedence come
     first. *)

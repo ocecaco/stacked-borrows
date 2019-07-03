@@ -17,7 +17,7 @@ Definition demo0 : expr :=
 
   (* let y = &mut *x; *)
   (* mut reference y created by dereferencing mut reference x *)
-  let: "y" := new_place (&mut int) & *{int} (Copy1 "x") in
+  let: "y" := new_place (&mut int) & *{int} "x" in
   (* Check read  x   with Uniq(x): OK! *)
   (* Check deref int with Uniq(0): OK! *)
   (* stack of y  : [Uniq(y)], not frozen *)
@@ -28,21 +28,21 @@ Definition demo0 : expr :=
   (* y now uses Uniq(1) for i *)
 
   (* *y = 5; *)
-  *{int} (Copy1 "y") <- #[5] ;;
+  *{int} "y" <- #[5] ;;
   (* Check read  y with Uniq(y): OK! *)
   (* Check deref i with Uniq(1): OK! because Uniq(1) in on the stack *)
   (* Check write i with Uniq(1): OK! *)
   (* stack of int: [Uniq(1); Uniq(0); Uniq(?)], not frozen *)
 
   (* *x = 3; *)
-  *{int} (Copy1 "x") <- #[3] ;;
+  *{int} "x" <- #[3] ;;
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! because Uniq(0) in on the stack *)
   (* Check write i with Uniq(0): OK! but pop Uniq(1) to reactivate Uniq(0) *)
   (* stack of i: [Uniq(0); Uniq(?)], not frozen *)
 
   (* let _val = *y; *)
-  Copy *{int} (Copy1 "y") ;;
+  Copy *{int} "y" ;;
   (* Check read  y with Uniq(y): OK! *)
   (* Check deref i with Uniq(1): UB! Uniq(1) not on stack of i! *)
   (* Check read  i with Uniq(1): UNREACHABLE *)
@@ -69,7 +69,7 @@ Definition demo1 : expr :=
 
   (* let y1 = & *x; *)
   (* immut reference y1 created by dereferencing mut reference x *)
-  let: "y1" := new_place (& int) & *{int} (Copy1 "x") in
+  let: "y1" := new_place (& int) & *{int} "x" in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y1 : [Uniq(y1)], not frozen *)
@@ -80,7 +80,7 @@ Definition demo1 : expr :=
   (* y1 now uses Alias(1) for i *)
 
   (* let _val = *x; *)
-  Copy *{int} (Copy1 "x") ;;
+  Copy *{int} "x" ;;
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! because Uniq(0) is on the stack *)
   (* Check read  i with Uniq(0): OK! because the stack is frozen *)
@@ -88,7 +88,7 @@ Definition demo1 : expr :=
 
   (* immut reference y2 created by dereferencing mut reference x *)
   (* let y2 = & *x; *)
-  let: "y2" := new_place (& int) & *{int} (Copy1 "x") in
+  let: "y2" := new_place (& int) & *{int} "x" in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y2 : [Uniq(y2)], not frozen *)
@@ -99,13 +99,13 @@ Definition demo1 : expr :=
   (* y2 now uses Alias(2) for i *)
 
   (* let _val = *y1; *)
-  Copy *{int} (Copy1 "y1") ;;
+  Copy *{int} "y1" ;;
   (* Check read  y1 with Uniq(y1): OK! *)
   (* Check deref y1 with Alias(1): OK! because the stack is frozen_since(1) *)
   (* Check read  i  with Alias(1): OK! because the stack is frozen *)
 
   (* let _val = *y2; *)
-  Copy *{int} (Copy1 "y2") ;;
+  Copy *{int} "y2" ;;
   (* Check read  y2 with Uniq(y2): OK! *)
   (* Check deref y2 with Alias(2): OK! because the stack is frozen_since(1) *)
   (* Check read  i  with Alias(2): OK! because the stack is frozen *)
@@ -132,7 +132,7 @@ Definition demo2 : expr :=
 
   (* immut reference y created by dereferencing mut reference x *)
   (* let y = & *x; *)
-  let: "y" := new_place (& int) & *{int} (Copy1 "x") in
+  let: "y" := new_place (& int) & *{int} "x" in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y : [Uniq(y)], not frozen *)
@@ -145,7 +145,7 @@ Definition demo2 : expr :=
   (* raw pointer z created by dereferencing x as raw pointer immutably then
      mutably. *)
   (* let z = x as *const u8 as *mut u8; *)
-  let: "z" := new_place ( *mut int ) & *{int} & *{int} (Copy1 "x") in
+  let: "z" := new_place ( *mut int ) & *{int} & *{int} "x" in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! because Uniq(0) is on the stack and
                                        raw derefs are not checked. *)
@@ -156,14 +156,14 @@ Definition demo2 : expr :=
   (* stack of i: [Raw; Uniq(0); Uniq(?)], frozen_since(1) *)
   (* z now uses Alias(None) for the int *)
 
-  *{int} (Copy1 "z") <- #[3] ;;
+  *{int} "z" <- #[3] ;;
   (* Check read  z   with Uniq(z)    : OK! *)
   (* Check deref int with Alias(None): OK! because raw derefs are not checked. *)
   (* Check write int with Alias(None): OK! because there matches a Raw.
                                            Furthermore, the stack is unfrozen. *)
   (* stack of int: [Raw; Uniq(0); Uniq(?)], not frozen *)
 
-  Copy *{int} (Copy1 "y") ;;
+  Copy *{int} "y" ;;
   (* Check read  y with Uniq(y) : OK! *)
   (* Check deref i with Alias(1): UB! because the stack is not frozen with a
                                   timestamp less than or equal to the tag.
@@ -193,7 +193,7 @@ Definition demo4 : expr :=
 
   (* raw pointer y1 created from x *)
   (*  let y1 = x as *mut u8; *)
-  let: "y1" := new_place ( *mut int) & *{int} (Copy1 "x") in
+  let: "y1" := new_place ( *mut int) & *{int} "x" in
   (* Check read  x with Uniq(x): OK! *)
   (* Check deref i with Uniq(0): OK! *)
   (* stack of y1 : [Uniq(y1)], not frozen *)
@@ -205,7 +205,7 @@ Definition demo4 : expr :=
 
   (* raw pointer y2 created from y1. *)
   (*  let y2 = y1; *)
-  let: "y2" := new_place ( *mut int) & *{int} (Copy1 "y1") in
+  let: "y2" := new_place ( *mut int) & *{int} "y1" in
   (* Check read  y1 with Uniq(y1)   : OK! *)
   (* Check deref i  with Alias(None): OK! because Raw is on the stack. *)
   (* stack of y2  : [Uniq(y2)], not frozen *)
@@ -218,23 +218,23 @@ Definition demo4 : expr :=
   (*  *y1 = 3;
       *y2 = 5;
       *y2 = *y1; *)
-  *{int} (Copy1 "y1") <- #[3] ;;
-  *{int} (Copy1 "y2") <- #[5];;
-  *{int} (Copy1 "y2") <- Copy *{int} (Copy1 "y1") ;;
+  *{int} "y1" <- #[3] ;;
+  *{int} "y2" <- #[5];;
+  *{int} "y2" <- Copy *{int} "y1" ;;
   (* Checks for deref/read/write of y1 and y2 all pass because:
      * raw derefs are not checked
      * read/write are ok because Raw is on top of the stack, and nothing changes. *)
   (* stack of i: [Raw; Uniq(0); Uniq(?)], not frozen *)
 
   (*  *x = 7; *)
-  *{int} (Copy1 "x") <- #[7] ;;
+  *{int} "x" <- #[7] ;;
   (* Check read  x   with Uniq(x): OK! *)
   (* Check deref int with Uniq(0): OK! because Uniq(0) is on the stack *)
   (* Check write int with Uniq(0): OK! because Uniq(0) is on the stack *)
   (* stack of i: [Uniq(0); Uniq(?)], not frozen *)
 
   (*  let _val = unsafe { *y1 }; *)
-  Copy *{int} (Copy1 "y1") ;;
+  Copy *{int} "y1" ;;
   (* Check read  y1  with Uniq(y1)   : OK! *)
   (* Check deref int with Alias(None): UB! because Raw is not on the unfrozen stack *)
   (* Check read  int with Alias(None): UNREACHABLE *)

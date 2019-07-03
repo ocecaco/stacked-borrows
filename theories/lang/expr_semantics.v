@@ -291,7 +291,7 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
     pure_expr_step FNs h (Ref (Place l lbor T)) SilentEvt #[ScPtr l lbor]
 | DerefBS l lbor T
     (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) :
-    pure_expr_step FNs h ( *{T} #[ScPtr l lbor]) SilentEvt (Place l lbor T)
+    pure_expr_step FNs h (Deref #[ScPtr l lbor] T) SilentEvt (Place l lbor T)
 | FieldBS l lbor T path off T'
     (FIELD: field_access T path = Some (off, T')) :
     pure_expr_step FNs h (Field (Place l lbor T) path)

@@ -345,8 +345,8 @@ Qed.
 
 (** Deref *)
 Lemma fill_deref_decompose K e e' T :
-  fill K e = ( *{T} e')%E →
-  K = [] ∧ e = ( *{T} e')%E ∨ (∃ K', K = K' ++ [DerefCtx T] ∧ fill K' e = e').
+  fill K e = (Deref e' T)%E →
+  K = [] ∧ e = (Deref e' T)%E ∨ (∃ K', K = K' ++ [DerefCtx T] ∧ fill K' e = e').
 Proof.
   revert e. induction K as [|Ki K IH]; [naive_solver|].
   intros e EqK. right.
@@ -356,7 +356,7 @@ Proof.
 Qed.
 
 Lemma tstep_deref_inv l tg T e' σ σ'
-  (STEP: (( *{T} #[ScPtr l tg])%E, σ) ~{fns}~> (e', σ')) :
+  (STEP: ((Deref #[ScPtr l tg] T)%E, σ) ~{fns}~> (e', σ')) :
   e' = Place l tg T ∧ σ' = σ ∧
   (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σ.(shp)).
 Proof.

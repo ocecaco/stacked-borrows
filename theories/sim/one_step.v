@@ -1165,12 +1165,12 @@ Qed.
 Lemma sim_body_deref fs ft r n l tgs tgt Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt) :
   r ⊨{n,fs,ft} (Place l tgs Ts, σs) ≥ (Place l tgt Tt, σt) : Φ →
-  r ⊨{n,fs,ft} (( *{Ts} #[ScPtr l tgs])%E, σs) ≥ (( *{Tt} #[ScPtr l tgt])%E, σt) : Φ.
+  r ⊨{n,fs,ft} (Deref #[ScPtr l tgs] Ts, σs) ≥ (Deref #[ScPtr l tgt] Tt, σt) : Φ.
 Proof.
   intros SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
   { right.
-    destruct (NT ( *{Ts} #[ScPtr l tgs])%E σs) as [[]|[es' [σs' STEPS]]]; [done..|].
+    destruct (NT (Deref #[ScPtr l tgs] Ts) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
     destruct (tstep_deref_inv _ _ _ _ _ _ _ STEPS) as [? [? IS]]. subst es' σs'.
     have ?: (∀ (i: nat), (i < tsize Tt)%nat → l +ₗ i ∈ dom (gset loc) σt.(shp)).
     { clear -WSAT IS EQS. rewrite -EQS. move => i /IS. by rewrite -wsat_heap_dom. }
