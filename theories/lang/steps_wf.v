@@ -3,15 +3,6 @@ From stbor.lang Require Export defs.
 
 Set Default Proof Using "Type".
 
-Lemma wf_init_state : Wf init_state.
-Proof.
-  constructor; simpl; try (intros ?; set_solver).
-  - by apply NoDup_singleton.
-  - intros ??%elem_of_list_singleton. subst. lia.
-Qed.
-
-(** Steps preserve wellformedness *)
-
 Lemma init_mem_foldr' l n h (m: nat):
   init_mem (l +ₗ m) n h =
   fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%S]> hi) h (seq m n).
@@ -47,6 +38,39 @@ Lemma init_stacks_foldr α l n si:
   init_stacks α l n si =
   fold_right (λ (i: nat) hi, <[(l +ₗ i):=[mkItem Unique si None]]> hi) α (seq 0 n).
 Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
+
+Lemma init_mem_lookup l n h :
+  (∀ (i: nat) s, (i < n)%nat → h !! (l +ₗ i) = Some s →
+    init_mem l n h !! (l +ₗ i) = Some ☠%S) ∧
+  (∀ (i: nat) s', (i < n)%nat → init_mem l n h !! (l +ₗ i) = Some s' →
+    h !! (l +ₗ i) = Some ☠%S) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) → init_mem l n h !! l' = h !! l').
+Proof.
+  revert l h. induction n as [|n IH]; intros l h; simpl.
+  { split; last split; intros ??; [lia|lia|done]. }
+  split; last split.
+  - intros i s Lt Eqi. destruct i as [|i].
+    + rewrite shift_loc_0_nat lookup_insert //.
+    + have Eql: l +ₗ S i = (l +ₗ 1) +ₗ i.
+      { rewrite shift_loc_assoc. f_equal. lia. }
+      rewrite Eql in Eqi. rewrite lookup_insert_ne.
+      * rewrite Eql. destruct (IH (l +ₗ 1) h) as [IH' _].
+        apply (IH' _ s); [lia|done].
+      * admit.
+  - intros i s Lt Eqi.
+    admit.
+  - intros l' Lt.
+Admitted.
+
+
+Lemma wf_init_state : Wf init_state.
+Proof.
+  constructor; simpl; try (intros ?; set_solver).
+  - by apply NoDup_singleton.
+  - intros ??%elem_of_list_singleton. subst. lia.
+Qed.
+
+(** Steps preserve wellformedness *)
 
 Lemma wf_stack_item_mono α :
   Proper ((≤)%nat ==> (≤)%nat ==> impl) (wf_stack_item α).
