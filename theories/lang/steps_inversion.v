@@ -421,6 +421,29 @@ Qed.
 
 (** MEM STEP -----------------------------------------------------------------*)
 
+(** Alloc *)
+Lemma fill_alloc_decompose K e T:
+  fill K e = Alloc T →
+  K = [] ∧ e = Alloc T.
+Proof.
+  revert e.
+  induction K as [|Ki K IH]; [done|]. simpl; intros ? [? ?]%IH.
+  by destruct Ki.
+Qed.
+
+Lemma tstep_alloc_inv T e' σ σ'
+  (STEP: (Alloc T, σ) ~{fns}~> (e', σ')) :
+  let l := (fresh_block σ.(shp), 0) in
+  let t := σ.(snp) in
+  e' = Place l (Tagged t) T ∧
+  σ' = mkState (init_mem l (tsize T) σ.(shp))
+               (init_stacks σ.(sst) l (tsize T) (Tagged t)) σ.(scs) (S t) σ.(snc).
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_alloc_decompose _ _ _ Eq); subst.
+  intros l t. simpl in HS. inv_head_step. naive_solver.
+Qed.
+
 (** InitCall *)
 Lemma fill_init_call_decompose K e e' :
   fill K e = InitCall e' →

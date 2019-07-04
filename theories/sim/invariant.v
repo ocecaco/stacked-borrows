@@ -45,6 +45,7 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
       c ∈ σ.(scs) ∧
       (* for any tag [t] owned by c *)
       ∀ (t: ptr_id), t ∈ T →
+      t < σ.(snp) ∧
       (* that protects the heaplet [h] *)
       ∀ k h, r.1 !! t ≡ Some (k, h) →
       (* if [l] is in that heaplet [h] *)

@@ -275,6 +275,14 @@ Proof.
   move=> /(help _ _ ∅) /=. apply is_fresh.
 Qed.
 
+Lemma fresh_block_equiv (h1 h2: mem) :
+  dom (gset loc) h1 ≡ dom (gset loc) h2 → fresh_block h1 = fresh_block h2.
+Proof.
+  intros EqD. apply elements_proper in EqD.
+  rewrite /fresh_block. apply (fresh_proper (C:= gset _)).
+  apply foldr_permutation; [apply _..|set_solver|done].
+Qed.
+
 Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Prop :=
 | BinOpPS op (l1 l2 l': scalar) :
     bin_op_eval h op l1 l2 l' →

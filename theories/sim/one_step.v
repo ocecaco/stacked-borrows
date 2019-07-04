@@ -21,13 +21,6 @@ Proof.
   by rewrite !elem_of_dom Eq.
 Qed.
 
-Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
-  ✓ (r_f ⋅ r) → (r_f ⋅ r, r) ~l~> (r_f ⋅ r', r') → ✓ (r_f ⋅ r').
-Proof.
-  intros VALID UPD. apply cmra_discrete_valid.
-  apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
-Qed.
-
 Lemma sim_body_res_proper fs ft n es σs et σt Φ r1 r2:
   r1 ≡ r2 →
   r1 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
@@ -221,6 +214,72 @@ Qed.
 
 (** MEM STEP -----------------------------------------------------------------*)
 
+(** Alloc *)
+
+Lemma sim_body_alloc fs ft r n T σs σt Φ :
+  let ls := (fresh_block σs.(shp), 0) in
+  let lt := (fresh_block σt.(shp), 0) in
+  let ts := (Tagged σs.(snp)) in
+  let tgt := (Tagged σt.(snp)) in
+  let σs' := mkState (init_mem ls (tsize T) σs.(shp))
+                     (init_stacks σs.(sst) ls (tsize T) ts) σs.(scs)
+                     (S σs.(snp)) σs.(snc) in
+  let σt' := mkState (init_mem lt (tsize T) σt.(shp))
+                     (init_stacks σt.(sst) lt (tsize T) tgt) σt.(scs)
+                     (S σt.(snp)) σt.(snc) in
+  let r' : resUR :=
+    ({[σt.(snp) := (to_tagKindR tkUnique, to_heapletR $ init_mem lt (tsize T) ∅)]}, ε) in
+  Φ (r ⋅ r') n (PlaceR ls ts T) σs' (PlaceR lt tgt T) σt' : Prop →
+  r ⊨{n,fs,ft} (Alloc T, σs) ≥ (Alloc T, σt) : Φ.
+Proof.
+  intros ls lt ts tgt σs' σt' r' POST.
+  pfold. intros NT. intros.
+  have EqDOM := wsat_heap_dom _ _ _ WSAT.
+  have EqFRESH := fresh_block_equiv _ _ EqDOM.
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  have Eqnp : σs.(snp) = σt.(snp). { by destruct SREL as (?&?&?&?). }
+  split; [|done|].
+  { right. do 2 eexists. by eapply (head_step_fill_tstep _ []), alloc_head_step. }
+  constructor 1. intros ? σt1 STEPT.
+  destruct (tstep_alloc_inv _ _ _ _ _ STEPT) as [? Eqσt'].
+  rewrite -/σt' in Eqσt'. subst et' σt1.
+  have STEPS: (Alloc T, σs) ~{fs}~>
+              (Place (fresh_block σs.(shp), 0) (Tagged σs.(snp)) T, σs').
+  { subst ls σs' ts. eapply (head_step_fill_tstep _ []), alloc_head_step. }
+  eexists _, σs', (r ⋅ r'), (S n). split; last split.
+  { left. by apply tc_once. }
+  { have HLF : (r_f ⋅ r).1 !! σt.(snp) = None.
+    { destruct ((r_f ⋅ r).1 !! σt.(snp)) as [[k h]|] eqn:Eqkh; [|done]. exfalso.
+      destruct (tagKindR_valid k) as [k' Eqk'].
+      { apply (Some_valid (k,h)). rewrite -Some_valid -Eqkh. apply VALID. }
+      destruct (PINV σt.(snp) k' h) as [Lt _]; [by rewrite Eqkh Eqk'|lia]. }
+    split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - admit.
+    - admit.
+    - intros c cs. rewrite /= right_id => /CINV.
+      destruct cs as [[T0|]| |]; [|done..]. intros [InT Eqh].
+      split; [done|]. intros t2 InT2. specialize (Eqh t2 InT2) as [Lt2 Eqh].
+      split; [lia|]. intros k2 h2. rewrite cmra_assoc lookup_op.
+      case (decide (t2 = σt.(snp))) => ?; [subst t2|]; [exfalso; by lia|].
+      rewrite lookup_insert_ne // right_id.
+      intros Eqh2 l Inl.
+      specialize (Eqh _ _ Eqh2 l Inl) as (stk & pm & Eqsk & Instk).
+      exists stk, pm. split; [|done].
+      admit.
+    - destruct SREL as (Eqst&_&Eqcs&Eqnc&VREL).
+      subst σs' σt' ls lt ts tgt.
+      repeat split; simpl; [by rewrite Eqst EqFRESH Eqnp|auto..|].
+      intros l st HL.
+      admit. }
+  left. (*  rewrite {1}/l {1}/t {1}EqFRESH -{1}Eqnp. *)
+  apply (sim_body_result _ _ _ _ (PlaceR _ _ T) (PlaceR _ _ T)). intros.
+  split.
+  - admit.
+  - apply POST; eauto.
+Abort.
+
 (** Copy *)
 Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt)
@@ -313,8 +372,9 @@ Proof.
     - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
-      intros t1 InT k h Eqt l' Inh.
-      destruct (CINV _ InT _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+      intros t1 InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
+      intros k h Eqt l' Inh.
+      destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
       exists stk, pm'. split; [done|]. by apply AS.
@@ -327,7 +387,7 @@ Proof.
   subst σt'. apply POST; eauto.
 Abort.
 
-Lemma sim_body_copy fs ft r n l tg Ts Tt σs σt Φ
+Lemma sim_body_copy_raw fs ft r n l tg Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt) :
   (∀ vs vt,
     read_mem l (tsize Ts) σs.(shp) = Some vs →
@@ -392,8 +452,9 @@ Proof.
     - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
-      intros t InT k h Eqt l' Inh.
-      destruct (CINV _ InT _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+      intros t InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
+      intros k h Eqt l' Inh.
+      destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
       exists stk, pm'. split; [done|]. by apply AS.
@@ -411,6 +472,7 @@ Proof.
   { left. by eexists. }
 Qed.
 
+(** Write *)
 Fixpoint write_heaplet (l: loc) (v: value) (h: gmapR loc (agreeR scalarC)) :=
   match v with
   | [] => h
@@ -449,19 +511,6 @@ Qed.
 Lemma write_heaplet_empty l v : write_heaplet l v ∅ ≡ ∅.
 Proof. revert l. induction v as [|?? IH]; [done|]; intros l. apply IH. Qed.
 
-Lemma ptrmap_valid (r_f r: ptrmapUR) t h0 kh
-  (Eqtg: r !! t = Some (to_tagKindR tkUnique, h0)) (VN: ✓ kh) :
-  ✓ (r_f ⋅ r) → ✓ (r_f ⋅ (<[t:= kh]> r)).
-Proof.
-  intros VALID.
-  apply (local_update_discrete_valid_frame _ _ _ VALID).
-  have EQ := (ptrmap_insert_op_r _ _ _ _ kh VALID Eqtg). rewrite EQ.
-  eapply (insert_local_update _ _ _
-          (to_tagKindR tkUnique, h0) (to_tagKindR tkUnique, h0));
-          [|exact Eqtg|by apply exclusive_local_update].
-  by rewrite (ptrmap_lookup_op_r _ _ _ _ VALID Eqtg).
-Qed.
-
 Lemma write_heaplet_valid l v h:
   ✓ h → ✓ (write_heaplet l v h).
 Proof.
@@ -495,119 +544,6 @@ Proof.
     + move => i Lti. rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
       apply Lt. by lia.
 Qed.
-
-Lemma retag_ref_change_1 h α cids c nxtp x rk mut T h' α' nxtp'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
-  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
-  ∃ rk' new,
-    h' = <[x := ScPtr l new]>h ∧
-    retag_ref h α cids nxtp l otag T rk' (adding_protector rk c) =
-      Some (new, α', nxtp') ∧
-    rk' = if mut then UniqueRef (is_two_phase rk) else SharedRef.
-Proof.
-  rewrite retag_equation_2 /=.
-  destruct (h !! x) as [[| |l t|]|]; simpl; [done..| |done|done].
-  destruct mut; (case retag_ref as [[[t1 α1] n1]|] eqn:Eq => [/=|//]);
-    intros; simplify_eq; exists l, t; (split; [done|]);
-    eexists; exists t1; done.
-Qed.
-
-Lemma retag_ref_change_2
-  h α cids c nxtp l otag rk (mut: mutability) T new α' nxtp'
-  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  let rk' := if mut then UniqueRef false else SharedRef in
-  let opro := (adding_protector rk c) in
-  retag_ref h α cids nxtp l otag T rk' opro = Some (new, α', nxtp') →
-  nxtp' = S nxtp ∧ new = Tagged nxtp ∧
-  reborrowN α cids l (tsize T) otag (Tagged nxtp)
-            (if mut then Unique else SharedReadOnly) opro = Some α'.
-Proof.
-  intros rk' opro. rewrite /retag_ref. destruct (tsize T) as [|n] eqn:EqT; [lia|].
-  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //];
-    case reborrowN as [α1|] eqn:Eq1 => [/=|//]; intros; simplify_eq; by rewrite -EqT.
-Qed.
-
-Lemma retag_ref_change h α cids c nxtp x rk mut T h' α' nxtp'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
-  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
-    h' = <[x := ScPtr l (Tagged nxtp)]>h ∧
-    nxtp' = S nxtp ∧
-    reborrowN α cids l (tsize T) otag (Tagged nxtp)
-            (if mut then Unique else SharedReadOnly) (adding_protector rk c) = Some α'.
-Proof.
-  intros RT.
-  apply retag_ref_change_1 in RT
-    as (l & otag & EqL & rk' & new & Eqh & RT &?); [|done..].
-  subst. exists l, otag. split; [done|].
-  rewrite (_: is_two_phase rk = false) in RT; [|by destruct rk].
-  apply retag_ref_change_2 in RT as (?&?&?); [|done..]. by subst new.
-Qed.
-
-Lemma retag_ref_reborrowN
-  (h: mem) α t cids c x l otg T rk (mut: mutability) α'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  h !! x = Some (ScPtr l otg) →
-  reborrowN α cids l (tsize T) otg (Tagged t)
-     (if mut then Unique else SharedReadOnly) (adding_protector rk c) =
-     Some α' →
-  retag h α t cids c x rk (Reference (RefPtr mut) T) = Some (<[x:=ScPtr l (Tagged t)]> h, α', S t).
-Proof.
-  intros Eqx RB. rewrite retag_equation_2 Eqx /= /retag_ref.
-  destruct (tsize T) eqn:EqT; [lia|].
-  rewrite (_: is_two_phase rk = false); [|by destruct rk].
-  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //]; rewrite EqT RB /= //.
-Qed.
-
-Lemma sim_body_retag_default fs ft r n x xtag mut T σs σt Φ
-  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) (Eqx: σs.(shp) = σt.(shp)) :
-  let Tr := (Reference (RefPtr mut) T) in
-  (∀ c cids hs' αs' nps' ht' αt' npt' (STACK: σt.(scs) = c :: cids),
-    retag σt.(shp) σt.(sst) σt.(snp) σt.(scs) c x Default Tr
-      = Some (ht', αt', npt') →
-    retag σs.(shp) σs.(sst) σs.(snp) σs.(scs) c x Default Tr
-      = Some (hs', αs', nps') →
-    let σs' := mkState hs' αs' σs.(scs) nps' σs.(snc) in
-    let σt' := mkState ht' αt' σt.(scs) npt' σt.(snc) in
-      Φ r n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
-  r ⊨{n,fs,ft}
-    (Retag (Place x xtag Tr) Default, σs) ≥
-    (Retag (Place x xtag Tr) Default, σt) : Φ.
-Proof.
-  intros Tr POST. pfold. intros NT. intros.
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
-  split; [|done|].
-  { right.
-    edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
-    (* inversion retag of src *)
-    destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPS)
-      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst es'.
-    apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
-    subst h' nxtp'. destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
-    rewrite Eqx in Eqx'. rewrite Eqst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
-    (* retag of tgt *)
-    exists (#[☠])%V,
-      (mkState (<[x:=ScPtr l (Tagged σt.(snp))]> σt.(shp)) α' σt.(scs) (S σt.(snp)) σt.(snc)).
-    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
-    eapply retag_ref_reborrowN; eauto. }
-  constructor 1.
-  intros.
-  (* inversion retag of tgt *)
-  destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPT)
-      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst et'.
-  apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
-  subst h' nxtp'.
-  exists (#[☠])%V,
-      (mkState (<[x:=ScPtr l (Tagged σs.(snp))]> σs.(shp)) α' σs.(scs) (S σs.(snp)) σs.(snc)).
-  exists r, n. split; last split.
-  { left. apply tc_once.
-    destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
-    rewrite -Eqx in Eqx'. rewrite -Eqst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
-    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
-    eapply retag_ref_reborrowN; eauto. }
-  { split.
-Abort.
 
 Lemma sim_body_write_related_values
   fs ft (r: resUR) k0 h0 n l tg Ts Tt v σs σt Φ
@@ -770,7 +706,8 @@ Proof.
       specialize (CINV _ _ Eqc). subst σt'. simpl.
       clear -Eqα' CINV Eqtg VALID HL HL2. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
-      intros t InT k h. specialize (CINV _ InT k).
+      intros t InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
+      intros k h.
       (* TODO: duplicated proofs *)
       rewrite /r'. destruct k0.
       + (* if tg was unique *)
@@ -780,19 +717,19 @@ Proof.
           intros [Eqk Eqh]%Some_equiv_inj. simpl in Eqk, Eqh.
           have Eqt : (r_f ⋅ r).1 !! t ≡ Some (k, h0) by rewrite HL2 -Eqk.
           intros l'. rewrite -Eqh write_heaplet_dom. intros Inh.
-          destruct (CINV _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+          destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
           destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
             as [stk [Eqstk AS]].
           exists stk, pm'. split; [done|]. by apply AS. }
         { rewrite lookup_insert_ne //.
           intros Eqt l' Inh.
-          destruct (CINV _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+          destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
           destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
             as [stk [Eqstk AS]].
           exists stk, pm'. split; [done|]. by apply AS. }
       + (* if tg was public *)
         intros Eqt l' Inh.
-        destruct (CINV _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+        destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
         destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
           as [stk [Eqstk AS]].
         exists stk, pm'. split; [done|]. by apply AS.
@@ -866,6 +803,121 @@ Proof.
   { simpl. subst σt'. by apply POST. }
 Qed.
 
+(** Retag *)
+
+Lemma retag_ref_change_1 h α cids c nxtp x rk mut T h' α' nxtp'
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
+  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
+  ∃ rk' new,
+    h' = <[x := ScPtr l new]>h ∧
+    retag_ref h α cids nxtp l otag T rk' (adding_protector rk c) =
+      Some (new, α', nxtp') ∧
+    rk' = if mut then UniqueRef (is_two_phase rk) else SharedRef.
+Proof.
+  rewrite retag_equation_2 /=.
+  destruct (h !! x) as [[| |l t|]|]; simpl; [done..| |done|done].
+  destruct mut; (case retag_ref as [[[t1 α1] n1]|] eqn:Eq => [/=|//]);
+    intros; simplify_eq; exists l, t; (split; [done|]);
+    eexists; exists t1; done.
+Qed.
+
+Lemma retag_ref_change_2
+  h α cids c nxtp l otag rk (mut: mutability) T new α' nxtp'
+  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  let rk' := if mut then UniqueRef false else SharedRef in
+  let opro := (adding_protector rk c) in
+  retag_ref h α cids nxtp l otag T rk' opro = Some (new, α', nxtp') →
+  nxtp' = S nxtp ∧ new = Tagged nxtp ∧
+  reborrowN α cids l (tsize T) otag (Tagged nxtp)
+            (if mut then Unique else SharedReadOnly) opro = Some α'.
+Proof.
+  intros rk' opro. rewrite /retag_ref. destruct (tsize T) as [|n] eqn:EqT; [lia|].
+  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //];
+    case reborrowN as [α1|] eqn:Eq1 => [/=|//]; intros; simplify_eq; by rewrite -EqT.
+Qed.
+
+Lemma retag_ref_change h α cids c nxtp x rk mut T h' α' nxtp'
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
+  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
+    h' = <[x := ScPtr l (Tagged nxtp)]>h ∧
+    nxtp' = S nxtp ∧
+    reborrowN α cids l (tsize T) otag (Tagged nxtp)
+            (if mut then Unique else SharedReadOnly) (adding_protector rk c) = Some α'.
+Proof.
+  intros RT.
+  apply retag_ref_change_1 in RT
+    as (l & otag & EqL & rk' & new & Eqh & RT &?); [|done..].
+  subst. exists l, otag. split; [done|].
+  rewrite (_: is_two_phase rk = false) in RT; [|by destruct rk].
+  apply retag_ref_change_2 in RT as (?&?&?); [|done..]. by subst new.
+Qed.
+
+Lemma retag_ref_reborrowN
+  (h: mem) α t cids c x l otg T rk (mut: mutability) α'
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  h !! x = Some (ScPtr l otg) →
+  reborrowN α cids l (tsize T) otg (Tagged t)
+     (if mut then Unique else SharedReadOnly) (adding_protector rk c) =
+     Some α' →
+  retag h α t cids c x rk (Reference (RefPtr mut) T) = Some (<[x:=ScPtr l (Tagged t)]> h, α', S t).
+Proof.
+  intros Eqx RB. rewrite retag_equation_2 Eqx /= /retag_ref.
+  destruct (tsize T) eqn:EqT; [lia|].
+  rewrite (_: is_two_phase rk = false); [|by destruct rk].
+  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //]; rewrite EqT RB /= //.
+Qed.
+
+Lemma sim_body_retag_default fs ft r n x xtag mut T σs σt Φ
+  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) (Eqx: σs.(shp) = σt.(shp)) :
+  let Tr := (Reference (RefPtr mut) T) in
+  (∀ c cids hs' αs' nps' ht' αt' npt' (STACK: σt.(scs) = c :: cids),
+    retag σt.(shp) σt.(sst) σt.(snp) σt.(scs) c x Default Tr
+      = Some (ht', αt', npt') →
+    retag σs.(shp) σs.(sst) σs.(snp) σs.(scs) c x Default Tr
+      = Some (hs', αs', nps') →
+    let σs' := mkState hs' αs' σs.(scs) nps' σs.(snc) in
+    let σt' := mkState ht' αt' σt.(scs) npt' σt.(snc) in
+      Φ r n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
+  r ⊨{n,fs,ft}
+    (Retag (Place x xtag Tr) Default, σs) ≥
+    (Retag (Place x xtag Tr) Default, σt) : Φ.
+Proof.
+  intros Tr POST. pfold. intros NT. intros.
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  split; [|done|].
+  { right.
+    edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
+    (* inversion retag of src *)
+    destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPS)
+      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst es'.
+    apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
+    subst h' nxtp'. destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
+    rewrite Eqx in Eqx'. rewrite Eqst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
+    (* retag of tgt *)
+    exists (#[☠])%V,
+      (mkState (<[x:=ScPtr l (Tagged σt.(snp))]> σt.(shp)) α' σt.(scs) (S σt.(snp)) σt.(snc)).
+    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
+    eapply retag_ref_reborrowN; eauto. }
+  constructor 1.
+  intros.
+  (* inversion retag of tgt *)
+  destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPT)
+      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst et'.
+  apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
+  subst h' nxtp'.
+  exists (#[☠])%V,
+      (mkState (<[x:=ScPtr l (Tagged σs.(snp))]> σs.(shp)) α' σs.(scs) (S σs.(snp)) σs.(snc)).
+  exists r, n. split; last split.
+  { left. apply tc_once.
+    destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
+    rewrite -Eqx in Eqx'. rewrite -Eqst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
+    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
+    eapply retag_ref_reborrowN; eauto. }
+  { split.
+Abort.
+
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
@@ -913,7 +965,8 @@ Proof.
       split; [by left|]. intros ? IN. exfalso. move : IN.
       by rewrite -Eq2 elem_of_empty.
     - rewrite lookup_insert_ne // => /CINV. destruct cs as [[]| |]; [|done|lia|done].
-      intros [? Ht]. split; [by right|]. intros ????. rewrite right_id. by apply Ht. }
+      intros [? Ht]. split; [by right|].
+      setoid_rewrite (right_id _ _ (r_f.1 ⋅ r.1)). naive_solver. }
   { (* srel *)
     destruct SREL as (?&?&?&?&SREL).
     do 2 (split; [done|]). do 2 (split; [simpl; by f_equal|]).

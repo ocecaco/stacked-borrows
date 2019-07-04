@@ -1,3 +1,4 @@
+From iris.algebra Require Export local_updates.
 From iris.algebra Require Export cmra gmap gset csum agree excl.
 
 From stbor.lang Require Export lang.
@@ -37,6 +38,7 @@ Definition res := (ptrmap * cmap)%type.
 Definition resUR := prodUR ptrmapUR cmapUR.
 Definition to_resUR (r: res) : resUR := (to_ptrmapUR r.1, to_cmapUR r.2).
 
+(** tag_kind properties *)
 Lemma tag_kind_incl_eq (k1 k2: tagKindR):
   ✓ k2 → k1 ≼ k2 → k1 ≡ k2.
 Proof.
@@ -47,6 +49,33 @@ Proof.
     rewrite -LE. apply VAL.
 Qed.
 
+Lemma tagKindR_exclusive (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkPub, h) → False.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq _]%Some_equiv_inj.
+  - destruct k as [[]| |]; inversion Eq.
+  - inversion Eq.
+Qed.
+
+Lemma tagKindR_exclusive_2 (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tagKindR tkPub, h0) ≡ Some (to_tagKindR tkUnique, h) → False.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq _]%Some_equiv_inj.
+  - destruct k as [[]| |]; inversion Eq.
+  - inversion Eq.
+Qed.
+
+Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → h0 ≡ h.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq1 Eq2]%Some_equiv_inj; [|done].
+  destruct k as [[[]|]| |]; inversion Eq1; simplify_eq.
+Qed.
+
+(** cmap properties *)
 Lemma cmap_lookup_op_r (cm1 cm2: cmapUR) c T (VALID: ✓ (cm1 ⋅ cm2)):
   cm2 !! c = Some (to_callStateR (csOwned T)) →
   (cm1 ⋅ cm2) !! c = Some (to_callStateR (csOwned T)).
@@ -110,6 +139,7 @@ Proof.
   - inversion Eq.
 Qed.
 
+(** ptrmap properties *)
 Lemma ptrmap_insert_op_r (pm1 pm2: ptrmapUR) t h0 kh (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t = Some (to_tagKindR tkUnique, h0) →
   pm1 ⋅ <[t:=kh]> pm2 = <[t:=kh]> (pm1 ⋅ pm2).
@@ -145,30 +175,32 @@ Proof.
   - intros _. exists (∅: gmap loc _). by rewrite 2!left_id HL.
 Qed.
 
-Lemma tagKindR_exclusive (h0 h: heapletR) mb :
-  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkPub, h) → False.
+Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
+  ✓ (r_f ⋅ r) → (r_f ⋅ r, r) ~l~> (r_f ⋅ r', r') → ✓ (r_f ⋅ r').
 Proof.
-  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
-    intros [Eq _]%Some_equiv_inj.
-  - destruct k as [[]| |]; inversion Eq.
-  - inversion Eq.
+  intros VALID UPD. apply cmra_discrete_valid.
+  apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
 Qed.
 
-Lemma tagKindR_exclusive_2 (h0 h: heapletR) mb :
-  mb ⋅ Some (to_tagKindR tkPub, h0) ≡ Some (to_tagKindR tkUnique, h) → False.
+Lemma ptrmap_valid (r_f r: ptrmapUR) t h0 kh
+  (Eqtg: r !! t = Some (to_tagKindR tkUnique, h0)) (VN: ✓ kh) :
+  ✓ (r_f ⋅ r) → ✓ (r_f ⋅ (<[t:= kh]> r)).
 Proof.
-  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
-    intros [Eq _]%Some_equiv_inj.
-  - destruct k as [[]| |]; inversion Eq.
-  - inversion Eq.
+  intros VALID.
+  apply (local_update_discrete_valid_frame _ _ _ VALID).
+  have EQ := (ptrmap_insert_op_r _ _ _ _ kh VALID Eqtg). rewrite EQ.
+  eapply (insert_local_update _ _ _
+          (to_tagKindR tkUnique, h0) (to_tagKindR tkUnique, h0));
+          [|exact Eqtg|by apply exclusive_local_update].
+  by rewrite (ptrmap_lookup_op_r _ _ _ _ VALID Eqtg).
 Qed.
 
-Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
-  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → h0 ≡ h.
+Lemma tagKindR_valid (k: tagKindR) :
+  valid k → ∃ k', k ≡ to_tagKindR k'.
 Proof.
-  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
-    intros [Eq1 Eq2]%Some_equiv_inj; [|done].
-  destruct k as [[[]|]| |]; inversion Eq1; simplify_eq.
+  destruct k as [[[]|]|a |]; [|done|..|done]; intros VAL.
+  - by exists tkUnique.
+  - exists tkPub. by apply to_agree_uninj in VAL as [[] <-].
 Qed.
 
 (** The Core *)
