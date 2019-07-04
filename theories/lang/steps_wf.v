@@ -88,6 +88,11 @@ Proof.
     rewrite EQ2 // in Eq'.
 Qed.
 
+Lemma init_mem_lookup_empty l n :
+  ∀ l' s', init_mem l n ∅ !! l' = Some s' →
+  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+Proof. move => l' s' /init_mem_lookup_case [[//]|//]. Qed.
+
 Lemma init_stack_lookup α l n t :
   (∀ (i: nat), (i < n)%nat →
     init_stacks α l n t !! (l +ₗ i) = Some [mkItem Unique t None]) ∧

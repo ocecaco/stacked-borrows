@@ -60,7 +60,34 @@ Proof.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
-    - admit.
+    - intros t k h. rewrite lookup_op.
+      case (decide (t = σt.(snp))) => ?; [subst t|].
+      + rewrite /= lookup_insert HLF left_id.
+        intros [Eq1 Eq2]%Some_equiv_inj. simpl in Eq1, Eq2. split; [lia|].
+        intros l s. rewrite -Eq2. intros Eqs stk Eqstk pm opro Instk NDIS.
+        (* l is new memory *)
+        have EqPoi: s = ScPoison. { admit. }
+        split.
+        * rewrite EqPoi. (* init_mem_lookup *) admit.
+        * destruct k; [|by inversion Eq1].
+          exists []. admit.
+      + rewrite lookup_insert_ne // right_id. intros Eqkh.
+        specialize (PINV t k h Eqkh) as [Lt PINV].
+        split. { etrans; [exact Lt|simpl; lia]. }
+        intros l s Eqs stk Eqstk pm opro Instk NDIS.
+        specialize (PINV l s Eqs).
+        destruct (init_stack_lookup_case _ _ _ _ _ _ Eqstk)
+          as [[EqstkO Lti]|[i [[? Lti] Eql]]].
+        * specialize (PINV _ EqstkO _ _ Instk NDIS) as [Eqss PINV].
+          split; [|done].
+          destruct (init_mem_lookup lt (tsize T) σt.(shp)) as [_ EQ].
+          rewrite /= EQ //.
+        * exfalso. move : Eqstk. simpl.
+          destruct (init_stack_lookup σt.(sst) lt (tsize T) tgt) as [EQ _].
+          have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id //.
+          specialize (EQ _ Lti'). rewrite Z2Nat.id // in EQ. rewrite Eql EQ.
+          intros. inversion Eqstk. clear Eqstk. subst stk.
+          move : Instk. rewrite elem_of_list_singleton. by inversion 1.
     - intros c cs. rewrite /= right_id => /CINV.
       destruct cs as [[T0|]| |]; [|done..]. intros [InT Eqh].
       split; [done|]. intros t2 InT2. specialize (Eqh t2 InT2) as [Lt2 Eqh].
