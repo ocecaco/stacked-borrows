@@ -183,6 +183,16 @@ Proof.
   move => Le v1 v2 [? [? [? [? /(vrel_mono _ _ VAL Le) ?]]]]. do 2 eexists. eauto.
 Qed.
 
+Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ l t, priv_loc r1 l t → priv_loc r2 l t.
+Proof.
+  intros LE l t (c & T & h & Eq2 & InT & Eq1 & InD).
+  apply prod_included in LE as []. apply pair_valid in VAL as [].
+  exists c, T, h. repeat split; [|done| |done].
+  - by apply (cmap_lookup_op_unique_included r1.2).
+  - by apply (ptrmap_lookup_op_unique_included r1.1).
+Qed.
+
 Instance ptrmap_inv_proper : Proper ((≡) ==> (=) ==> iff) ptrmap_inv.
 Proof.
   intros r1 r2 Eqr ? σ ?. subst. rewrite /ptrmap_inv. by setoid_rewrite Eqr.

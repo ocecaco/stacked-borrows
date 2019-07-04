@@ -32,7 +32,7 @@ Proof.
     have ?: vrel_expr (init_res ⋅ r') (of_result #vs) (of_result #vt).
     { do 2 eexists. do 2 (split; [done|]).
       eapply vrel_mono; [done|apply cmra_included_r|done]. }
-    split; last split; last split; [done|..|done].
+    split; last split; [..|done].
     { exists O. by rewrite -STACK. }
     rewrite /end_call_sat -STACK.
     intros c Eq. simpl in Eq. simplify_eq.

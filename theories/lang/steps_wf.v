@@ -40,28 +40,130 @@ Lemma init_stacks_foldr α l n si:
 Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 
 Lemma init_mem_lookup l n h :
-  (∀ (i: nat) s, (i < n)%nat → h !! (l +ₗ i) = Some s →
-    init_mem l n h !! (l +ₗ i) = Some ☠%S) ∧
-  (∀ (i: nat) s', (i < n)%nat → init_mem l n h !! (l +ₗ i) = Some s' →
-    h !! (l +ₗ i) = Some ☠%S) ∧
-  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) → init_mem l n h !! l' = h !! l').
+  (∀ (i: nat), (i < n)%nat → init_mem l n h !! (l +ₗ i) = Some ☠%S) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
+    init_mem l n h !! l' = h !! l').
 Proof.
   revert l h. induction n as [|n IH]; intros l h; simpl.
-  { split; last split; intros ??; [lia|lia|done]. }
-  split; last split.
-  - intros i s Lt Eqi. destruct i as [|i].
+  { split; intros ??; [lia|done]. }
+  destruct (IH (l +ₗ 1) h) as [IH1 IH2].
+  split.
+  - intros i Lt. destruct i as [|i].
     + rewrite shift_loc_0_nat lookup_insert //.
     + have Eql: l +ₗ S i = (l +ₗ 1) +ₗ i.
       { rewrite shift_loc_assoc. f_equal. lia. }
-      rewrite Eql in Eqi. rewrite lookup_insert_ne.
+      rewrite lookup_insert_ne.
       * rewrite Eql. destruct (IH (l +ₗ 1) h) as [IH' _].
-        apply (IH' _ s); [lia|done].
-      * admit.
-  - intros i s Lt Eqi.
-    admit.
-  - intros l' Lt.
-Admitted.
+        apply IH'; lia.
+      * rewrite -{1}(shift_loc_0_nat l). intros ?%shift_loc_inj. lia.
+  - intros l' Lt. rewrite lookup_insert_ne.
+    + apply IH2. intros i Lt'.
+      rewrite (_: (l +ₗ 1) +ₗ i = l +ₗ S i); last first.
+      { rewrite shift_loc_assoc. f_equal. lia. }
+      apply Lt. lia.
+    + specialize (Lt O ltac:(lia)). by rewrite shift_loc_0_nat in Lt.
+Qed.
 
+Lemma init_mem_lookup_case l n h :
+  ∀ l' s', init_mem l n h !! l' = Some s' →
+  h !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
+  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+Proof.
+  destruct (init_mem_lookup l n h) as [EQ1 EQ2].
+  intros l1 s1 Eq'.
+  case (decide (l1.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    right. rewrite Eql2. eexists; split; [|done].
+    rewrite Eql2 /= in Lt. lia.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
+     rewrite EQ2 // in Eq'.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
+    rewrite EQ2 // in Eq'.
+Qed.
+
+Lemma init_stack_lookup α l n t :
+  (∀ (i: nat), (i < n)%nat →
+    init_stacks α l n t !! (l +ₗ i) = Some [mkItem Unique t None]) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
+    init_stacks α l n t !! l' = α !! l').
+Proof.
+  revert l α. induction n as [|n IH]; intros l α; simpl.
+  { split; intros ??; [lia|done]. }
+  destruct (IH (l +ₗ 1) α) as [IH1 IH2].
+  split.
+  - intros i Lt. destruct i as [|i].
+    + rewrite shift_loc_0_nat lookup_insert //.
+    + have Eql: l +ₗ S i = (l +ₗ 1) +ₗ i.
+      { rewrite shift_loc_assoc. f_equal. lia. }
+      rewrite lookup_insert_ne.
+      * rewrite Eql. destruct (IH (l +ₗ 1) α) as [IH' _].
+        apply IH'; lia.
+      * rewrite -{1}(shift_loc_0_nat l). intros ?%shift_loc_inj. lia.
+  - intros l' Lt. rewrite lookup_insert_ne.
+    + apply IH2. intros i Lt'.
+      rewrite (_: (l +ₗ 1) +ₗ i = l +ₗ S i); last first.
+      { rewrite shift_loc_assoc. f_equal. lia. }
+      apply Lt. lia.
+    + specialize (Lt O ltac:(lia)). by rewrite shift_loc_0_nat in Lt.
+Qed.
+
+Lemma init_stack_lookup_case α l n t :
+  ∀ l' s', init_stacks α l n t !! l' = Some s' →
+  α !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
+  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+Proof.
+  destruct (init_stack_lookup α l n t) as [EQ1 EQ2].
+  intros l1 s1 Eq'.
+  case (decide (l1.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    right. rewrite Eql2. eexists; split; [|done].
+    rewrite Eql2 /= in Lt. lia.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
+     rewrite EQ2 // in Eq'.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
+    rewrite EQ2 // in Eq'.
+Qed.
+
+Lemma init_stack_lookup_case_2 α l n t :
+  ∀ l' s', α !! l' = Some s' →
+  init_stacks α l n t !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
+  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i ∧
+    init_stacks α l n t !! l' = Some [mkItem Unique t None].
+Proof.
+  destruct (init_stack_lookup α l n t) as [EQ1 EQ2].
+  intros l1 s1 Eq'.
+  case (decide (l1.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    right. rewrite Eql2. rewrite Eql2 /= in Lt.
+    eexists; split; last split; [|done|].
+    + lia.
+    + rewrite EQ1 //. lia.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
+    rewrite EQ2 //.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
+    rewrite EQ2 //.
+Qed.
 
 Lemma wf_init_state : Wf init_state.
 Proof.

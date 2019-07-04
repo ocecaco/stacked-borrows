@@ -106,6 +106,15 @@ Proof.
   destruct cs' as [[]|c2|]; auto; try inversion 1.
 Qed.
 
+Lemma cmap_lookup_op_unique_included (cm1 cm2: cmapUR)
+  c T (VALID: ✓ cm2) (INCL: cm1 ≼ cm2):
+  cm1 !! c ≡ Some (to_callStateR (csOwned T)) →
+  cm2 !! c ≡ Some (to_callStateR (csOwned T)).
+Proof.
+  destruct INCL as [cm' Eq]. rewrite Eq. apply cmap_lookup_op_l_equiv.
+  by rewrite -Eq.
+Qed.
+
 Lemma cmap_lookup_op_l_equiv_pub (cm1 cm2: cmapUR) c (VALID: ✓ (cm1 ⋅ cm2)):
   cm1 !! c ≡ Some (to_callStateR csPub) →
   (cm1 ⋅ cm2) !! c ≡ Some (to_callStateR csPub).
@@ -163,6 +172,25 @@ Proof.
   rewrite -Some_op pair_op. intros [?%exclusive_r]; [done|apply _].
 Qed.
 
+Lemma ptrmap_lookup_op_l_unique_equiv (pm1 pm2: ptrmapUR) t h0
+  (VALID: ✓ (pm1 ⋅ pm2)):
+  pm1 !! t ≡ Some (to_tagKindR tkUnique, h0) →
+  (pm1 ⋅ pm2) !! t ≡ Some (to_tagKindR tkUnique, h0).
+Proof.
+  intros HL. move : (VALID t). rewrite lookup_op HL.
+  destruct (pm2 !! t) as [[k2 h2]|] eqn:Eqt; rewrite Eqt; [|done].
+  rewrite -Some_op pair_op. intros [?%exclusive_l]; [done|apply _].
+Qed.
+
+Lemma ptrmap_lookup_op_unique_included (pm1 pm2: ptrmapUR) t h0
+  (VALID: ✓ pm2) (INCL: pm1 ≼ pm2):
+  pm1 !! t ≡ Some (to_tagKindR tkUnique, h0) →
+  pm2 !! t ≡ Some (to_tagKindR tkUnique, h0).
+Proof.
+  destruct INCL as [cm' Eq]. rewrite Eq. apply ptrmap_lookup_op_l_unique_equiv.
+  by rewrite -Eq.
+Qed.
+
 Lemma ptrmap_lookup_op_r_equiv_pub (pm1 pm2: ptrmapUR) t h2 (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t ≡ Some (to_tagKindR tkPub, h2) →
   ∃ h1, (pm1 ⋅ pm2) !! t ≡ Some (to_tagKindR tkPub, h1 ⋅ h2).
@@ -193,6 +221,12 @@ Proof.
           (to_tagKindR tkUnique, h0) (to_tagKindR tkUnique, h0));
           [|exact Eqtg|by apply exclusive_local_update].
   by rewrite (ptrmap_lookup_op_r _ _ _ _ VALID Eqtg).
+Qed.
+
+Lemma to_heapletR_valid h : ✓ (to_heapletR h).
+Proof.
+  intros l. rewrite /to_heapletR lookup_fmap.
+  destruct (h !! l) eqn:Eq; rewrite Eq //.
 Qed.
 
 Lemma tagKindR_valid (k: tagKindR) :
