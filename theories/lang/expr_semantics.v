@@ -31,7 +31,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   (* | AtomRead e => AtomRead (subst x es e) *)
   | Deref e T => Deref (subst x es e) T
   | Ref e => Ref (subst x es e)
-  | Field e path => Field (subst x es e) path
+  (* | Field e path => Field (subst x es e) path *)
   | Retag e kind => Retag (subst x es e) kind
   | Let x1 e1 e2 =>
       Let x1 (subst x es e1)
@@ -118,7 +118,7 @@ Inductive ectx_item :=
 (* | AtWrRCtx (r : result) *)
 | DerefCtx (T: type)
 | RefCtx
-| FieldCtx (path : list nat)
+(* | FieldCtx (path : list nat) *)
 | RetagCtx (kind: retag_kind)
 | LetCtx (x: binder) (e2: expr)
 | CaseCtx (el : list expr).
@@ -148,7 +148,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   (* | AtWrRCtx v1 => AtomWrite (of_result v1) e *)
   | DerefCtx T => Deref e T
   | RefCtx => Ref e
-  | FieldCtx path => Field e path
+  (* | FieldCtx path => Field e path *)
   | RetagCtx kind => Retag e kind
   | LetCtx x e2 => Let x e e2
   | CaseCtx el => Case e el
@@ -300,10 +300,10 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
 | DerefBS l lbor T
     (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) :
     pure_expr_step FNs h (Deref #[ScPtr l lbor] T) SilentEvt (Place l lbor T)
-| FieldBS l lbor T path off T'
+(* | FieldBS l lbor T path off T'
     (FIELD: field_access T path = Some (off, T')) :
     pure_expr_step FNs h (Field (Place l lbor T) path)
-                         SilentEvt (Place (l +ₗ off) lbor T')
+                         SilentEvt (Place (l +ₗ off) lbor T') *)
 | LetBS x e1 e2 e' :
     is_Some (to_result e1) →
     subst x e1 e2 = e' →

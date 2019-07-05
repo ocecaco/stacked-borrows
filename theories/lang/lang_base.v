@@ -165,9 +165,9 @@ Inductive expr :=
                                      presenting the location that `e` points to.
                                      The location has type `T`. *)
 | Ref (e: expr)                   (* Turn a place `e` into a pointer value. *)
-| Field (e: expr) (path: list nat)(* Create a place that points to a component
+(* | Field (e: expr) (path: list nat)(* Create a place that points to a component
                                      of the place `e`. `path` defines the path
-                                     through the type. *)
+                                     through the type. *) *)
 (* mem op *)
 | Copy (e : expr)                 (* Read from the place `e` *)
 | Write (e1 e2: expr)             (* Write the value `e2` to the place `e1` *)
@@ -201,7 +201,7 @@ Arguments Proj _%E _%E.
 Arguments Conc _%E _%E.
 Arguments Deref _%E _%T.
 Arguments Ref _%E.
-Arguments Field _%E _.
+(* Arguments Field _%E _. *)
 Arguments Copy _%E.
 Arguments Write _%E _%E.
 Arguments Alloc _%T.
@@ -225,7 +225,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Let x e1 e2 => is_closed X e1 && is_closed (x :b: X) e2
   | Case e el | Call e el (* | App e el  *)
       => is_closed X e && forallb (is_closed X) el
-  | Copy e | Retag e _ | Deref e _ | Ref e | Field e _
+  | Copy e | Retag e _ | Deref e _ | Ref e (* | Field e _ *)
       | Free e | InitCall e | EndCall e (* | AtomRead e | Fork e *)
       => is_closed X e
   (* | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2 *)
