@@ -31,7 +31,7 @@ Proof.
   pfold. intros NT. intros.
   have EqDOM := wsat_heap_dom _ _ _ WSAT.
   have EqFRESH := fresh_block_equiv _ _ EqDOM.
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   have Eqnp : σs.(snp) = σt.(snp). { by destruct SREL as (?&?&?&?). }
   have Eqlst: ls = lt. { by rewrite /ls /lt EqFRESH. }
   split; [|done|].
@@ -57,7 +57,9 @@ Proof.
       by apply to_heapletR_valid. }
     have INCL: r_f ⋅ r ≼ r_f ⋅ r ⋅ r' by apply cmra_included_l.
     rewrite cmra_assoc.
-    split; last split; last split; last split; last split.
+    destruct (init_mem_lookup ls (tsize T) σs.(shp)) as [HLs1 HLs2].
+    destruct (init_mem_lookup lt (tsize T) σt.(shp)) as [HLt1 HLt2].
+    split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
@@ -75,8 +77,7 @@ Proof.
         { rewrite Eql -Eqi in Eqs.
           rewrite (proj1 (init_mem_lookup lt (tsize T) ∅)) // in Eqs.
           by inversion Eqs. } subst s.
-        have Eqs2 := proj1 (init_mem_lookup lt (tsize T) σt.(shp)) _ Lti'.
-        rewrite Eqi -Eql in Eqs2. split; [done|].
+        have Eqs2 := HLt1 _ Lti'. rewrite Eqi -Eql in Eqs2. split; [done|].
         destruct k; [|by inversion Eq1].
         have Eqstk2 := proj1 (init_stacks_lookup σt.(sst) lt (tsize T) tgt) _ Lti'.
         rewrite Eqi -Eql Eqstk in Eqstk2.
@@ -90,9 +91,7 @@ Proof.
         destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
           as [[EqstkO Lti]|[i [[? Lti] Eql]]].
         * specialize (PINV _ EqstkO _ _ Instk NDIS) as [Eqss PINV].
-          split; [|done].
-          destruct (init_mem_lookup lt (tsize T) σt.(shp)) as [_ EQ].
-          rewrite /= EQ //.
+          rewrite /= HLt2 //.
         * exfalso. move : Eqstk. simpl.
           destruct (init_stacks_lookup σt.(sst) lt (tsize T) tgt) as [EQ _].
           have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id //.
@@ -115,8 +114,6 @@ Proof.
         rewrite (_: (fresh_block (shp σt), i) = lt +ₗ i) //.
         by rewrite -Eqi.
     - destruct SREL as (Eqst&_&Eqcs&Eqnc&VREL).
-      destruct (init_mem_lookup ls (tsize T) σs.(shp)) as [HLs1 HLs2].
-      destruct (init_mem_lookup lt (tsize T) σt.(shp)) as [HLt1 HLt2].
       repeat split; simpl; [|auto..|].
       { subst σs' σt' ls lt ts tgt. by rewrite Eqst EqFRESH Eqnp. }
       intros l st HL.
@@ -130,8 +127,14 @@ Proof.
         specialize (HLt1 _ Lti').
         rewrite Z2Nat.id // -Eqi HL in HLt1.
         specialize (HLs1 _ Lti'). rewrite -Eqlst in Eqi.
-        rewrite Z2Nat.id // -Eqi in HLs1. split; [done|by inversion HLt1]. }
-  left. (*  rewrite {1}/l {1}/t {1}EqFRESH -{1}Eqnp. *)
+        rewrite Z2Nat.id // -Eqi in HLs1. split; [done|by inversion HLt1].
+    - intros ???. rewrite /lmap_inv /= right_id. intros IN.
+      specialize (LINV _ _ _ IN) as [Eq1 Eq2].
+      have ?: ∀ i : nat, (i < tsize T)%nat → l ≠ lt +ₗ i.
+      { intros i Lt Eq. apply (is_fresh_block σt.(shp) i), elem_of_dom.
+        exists s. rewrite (_ : (fresh_block σt.(shp), Z.of_nat i) = l) //. }
+      rewrite HLt2 // HLs2 // Eqlst //. }
+  left.
   apply (sim_body_result _ _ _ _ (PlaceR _ _ T) (PlaceR _ _ T)). intros.
   apply POST; eauto. by rewrite /ts Eqnp.
 Qed.
@@ -151,7 +154,7 @@ Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ
 Proof.
   intros POST. pfold.
   intros NT. intros.
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; [|done|].
   { right.
     destruct (NT (Copy (Place l (Tagged t) Ts)) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
@@ -225,7 +228,7 @@ Proof.
   exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), (S n). split; last split.
   { left. by constructor 1. }
   { rewrite cmra_assoc -CORE.
-    split; last split; last split; last split; last split.
+    split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
@@ -256,7 +259,8 @@ Proof.
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
       exists stk, pm'. split; last split; [done| |done]. by apply AS.
-    - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?). }
+    - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?).
+    - intros ??? IN. specialize (LINV _ _ _ IN) as [Eq1 Eq2]. by subst σt'. }
   left.
   apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)). intros.
   have VREL2: vrel (r ⋅ (core (r_f ⋅ r))) vs vt.
@@ -277,7 +281,7 @@ Lemma sim_body_copy_raw fs ft r n l tg Ts Tt σs σt Φ
 Proof.
   intros POST. pfold.
   intros NT. intros.
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; [|done|].
   { right.
     destruct (NT (Copy (Place l tg Ts)) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
@@ -304,7 +308,7 @@ Proof.
   { by eapply (head_step_fill_tstep _ []), copy_head_step'. }
   exists (Val vs), σs', r, (S n). split; last split.
   { left. by constructor 1. }
-  { split; last split; last split; last split; last split.
+  { split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
@@ -335,7 +339,8 @@ Proof.
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
       exists stk, pm'. split; last split; [done| |done]. by apply AS.
-    - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?). }
+    - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?).
+    - intros ??? IN. specialize (LINV _ _ _ IN) as [Eq1 Eq2]. by subst σt'. }
   left. pfold. split; last first.
   { constructor 1. intros vt' ? STEPT'. exfalso.
     have ?: to_result (Val vt) = None.
@@ -443,7 +448,7 @@ Lemma sim_body_write_related_values
 Proof.
   intros r' POST. pfold.
   intros NT. intros.
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; [|done|].
   { right.
     edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
@@ -474,7 +479,7 @@ Proof.
     by apply (tmap_lookup_op_r _ _ _ _ (proj1 (proj1 VALID)) Eqtg). }
   exists (#[☠])%V, σs', r', (S n). split; last split.
   { left. by constructor 1. }
-  { split; last split; last split; last split; last split.
+  { split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - (* valid *)
@@ -675,11 +680,12 @@ Proof.
             rewrite lookup_op Eqtg in Eqt.
             by rewrite write_heaplet_dom (tagKindR_exclusive_heaplet _ _ _ Eqt). }
           { exists h. rewrite /rtm /= HL lookup_insert_ne //. }
+    - admit.
   }
   left.
   eapply (sim_body_result fs ft r' n (ValR [☠%S]) (ValR [☠%S])).
   intros. simpl. subst σt'. by apply POST.
-Qed.
+Admitted.
 
 (** Retag *)
 
@@ -763,7 +769,7 @@ Lemma sim_body_retag_default fs ft r n x xtag mut T σs σt Φ
     (Retag (Place x xtag Tr) Default, σt) : Φ.
 Proof.
   intros Tr POST. pfold. intros NT. intros.
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; [|done|].
   { right.
     edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
@@ -824,9 +830,9 @@ Proof.
   { (* sim cont *)  by punfold SIM. }
   { (* STEP src *)  left. by apply tc_once. }
   (* WSAT new *)
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   rewrite assoc.
-  split; last split; last split; last split; last split.
+  split; last split; last split; last split; last split; last split.
   { (* WF src *)    by apply (tstep_wf _ _ _ STEPS WFS). }
   { (* WF tgt *)    by apply (tstep_wf _ _ _ STEPT WFT). }
   { (* VALID *)
@@ -856,6 +862,7 @@ Proof.
       rewrite /rcm /= (comm _ (r_f.(rcm) ⋅ r.(rcm))) -insert_singleton_op //.
       rewrite lookup_insert_ne // => Eqc. subst c.
       apply (lt_irrefl σt.(snc)), (cinv_lookup_in _ _ _ _ WFT CINV PRI). }
+  { intros ???. rewrite /lmap_inv /= right_id. apply LINV. }
 Qed.
 
 (** EndCall *)
@@ -868,7 +875,7 @@ Proof.
   edestruct (tstep_end_call_inv _ vs _ _ _ (ltac:(by eexists))
                 STEPS) as (vs' & Eqvs & ? & c & cids & Eqc & Eqs).
   subst. simpl in Eqvs. symmetry in Eqvs. simplify_eq.
-  destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs' & ?).
+  destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (? & ? & Eqcs' & ?).
   exists (#vt)%E, (mkState σt.(shp) σt.(sst) cids σt.(snp) σt.(snc)).
   eapply (head_step_fill_tstep _ []).
   econstructor. by econstructor. econstructor. by rewrite -Eqcs'.
@@ -903,7 +910,7 @@ Proof.
   destruct (ESAT _ eq_refl) as [[cs Eqcs] ESAT']. clear ESAT.
   set σs' := (mkState σs.(shp) σs.(sst) cids σs.(snp) σs.(snc)).
   have STEPS: (EndCall #vs, σs) ~{fs}~> ((#vs)%E, σs').
-  { destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (? & ? & Eqcs' & ?).
+  { destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (? & ? & Eqcs' & ?).
     eapply (head_step_fill_tstep _ []).
     econstructor. by econstructor. econstructor. by rewrite Eqcs'. }
   exists (Val vs), σs'.
@@ -912,7 +919,7 @@ Proof.
              | _ => r.(rcm)
              end.
   exists ((r.(rtm), r2'), r.(rlm)), (S n).
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; last split.
   { left. by constructor 1. }
   { have VALID': ✓ (r_f ⋅ ((r.(rtm), r2'), r.(rlm))).
@@ -927,7 +934,7 @@ Proof.
         [|done|by apply exclusive_local_update].
       apply cmap_lookup_op_r; [apply VALID|exact Eqr2]. }
     destruct r_f as [[r_f1 r_f2] r_f3].
-    split; last split; last split; last split; last split.
+    split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
@@ -970,7 +977,8 @@ Proof.
         subst T'. specialize (ESAT' ((r_f1, r_f2), r_f3) VALID T).
         rewrite /= Eq2 in ESAT'.
         destruct (ESAT' (ltac:(done)) _ InT' _ Eqt _ _ Inh Eqs) as [ss [Eqss AR]].
-        left. by exists ss. }
+        left. by exists ss.
+    - intros ???. rewrite /=. apply LINV. }
   (* result *)
   left. apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).
   have ?: vrel_expr ((r.(rtm), r2'), r.(rlm)) vs vt by do 2 eexists; eauto.

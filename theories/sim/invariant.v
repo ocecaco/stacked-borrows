@@ -58,6 +58,10 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   | _ => False
   end.
 
+Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
+  ∀ (l: loc) s stk, r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s stk)) →
+  σs.(shp) !! l = Some s ∧ σt.(shp) !! l = Some s.
+
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
@@ -72,12 +76,11 @@ Definition srel (r: resUR) (σs σt: state) : Prop :=
   ∀ (l: loc) st, σt.(shp) !! l = Some st →
   (∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st) ∨ (∃ (t: ptr_id), priv_loc r l t).
 
-
 Definition wsat (r: resUR) (σs σt: state) : Prop :=
   (* Wellformedness *)
   Wf σs ∧ Wf σt ∧ ✓ r ∧
   (* Invariants *)
-  tmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
+  tmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt ∧ lmap_inv r σs σt.
 
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)
@@ -99,18 +102,19 @@ Definition end_call_sat (r: resUR) (σs σt: state) : Prop :=
 Definition init_res : resUR := ((ε, {[O := to_callStateR csPub]}), ε).
 Lemma wsat_init_state : wsat init_res init_state init_state.
 Proof.
-  split; last split; last split; last split; last split.
+  split; last split; last split; last split; last split; last split.
   - apply wf_init_state.
   - apply wf_init_state.
   - split; [|done]. split; [done|]. intros ?; simpl. destruct i.
     + rewrite lookup_singleton //.
     + rewrite lookup_singleton_ne //.
-  - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. inversion 1.
+  - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
   - intros ??. simpl. destruct c.
     + rewrite lookup_singleton. intros Eq%Some_equiv_inj.
-      destruct cs as [[]| |]; [..|lia|]; inversion Eq.
-    + rewrite lookup_singleton_ne //. inversion 1.
+      destruct cs as [[]| |]; [..|lia|]; by inversion Eq.
+    + rewrite lookup_singleton_ne //. by inversion 1.
   - repeat split. simpl. set_solver.
+  - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
 Qed.
 
 Lemma arel_eq (r: resUR) (s1 s2: scalar) :
@@ -227,6 +231,9 @@ Proof.
   - by rewrite Eqr.
 Qed.
 
+Instance lmap_inv_proper  : Proper ((≡) ==> (=) ==> (=) ==> iff) lmap_inv.
+Proof. intros r1 r2 Eqr ??????. subst. rewrite /lmap_inv. by setoid_rewrite Eqr. Qed.
+
 Instance wsat_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
 Proof. solve_proper. Qed.
 
@@ -253,4 +260,4 @@ Qed.
 
 Lemma wsat_heap_dom r σs σt :
   wsat r σs σt → dom (gset loc) σt.(shp) ≡ dom (gset loc) σs.(shp).
-Proof. intros (?&?&?&?&?&?). by eapply srel_heap_dom. Qed.
+Proof. intros (?&?&?&?&?&?&?). by eapply srel_heap_dom. Qed.

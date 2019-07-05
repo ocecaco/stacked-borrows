@@ -34,8 +34,15 @@ Definition to_heapletR (h: mem) : heapletR := fmap to_agree h.
 Definition to_tmapUR (pm: tmap) : tmapUR :=
   fmap (λ tm, (to_tagKindR tm.1, to_heapletR tm.2)) pm.
 
+Inductive loc_state := lsLocal (s: scalar) (stk: stack) | lsShared.
+Definition loc_stateR := (csumR (exclR (leibnizO (scalar * stack))) unitR).
 Definition lmap := gmap loc (scalar * stack).
-Definition lmapUR := gmapUR loc (csumR (exclR (leibnizO (scalar * stack))) unitR).
+Definition lmapUR := gmapUR loc loc_stateR.
+Definition to_locStateR (ls: loc_state) : loc_stateR :=
+  match ls with
+  | lsLocal s stk => Cinl (Excl (s, stk))
+  | lsShared => Cinr ()
+  end.
 
 Definition res := (tmap * cmap * lmap)%type.
 Definition resUR := prodUR (prodUR tmapUR cmapUR) lmapUR.
