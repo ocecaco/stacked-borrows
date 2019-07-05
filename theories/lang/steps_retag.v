@@ -311,6 +311,7 @@ Proof.
   by eexists.
 Qed.
 
+(* Writing *)
 Lemma find_first_write_incompatible_head stk pm idx t opro pmi
   (HD: is_stack_head (mkItem pmi t opro) stk)
   (NSRW: pmi ≠ SharedReadWrite) :
@@ -376,6 +377,79 @@ Proof.
   eapply (remove_check_incompatible_items _ _ _ _ idx
             (mkItem Unique (Tagged ti) oproi) O ti ND); done.
 Qed.
+
+(* Reading *)
+Lemma replace_check'_incompatible_items cids acc stk stk' stk0 it t
+  (ND: stack_item_tagged_NoDup (acc ++ stk ++ stk0)) :
+  it.(tg) = Tagged t → it.(perm) = Unique → it ∈ stk →
+  replace_check' cids acc stk = Some stk' →
+  ∀ it', it'.(tg) = Tagged t → it' ∈ (stk' ++ stk0) → it'.(perm) = Disabled.
+Proof.
+  intros Eqt IU IN. revert acc ND.
+  induction stk as [|it0 stk IH]; simpl; intros acc ND; [set_solver|].
+  case decide => ?; [case check_protector; [|done]|]; last first.
+  { move => /(IH ltac:(set_solver)).
+    rewrite -(app_assoc acc [it0] (stk ++ stk0)).
+    intros IH1 it' Eqit' Init'. apply IH1; [done..|]. clear -Init'. set_solver. }
+  move => RC.
+  have ND3: stack_item_tagged_NoDup
+    ((acc ++ [mkItem Disabled it0.(tg) it0.(protector)]) ++ stk ++ stk0).
+  { move : ND. clear.
+    rewrite (app_assoc acc [it0]) 2!(Permutation_app_comm acc) -2!app_assoc.
+    rewrite /stack_item_tagged_NoDup 2!filter_cons /=.
+    case decide => ?; [rewrite decide_True //|rewrite decide_False //]. }
+  have IN1:= (replace_check'_acc_result _ _ _ _ RC).
+  have IN': mkItem Disabled it0.(tg) it0.(protector) ∈ stk' ++ stk0 by set_solver.
+  have ND4 := replace_check'_stack_item_tagged_NoDup_2 _ _ _ _ _ RC ND3.
+  apply elem_of_cons in IN as [|IN].
+  { intros it' Eqt' Init'. subst it0.
+    have ? : it' = mkItem Disabled it.(tg) it.(protector).
+    { apply (stack_item_tagged_NoDup_eq _ _ _ t ND4 Init' IN' Eqt').
+      by rewrite Eqt. }
+    by subst it'. }
+  apply (IH IN _ ND3 RC).
+Qed.
+
+Lemma replace_check_incompatible_items cids stk stk' stk0 it t
+  (ND: stack_item_tagged_NoDup (stk ++ stk0)) :
+  it.(tg) = Tagged t → it.(perm) = Unique → it ∈ stk →
+  replace_check cids stk = Some stk' →
+  ∀ it', it'.(tg) = Tagged t → it' ∈ (stk' ++ stk0) → it'.(perm) = Disabled.
+Proof. intros ????. eapply (replace_check'_incompatible_items _ []); eauto. Qed.
+
+Lemma access1_read_replace_incompatible_head stk t ti cids n stk'
+  (ND: stack_item_tagged_NoDup stk) :
+  (∃ oproi, is_stack_head (mkItem Unique (Tagged ti) oproi) stk) →
+  access1 stk AccessRead (Tagged t) cids = Some (n, stk') →
+  t ≠ ti →
+  ∀ pm opro, (mkItem pm (Tagged ti) opro) ∈ stk' → pm = Disabled.
+Proof.
+  intros HD. rewrite /access1.
+  case find_granting as [[n' pm']|] eqn:GRANT; [|done]. simpl.
+  case replace_check as [stk1|] eqn:Eq; [|done].
+  simpl. intros ?. simplify_eq.
+  intros NEQ pm opro. destruct HD as [oproi HD].
+  rewrite -{1}(take_drop n stk) in ND.
+  eapply (replace_check_incompatible_items _ _ _ _ (mkItem Unique (Tagged ti) oproi) ti ND);
+    try done.
+  have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
+  clear -HD'. destruct HD' as [? EqD]. rewrite EqD. by left.
+Qed.
+
+Lemma access1_read_replace_incompatible_head_protector stk t ti cids n stk' c :
+  (is_stack_head (mkItem Unique (Tagged ti) (Some c)) stk) →
+  c ∈ cids →
+  access1 stk AccessRead (Tagged t) cids = Some (n, stk') →
+  t ≠ ti → False.
+Proof.
+  intros HD ACTIVE. rewrite /access1.
+  case find_granting as [[n' pm']|] eqn:GRANT; [|done]. simpl.
+  case replace_check as [stk1|] eqn:Eq; [|done].
+  simpl. intros ?. simplify_eq. intros NEQ.
+  have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
+  destruct HD' as [stk' Eqs].
+  move : Eq. rewrite Eqs /replace_check /= /check_protector /=.
+Abort.
 
 Lemma active_SRO_elem_of t stk :
   t ∈ active_SRO stk → ∃ i it, stk !! i = Some it ∧ it.(tg) = Tagged t ∧

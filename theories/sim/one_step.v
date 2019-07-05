@@ -198,6 +198,12 @@ Proof.
      (* impossible: t' is protected by c' which is still active.
       So t ≠ t' and protected(t',c') is on top of (l +ₗ i), so access with t is UB *)
     exfalso.
+    have NEQ: t' ≠ t.
+    { intros ?. subst t'.
+      apply (ptrmap_lookup_op_r_equiv_pub r_f.1) in PUB as [? PUB];
+        [|by apply VALID].
+      rewrite -> PUB in Eqh'. apply Some_equiv_inj in Eqh' as [Eqk' ?].
+      inversion Eqk'. }
     specialize (CINV _ _ Eqci) as [Inc' CINV].
     specialize (CINV _ InT') as [Ltt' CINV].
     specialize (CINV _ _ Eqh' _ Inl) as (stk & pm & Eqstk & Instk & NDIS).
@@ -207,6 +213,12 @@ Proof.
       rewrite -Some_valid -Eqh'. apply VALID. }
     destruct (heapletR_elem_of_dom _ _ VALh' Inl) as [s Eqs].
     specialize (PINV _ _ Eqs _ Eqstk _ _ Instk NDIS) as (Eqss & HD).
+    destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 _].
+    rewrite Eqlt in HLLt.
+    specialize (EQ1 _ _ HLLt Eqstk) as (stk' & Eqstk' & EQ2).
+    move : EQ2. case access1 as [[n1 stk1]|] eqn:EQ3; [|done].
+    simpl. inversion 1. subst stk1.
+    have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
     admit.
   }
   exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), (S n). split; last split.

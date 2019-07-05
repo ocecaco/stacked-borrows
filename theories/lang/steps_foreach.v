@@ -2,6 +2,43 @@ From stbor.lang Require Export defs.
 
 Set Default Proof Using "Type".
 
+Lemma init_mem_foldr' l n h (m: nat):
+  init_mem (l +ₗ m) n h =
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%S]> hi) h (seq m n).
+Proof.
+  revert m. induction n as [|n IHn]; intros m; [done|]. simpl. f_equal.
+  by rewrite shift_loc_assoc -(Nat2Z.inj_add m 1) Nat.add_1_r IHn.
+Qed.
+Lemma init_mem_foldr l n h:
+  init_mem l n h =
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=☠%S]> hi) h (seq 0 n).
+Proof. by rewrite -init_mem_foldr' shift_loc_0. Qed.
+
+Lemma free_mem_foldr' l n h (m: nat):
+  free_mem (l +ₗ m) n h =
+  fold_right (λ (i: nat) hi, delete (l +ₗ i) hi) h (seq m n).
+Proof.
+  revert m. induction n as [|n IHn]; intros m; [done|]. simpl. f_equal.
+  by rewrite shift_loc_assoc -(Nat2Z.inj_add m 1) Nat.add_1_r IHn.
+Qed.
+Lemma free_mem_foldr l n h:
+  free_mem l n h =
+  fold_right (λ (i: nat) hi, delete (l +ₗ i) hi) h (seq 0 n).
+Proof. by rewrite -free_mem_foldr' shift_loc_0. Qed.
+
+Lemma init_stacks_foldr' α l n si (m: nat):
+  init_stacks α (l +ₗ m) n si =
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=[mkItem Unique si None]]> hi) α (seq m n).
+Proof.
+  revert m. induction n as [|n IHn]; intros m; [done|]. simpl. f_equal.
+  by rewrite shift_loc_assoc -(Nat2Z.inj_add m 1) Nat.add_1_r IHn.
+Qed.
+Lemma init_stacks_foldr α l n si:
+  init_stacks α l n si =
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):=[mkItem Unique si None]]> hi) α (seq 0 n).
+Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
+
+
 Lemma for_each_lookup α l n f α' :
   for_each α l n false f = Some α' →
   (∀ (i: nat) stk, (i < n)%nat → α !! (l +ₗ i) = Some stk → ∃ stk',
@@ -188,8 +225,7 @@ Proof.
 Qed.
 
 Lemma for_each_dom α l n f α' :
-  for_each α l n false f = Some α' →
-  dom (gset loc) α ≡ dom (gset loc) α'.
+  for_each α l n false f = Some α' → dom (gset loc) α ≡ dom (gset loc) α'.
 Proof.
   revert α. induction n as [|n IH]; intros α; [by move => /= [-> //]|].
   simpl. destruct (α !! (l +ₗ n)) eqn:Eq; [|done].
