@@ -38,6 +38,14 @@ Definition res := (ptrmap * cmap)%type.
 Definition resUR := prodUR ptrmapUR cmapUR.
 Definition to_resUR (r: res) : resUR := (to_ptrmapUR r.1, to_cmapUR r.2).
 
+
+Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
+  ✓ (r_f ⋅ r) → (r_f ⋅ r, r) ~l~> (r_f ⋅ r', r') → ✓ (r_f ⋅ r').
+Proof.
+  intros VALID UPD. apply cmra_discrete_valid.
+  apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
+Qed.
+
 (** tag_kind properties *)
 Lemma tag_kind_incl_eq (k1 k2: tagKindR):
   ✓ k2 → k1 ≼ k2 → k1 ≡ k2.
@@ -73,6 +81,14 @@ Proof.
   destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
     intros [Eq1 Eq2]%Some_equiv_inj; [|done].
   destruct k as [[[]|]| |]; inversion Eq1; simplify_eq.
+Qed.
+
+Lemma tagKindR_valid (k: tagKindR) :
+  valid k → ∃ k', k ≡ to_tagKindR k'.
+Proof.
+  destruct k as [[[]|]|a |]; [|done|..|done]; intros VAL.
+  - by exists tkUnique.
+  - exists tkPub. by apply to_agree_uninj in VAL as [[] <-].
 Qed.
 
 (** cmap properties *)
@@ -203,13 +219,6 @@ Proof.
   - intros _. exists (∅: gmap loc _). by rewrite 2!left_id HL.
 Qed.
 
-Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
-  ✓ (r_f ⋅ r) → (r_f ⋅ r, r) ~l~> (r_f ⋅ r', r') → ✓ (r_f ⋅ r').
-Proof.
-  intros VALID UPD. apply cmra_discrete_valid.
-  apply (UPD O (Some r_f)); [by apply cmra_discrete_valid_iff|by rewrite /= comm].
-Qed.
-
 Lemma ptrmap_valid (r_f r: ptrmapUR) t h0 kh
   (Eqtg: r !! t = Some (to_tagKindR tkUnique, h0)) (VN: ✓ kh) :
   ✓ (r_f ⋅ r) → ✓ (r_f ⋅ (<[t:= kh]> r)).
@@ -229,12 +238,12 @@ Proof.
   destruct (h !! l) eqn:Eq; rewrite Eq //.
 Qed.
 
-Lemma tagKindR_valid (k: tagKindR) :
-  valid k → ∃ k', k ≡ to_tagKindR k'.
+Lemma to_heapletR_lookup h l s :
+  to_heapletR h !! l ≡ Some (to_agree s) → h !! l = Some s.
 Proof.
-  destruct k as [[[]|]|a |]; [|done|..|done]; intros VAL.
-  - by exists tkUnique.
-  - exists tkPub. by apply to_agree_uninj in VAL as [[] <-].
+  rewrite /to_heapletR lookup_fmap.
+  destruct (h !! l) as [s'|] eqn:Eqs; rewrite Eqs /=; [|by inversion 1].
+  intros Eq%Some_equiv_inj%to_agree_inj. by inversion Eq.
 Qed.
 
 (** The Core *)

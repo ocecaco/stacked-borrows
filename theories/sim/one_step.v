@@ -66,24 +66,34 @@ Proof.
         intros [Eq1 Eq2]%Some_equiv_inj. simpl in Eq1, Eq2. split; [lia|].
         intros l s. rewrite -Eq2. intros Eqs stk Eqstk pm opro Instk NDIS.
         (* l is new memory *)
-        have EqPoi: s = ScPoison. { admit. }
-        split.
-        * rewrite EqPoi. (* init_mem_lookup *) admit.
-        * destruct k; [|by inversion Eq1].
-          exists []. admit.
+        apply to_heapletR_lookup in Eqs.
+        destruct (init_mem_lookup_empty _ _ _ _ Eqs) as [i [[? Lti] Eql]].
+        have Eqi: Z.of_nat (Z.to_nat i) = i by rewrite Z2Nat.id.
+        have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Eqi.
+        have ?: s = ScPoison.
+        { rewrite Eql -Eqi in Eqs.
+          rewrite (proj1 (init_mem_lookup lt (tsize T) ∅)) // in Eqs.
+          by inversion Eqs. } subst s.
+        have Eqs2 := proj1 (init_mem_lookup lt (tsize T) σt.(shp)) _ Lti'.
+        rewrite Eqi -Eql in Eqs2. split; [done|].
+        destruct k; [|by inversion Eq1].
+        have Eqstk2 := proj1 (init_stacks_lookup σt.(sst) lt (tsize T) tgt) _ Lti'.
+        rewrite Eqi -Eql Eqstk in Eqstk2.
+        exists []. move : Instk. inversion Eqstk2.
+        rewrite elem_of_list_singleton. by inversion 1.
       + rewrite lookup_insert_ne // right_id. intros Eqkh.
         specialize (PINV t k h Eqkh) as [Lt PINV].
         split. { etrans; [exact Lt|simpl; lia]. }
         intros l s Eqs stk Eqstk pm opro Instk NDIS.
         specialize (PINV l s Eqs).
-        destruct (init_stack_lookup_case _ _ _ _ _ _ Eqstk)
+        destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
           as [[EqstkO Lti]|[i [[? Lti] Eql]]].
         * specialize (PINV _ EqstkO _ _ Instk NDIS) as [Eqss PINV].
           split; [|done].
           destruct (init_mem_lookup lt (tsize T) σt.(shp)) as [_ EQ].
           rewrite /= EQ //.
         * exfalso. move : Eqstk. simpl.
-          destruct (init_stack_lookup σt.(sst) lt (tsize T) tgt) as [EQ _].
+          destruct (init_stacks_lookup σt.(sst) lt (tsize T) tgt) as [EQ _].
           have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id //.
           specialize (EQ _ Lti'). rewrite Z2Nat.id // in EQ. rewrite Eql EQ.
           intros. inversion Eqstk. clear Eqstk. subst stk.
@@ -96,7 +106,7 @@ Proof.
       rewrite lookup_insert_ne // right_id.
       intros Eqh2 l Inl.
       specialize (Eqh _ _ Eqh2 l Inl) as (stk & pm & Eqsk & Instk).
-      destruct (init_stack_lookup_case_2 _ lt (tsize T) tgt _ _ Eqsk)
+      destruct (init_stacks_lookup_case_2 _ lt (tsize T) tgt _ _ Eqsk)
         as [[EqO NIn]|[i [[? Lti] [Eqi EqN]]]].
       + exists stk, pm. by rewrite EqO.
       + exfalso. apply (is_fresh_block σt.(shp) i).
@@ -123,7 +133,7 @@ Proof.
   left. (*  rewrite {1}/l {1}/t {1}EqFRESH -{1}Eqnp. *)
   apply (sim_body_result _ _ _ _ (PlaceR _ _ T) (PlaceR _ _ T)). intros.
   apply POST; eauto. by rewrite /ts Eqnp.
-Abort.
+Qed.
 
 (** Copy *)
 Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ

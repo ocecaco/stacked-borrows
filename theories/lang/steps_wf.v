@@ -93,7 +93,7 @@ Lemma init_mem_lookup_empty l n :
   ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
 Proof. move => l' s' /init_mem_lookup_case [[//]|//]. Qed.
 
-Lemma init_stack_lookup α l n t :
+Lemma init_stacks_lookup α l n t :
   (∀ (i: nat), (i < n)%nat →
     init_stacks α l n t !! (l +ₗ i) = Some [mkItem Unique t None]) ∧
   (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
@@ -119,12 +119,12 @@ Proof.
     + specialize (Lt O ltac:(lia)). by rewrite shift_loc_0_nat in Lt.
 Qed.
 
-Lemma init_stack_lookup_case α l n t :
+Lemma init_stacks_lookup_case α l n t :
   ∀ l' s', init_stacks α l n t !! l' = Some s' →
   α !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
   ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
 Proof.
-  destruct (init_stack_lookup α l n t) as [EQ1 EQ2].
+  destruct (init_stacks_lookup α l n t) as [EQ1 EQ2].
   intros l1 s1 Eq'.
   case (decide (l1.1 = l.1)) => [Eql|NEql];
     [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
@@ -143,13 +143,13 @@ Proof.
     rewrite EQ2 // in Eq'.
 Qed.
 
-Lemma init_stack_lookup_case_2 α l n t :
+Lemma init_stacks_lookup_case_2 α l n t :
   ∀ l' s', α !! l' = Some s' →
   init_stacks α l n t !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
   ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i ∧
     init_stacks α l n t !! l' = Some [mkItem Unique t None].
 Proof.
-  destruct (init_stack_lookup α l n t) as [EQ1 EQ2].
+  destruct (init_stacks_lookup α l n t) as [EQ1 EQ2].
   intros l1 s1 Eq'.
   case (decide (l1.1 = l.1)) => [Eql|NEql];
     [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
