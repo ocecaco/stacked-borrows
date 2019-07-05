@@ -1,5 +1,6 @@
 -Q theories stbor
 -arg -w -arg -notation-overridden,-projection-no-head-constant,-redundant-canonical-projection
+
 theories/lang/helpers.v
 theories/lang/type.v
 theories/lang/lang_base.v
@@ -15,6 +16,7 @@ theories/lang/steps_progress.v
 theories/lang/steps_inversion.v
 theories/lang/steps_retag.v
 theories/lang/examples.v
+
 theories/sim/behavior.v
 theories/sim/global.v
 theories/sim/global_adequacy.v
@@ -29,7 +31,10 @@ theories/sim/body.v
 theories/sim/refl_step.v
 theories/sim/left_step.v
 theories/sim/right_step.v
+
 theories/opt/ex1.v
-theories/opt/ex1_2.v
+theories/opt/ex1_down.v
 theories/opt/ex2.v
-theories/opt/ex2_2.v
+theories/opt/ex2_down.v
+theories/opt/ex3.v
+theories/opt/ex3_down.v

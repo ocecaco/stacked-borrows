@@ -2,10 +2,12 @@ From stbor.sim Require Import local invariant refl_step.
 
 Set Default Proof Using "Type".
 
+(** Moving read of mutable reference up across code not using that ref. *)
+
 (* Assuming x : &mut i32 *)
 Definition ex1 : function :=
   fun: ["i"],
-    let: "x" := new_place (&mut int) &"i" in
+    let: "x" := new_place (&mut int) "i" in (* put argument into place *)
     Retag "x" Default ;;
     Call #[ScFnPtr "f"] [] ;;
     *{int} "x" <- #[42] ;;
@@ -15,7 +17,7 @@ Definition ex1 : function :=
 
 Definition ex1_opt : function :=
   fun: ["i"],
-    let: "x" := new_place (&mut int) &"i" in
+    let: "x" := new_place (&mut int) "i" in
     Retag "x" Default ;;
     Call #[ScFnPtr "f"] [] ;;
     *{int} "x" <- #[42] ;;

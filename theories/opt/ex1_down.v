@@ -2,34 +2,28 @@ From stbor.sim Require Import local invariant refl_step.
 
 Set Default Proof Using "Type".
 
+(** Moving a read of a mutable reference down across code that *may* use that ref. *)
+
 (* Assuming x : &mut i32 *)
-Definition ex1_2 : function :=
+Definition ex1_down : function :=
   fun: ["i"],
-    let: "x" := new_place (&mut int) &"i" in
+    let: "x" := new_place (&mut int) "i" in (* put argument into place *)
     Retag "x"  FnEntry ;;
-    *{int} "x" <- #[42] ;;
+    let: "v" := Copy *{int} "x" in
     Call #[ScFnPtr "f"] [] ;;
-    *{int} "x" <- #[13]
-  .
+    "v"
+    .
 
-Definition ex1_2_opt_1 : function :=
+Definition ex1_down_opt : function :=
   fun: ["i"],
-    let: "x" := new_place (&mut int) &"i" in
-    Retag "x"  FnEntry ;;
-    Call #[ScFnPtr "f"] [] ;;
-    *{int} "x" <- #[42] ;;
-    *{int} "x" <- #[13]
-  .
-
-Definition ex1_2_opt_2 : function :=
-  fun: ["i"],
-    let: "x" := new_place (&mut int) &"i" in
+    let: "x" := new_place (&mut int) "i" in
     Retag "x"  FnEntry ;;
     Call #[ScFnPtr "f"] [] ;;
-    *{int} "x" <- #[13]
-  .
+    Copy *{int} "x"
+    .
 
-Lemma ex1_2_sim_fun fs ft : ⊨{fs,ft} ex1_2 ≥ᶠ ex1_2_opt_1.
+
+Lemma ex1_down_sim_fun fs ft : ⊨{fs,ft} ex1_down ≥ᶠ ex1_down_opt.
 Proof.
   intros r es et els elt σs σt FAs FAt FREL SUBSTs SUBSTt.
   destruct els as [|efs []]; [done| |done].  simpl in SUBSTs.
