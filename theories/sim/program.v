@@ -4,7 +4,7 @@ From stbor.sim Require Import global_adequacy local_adequacy refl_step.
 
 Set Default Proof Using "Type".
 
-Lemma sim_prog_sim
+Lemma sim_prog_sim_classical
       prog_src
       prog_tgt
       `{NSD: ∀ e σ, never_stuck prog_src e σ \/
@@ -19,7 +19,8 @@ Proof.
   destruct (FUNS _ _ Eqt) as ([xls ebs HCs] & Eqs & Eql & SIMf).
   apply nil_length_inv in Eql. subst xls.
   specialize (SIMf ε ebs ebt [] [] init_state init_state) as [idx SIM]; [done..|].
-  unfold behave_prog. eapply (adequacy _ _ idx); [apply NSD| |by apply wf_init_state..].
+  unfold behave_prog.
+  eapply (adequacy_classical _ _ idx); [apply NSD| |by apply wf_init_state..].
   eapply sim_local_conf_sim; eauto.
   econs; swap 2 4.
   - econs 1.
@@ -37,10 +38,10 @@ Proof.
     { exists O. by rewrite -STACK. }
     rewrite /end_call_sat -STACK.
     intros c Eq. simpl in Eq. simplify_eq.
-    have HL: (init_res ⋅ r').2 !! 0%nat ≡ Some (to_callStateR csPub).
+    have HL: (init_res ⋅ r').(rcm) !! 0%nat ≡ Some (to_callStateR csPub).
     { apply cmap_lookup_op_l_equiv_pub; [apply VALID|].
       by rewrite /= lookup_singleton. }
-    split. { destruct ((init_res ⋅ r').2 !! 0%nat). by eexists. by inversion HL. }
+    split. { destruct ((init_res ⋅ r').(rcm) !! 0%nat). by eexists. by inversion HL. }
     intros r_f VALIDf T HL2. exfalso.
     move : HL2. rewrite lookup_op HL. apply callStateR_exclusive_2.
   - instantiate (1:=ε). rewrite right_id left_id. apply wsat_init_state.

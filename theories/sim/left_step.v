@@ -7,7 +7,7 @@ Set Default Proof Using "Type".
 
 Lemma sim_body_copy_left_1
   fs ft (r: resUR) k (h: heapletR) n l t et σs σt Φ
-  (UNIQUE: r.1 !! t ≡ Some (k, h))
+  (UNIQUE: r.(rtm) !! t ≡ Some (k, h))
   (InD: l ∈ dom (gset loc) h) :
   (∀ s, σs.(shp) !! l = Some s → r ⊨{n,fs,ft} (#[s%S], σs) ≥ (et, σt) : Φ : Prop) →
   r ⊨{n,fs,ft} (Copy (Place l (Tagged t) int), σs) ≥ (et, σt) : Φ.

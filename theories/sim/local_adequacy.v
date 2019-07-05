@@ -3,7 +3,7 @@ From Paco Require Import paco.
 
 From stbor.lang Require Import steps_wf steps_inversion.
 From stbor.sim Require Import sflib behavior global local.
-From stbor.sim Require Import invariant global_adequacy refl_step.
+From stbor.sim Require Import invariant refl_step.
 
 Set Default Proof Using "Type".
 
@@ -141,10 +141,11 @@ Proof.
             σt.(scs) = c2 :: cids2 ∧
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
             σt2 = mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) ∧
-            r2 = (r'.1, match (r'.2 !! c2) with
-                        | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r'.2
-                        | _ => r'.2
-                        end).
+            r2 = ((r'.(rtm),
+                    match (r'.(rcm) !! c2) with
+                    | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r'.(rcm)
+                    | _ => r'.(rcm)
+                    end), r'.(rlm)).
       have SIMEND : r' ⊨{idx',fns,fnt} (EndCall vs1, σs) ≥ (EndCall vt1, σt) : Φ.
       { apply sim_body_end_call; auto.
         clear. intros. rewrite /Φ. naive_solver. }

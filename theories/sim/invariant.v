@@ -16,13 +16,13 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
       l1 = l2 ∧ tg1 = tg2 ∧
       match tg1 with
       | Untagged => True
-      | Tagged t => ∃ h, r.1 !! t ≡ Some (to_tagKindR tkPub, h)
+      | Tagged t => ∃ h, r.(rtm) !! t ≡ Some (to_tagKindR tkPub, h)
       end
   | _, _ => False
   end.
 
-Definition ptrmap_inv (r: resUR) (σ: state) : Prop :=
-  ∀ (t: ptr_id) (k: tag_kind) h, r.1 !! t ≡ Some (to_tagKindR k, h) →
+Definition tmap_inv (r: resUR) (σ: state) : Prop :=
+  ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tagKindR k, h) →
   (t < σ.(snp))%nat ∧
   (∀ (l: loc) (s: scalar), h !! l ≡ Some (to_agree s) →
   ∀ (stk: stack), σ.(sst) !! l = Some stk →
@@ -38,7 +38,7 @@ Definition ptrmap_inv (r: resUR) (σ: state) : Prop :=
   end).
 
 Definition cmap_inv (r: resUR) (σ: state) : Prop :=
-  ∀ (c: call_id) (cs: callStateR), r.2 !! c ≡ Some cs →
+  ∀ (c: call_id) (cs: callStateR), r.(rcm) !! c ≡ Some cs →
   match cs with
   (* if c is a private call id *)
   | Cinl (Excl T) =>
@@ -47,7 +47,7 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
       ∀ (t: ptr_id), t ∈ T →
       t < σ.(snp) ∧
       (* that protects the heaplet [h] *)
-      ∀ k h, r.1 !! t ≡ Some (k, h) →
+      ∀ k h, r.(rtm) !! t ≡ Some (k, h) →
       (* if [l] is in that heaplet [h] *)
       ∀ (l: loc), l ∈ dom (gset loc) h →
       (* then a c-protector must be in the stack of l *)
@@ -62,8 +62,8 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
   ∃ (c: call_id) (T: gset ptr_id) h,
-  r.2 !! c ≡ Some (Cinl (Excl T)) ∧ t ∈ T ∧
-  r.1 !! t ≡ Some (to_tagKindR tkUnique, h) ∧ l ∈ dom (gset loc) h.
+  r.(rcm) !! c ≡ Some (Cinl (Excl T)) ∧ t ∈ T ∧
+  r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h) ∧ l ∈ dom (gset loc) h.
 
 (** State relation *)
 Definition srel (r: resUR) (σs σt: state) : Prop :=
@@ -77,7 +77,7 @@ Definition wsat (r: resUR) (σs σt: state) : Prop :=
   (* Wellformedness *)
   Wf σs ∧ Wf σt ∧ ✓ r ∧
   (* Invariants *)
-  ptrmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
+  tmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt.
 
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)
@@ -89,20 +89,20 @@ Definition vrel_expr (r: resUR) (e1 e2: expr) :=
 (** Condition for resource before EndCall *)
 (* Any private location w.r.t to the current call id ownership must be related *)
 Definition end_call_sat (r: resUR) (σs σt: state) : Prop :=
-  ∀ c, hd_error σt.(scs) = Some c → is_Some (r.2 !! c) ∧
+  ∀ c, hd_error σt.(scs) = Some c → is_Some (r.(rcm) !! c) ∧
   (∀ r_f, ✓ (r_f ⋅ r) →
-  ∀ T, (r_f ⋅ r).2 !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
-  ∀ h, (r_f ⋅ r).1 !! t ≡  Some (to_tagKindR tkUnique, h) →
+  ∀ T, (r_f ⋅ r).(rcm) !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
+  ∀ h, (r_f ⋅ r).(rtm) !! t ≡  Some (to_tagKindR tkUnique, h) →
   ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
   ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st).
 
-Definition init_res : resUR := (ε, {[O := to_callStateR csPub]}).
+Definition init_res : resUR := ((ε, {[O := to_callStateR csPub]}), ε).
 Lemma wsat_init_state : wsat init_res init_state init_state.
 Proof.
   split; last split; last split; last split; last split.
   - apply wf_init_state.
   - apply wf_init_state.
-  - split; [done|]. intros ?; simpl. destruct i.
+  - split; [|done]. split; [done|]. intros ?; simpl. destruct i.
     + rewrite lookup_singleton //.
     + rewrite lookup_singleton_ne //.
   - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. inversion 1.
@@ -158,8 +158,9 @@ Proof.
   intros [Eql [Eqt PV]]. subst. repeat split.
   destruct t2 as [t2|]; [|done].
   destruct PV as [h HL].
-  have HL1: Some (to_tagKindR tkPub, h) ≼ r2.1 !! t2.
-  { rewrite -HL. by apply lookup_included, prod_included, Le. }
+  have HL1: Some (to_tagKindR tkPub, h) ≼ r2.(rtm) !! t2.
+  { rewrite -HL. apply lookup_included, prod_included.
+    by apply prod_included in Le as []. }
   apply option_included in HL1 as [?|[th1 [[tk2 h2] [? [Eq1 INCL]]]]]; [done|].
   simplify_eq. exists h2. rewrite Eq1 (_: tk2 ≡ to_tagKindR tkPub) //.
   apply tag_kind_incl_eq; [done|].
@@ -167,7 +168,7 @@ Proof.
   - apply csum_included. naive_solver.
   - have VL2: ✓ tk2.
     { apply (pair_valid tk2 h2). rewrite -pair_valid.
-      apply (lookup_valid_Some r2.1 t2); [apply VAL|]. by rewrite Eq1. }
+      apply (lookup_valid_Some r2.(rtm) t2); [apply VAL|]. by rewrite Eq1. }
     destruct Eq as [|[|Eq]]; [by subst|naive_solver|].
     destruct Eq as [?[ag[? [? ?]]]]. simplify_eq.
     apply to_agree_uninj in VL2 as [[] Eq]. rewrite -Eq.
@@ -188,29 +189,33 @@ Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ l t, priv_loc r1 l t → priv_loc r2 l t.
 Proof.
   intros LE l t (c & T & h & Eq2 & InT & Eq1 & InD).
-  apply prod_included in LE as []. apply pair_valid in VAL as [].
+  do 2 (apply prod_included in LE as [LE ]).
+  do 2 (apply pair_valid in VAL as [VAL ]).
   exists c, T, h. repeat split; [|done| |done].
-  - by apply (cmap_lookup_op_unique_included r1.2).
-  - by apply (ptrmap_lookup_op_unique_included r1.1).
+  - by apply (cmap_lookup_op_unique_included r1.(rcm)).
+  - by apply (tmap_lookup_op_unique_included r1.(rtm)).
 Qed.
 
-Instance ptrmap_inv_proper : Proper ((≡) ==> (=) ==> iff) ptrmap_inv.
+Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> iff) tmap_inv.
 Proof.
-  intros r1 r2 Eqr ? σ ?. subst. rewrite /ptrmap_inv. by setoid_rewrite Eqr.
+  intros r1 r2 [[Eqt Eqc] Eqm] ? σ ?. subst. rewrite /tmap_inv /rtm.
+  by setoid_rewrite Eqt.
 Qed.
 
 Instance cmap_inv_proper : Proper ((≡) ==> (=) ==> iff) cmap_inv.
 Proof.
-  intros r1 r2 Eqr ? σ ?. subst. rewrite /cmap_inv. setoid_rewrite Eqr.
-  split; intros EQ ?? Eq; specialize (EQ _ _ Eq); destruct cs as [[]| |]; eauto;
-    [by setoid_rewrite <- Eqr|by setoid_rewrite Eqr].
+  intros r1 r2 [[Eqt Eqc] Eqm]  ? σ ?. subst. rewrite /cmap_inv /rcm /rtm.
+  setoid_rewrite Eqc.
+  split; intros EQ ?? Eq; specialize (EQ _ _ Eq);
+    destruct cs as [[]| |]; eauto;
+    [by setoid_rewrite <- Eqt|by setoid_rewrite Eqt].
 Qed.
 
 Instance arel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) arel.
-Proof. solve_proper. Qed.
+Proof. rewrite /arel /rtm. solve_proper. Qed.
 
 Instance priv_loc_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) priv_loc.
-Proof. solve_proper. Qed.
+Proof. rewrite /priv_loc /rcm /rtm. solve_proper. Qed.
 
 Instance srel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) srel.
 Proof.
@@ -227,7 +232,7 @@ Instance wsat_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
 Proof. solve_proper. Qed.
 
 Lemma cinv_lookup_in (r: resUR) (σ: state) c cs:
-  Wf σ → cmap_inv r σ → r.2 !! c ≡ Some cs → (c < σ.(snc))%nat.
+  Wf σ → cmap_inv r σ → r.(rcm) !! c ≡ Some cs → (c < σ.(snc))%nat.
 Proof.
   intros WF CINV EQ. specialize (CINV c cs EQ).
   destruct cs as [[]| |]; [|done..].
@@ -235,7 +240,7 @@ Proof.
 Qed.
 
 Lemma cinv_lookup_in_eq (r: resUR) (σ: state) c cs:
-  Wf σ → cmap_inv r σ → r.2 !! c = Some cs → (c < σ.(snc))%nat.
+  Wf σ → cmap_inv r σ → r.(rcm) !! c = Some cs → (c < σ.(snc))%nat.
 Proof.
   intros WF CINV EQ. eapply cinv_lookup_in; eauto. by rewrite EQ.
 Qed.

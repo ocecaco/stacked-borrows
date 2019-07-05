@@ -92,7 +92,7 @@ Proof.
         econs 3; eauto.
 Qed.
 
-Lemma adequacy
+Lemma adequacy_classical
       prog_src
       prog_tgt idx conf_src conf_tgt
       `{NSD: ∀ e σ, never_stuck prog_src e σ \/

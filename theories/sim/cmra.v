@@ -25,22 +25,24 @@ Definition cmapUR := gmapUR call_id callStateR.
 
 Definition to_cmapUR (cm: cmap) : cmapUR := fmap to_callStateR cm.
 
-Definition ptrmap := gmap ptr_id (tag_kind * mem).
+Definition tmap := gmap ptr_id (tag_kind * mem).
 Definition heapletR := gmapR loc (agreeR scalarC).
 (* ptr_id ⇀ TagKid x (loc ⇀ Ag(Scalar)) *)
-Definition ptrmapUR := gmapUR ptr_id (prodR tagKindR heapletR).
+Definition tmapUR := gmapUR ptr_id (prodR tagKindR heapletR).
 
 Definition to_heapletR (h: mem) : heapletR := fmap to_agree h.
-Definition to_ptrmapUR (pm: ptrmap) : ptrmapUR :=
+Definition to_tmapUR (pm: tmap) : tmapUR :=
   fmap (λ tm, (to_tagKindR tm.1, to_heapletR tm.2)) pm.
 
 Definition lmap := gmap loc (scalar * stack).
-Definition lmapUR := gmapR loc (csumR (exclR (leibnizO (scalar * stack))) (agreeR unitO)).
+Definition lmapUR := gmapUR loc (csumR (exclR (leibnizO (scalar * stack))) (agreeR unitO)).
 
-Definition res := (ptrmap * cmap)%type.
-Definition resUR := prodUR ptrmapUR cmapUR.
-Definition to_resUR (r: res) : resUR := (to_ptrmapUR r.1, to_cmapUR r.2).
+Definition res := (tmap * cmap * lmap)%type.
+Definition resUR := prodUR (prodUR tmapUR cmapUR) lmapUR.
 
+Definition rtm (r: resUR) : tmapUR := r.1.1.
+Definition rcm (r: resUR) : cmapUR := r.1.2.
+Definition rlm (r: resUR) : lmapUR := r.2.
 
 Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
   ✓ (r_f ⋅ r) → (r_f ⋅ r, r) ~l~> (r_f ⋅ r', r') → ✓ (r_f ⋅ r').
@@ -167,8 +169,8 @@ Proof.
   - inversion Eq.
 Qed.
 
-(** ptrmap properties *)
-Lemma ptrmap_insert_op_r (pm1 pm2: ptrmapUR) t h0 kh (VALID: ✓ (pm1 ⋅ pm2)):
+(** tmap properties *)
+Lemma tmap_insert_op_r (pm1 pm2: tmapUR) t h0 kh (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t = Some (to_tagKindR tkUnique, h0) →
   pm1 ⋅ <[t:=kh]> pm2 = <[t:=kh]> (pm1 ⋅ pm2).
 Proof.
@@ -182,7 +184,7 @@ Proof.
     + do 2 (rewrite lookup_insert_ne //). by rewrite lookup_op.
 Qed.
 
-Lemma ptrmap_lookup_op_r (pm1 pm2: ptrmapUR) t h0 (VALID: ✓ (pm1 ⋅ pm2)):
+Lemma tmap_lookup_op_r (pm1 pm2: tmapUR) t h0 (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t = Some (to_tagKindR tkUnique, h0) →
   (pm1 ⋅ pm2) !! t = Some (to_tagKindR tkUnique, h0).
 Proof.
@@ -191,7 +193,7 @@ Proof.
   rewrite -Some_op pair_op. intros [?%exclusive_r]; [done|apply _].
 Qed.
 
-Lemma ptrmap_lookup_op_l_unique_equiv (pm1 pm2: ptrmapUR) t h0
+Lemma tmap_lookup_op_l_unique_equiv (pm1 pm2: tmapUR) t h0
   (VALID: ✓ (pm1 ⋅ pm2)):
   pm1 !! t ≡ Some (to_tagKindR tkUnique, h0) →
   (pm1 ⋅ pm2) !! t ≡ Some (to_tagKindR tkUnique, h0).
@@ -201,16 +203,16 @@ Proof.
   rewrite -Some_op pair_op. intros [?%exclusive_l]; [done|apply _].
 Qed.
 
-Lemma ptrmap_lookup_op_unique_included (pm1 pm2: ptrmapUR) t h0
+Lemma tmap_lookup_op_unique_included (pm1 pm2: tmapUR) t h0
   (VALID: ✓ pm2) (INCL: pm1 ≼ pm2):
   pm1 !! t ≡ Some (to_tagKindR tkUnique, h0) →
   pm2 !! t ≡ Some (to_tagKindR tkUnique, h0).
 Proof.
-  destruct INCL as [cm' Eq]. rewrite Eq. apply ptrmap_lookup_op_l_unique_equiv.
+  destruct INCL as [cm' Eq]. rewrite Eq. apply tmap_lookup_op_l_unique_equiv.
   by rewrite -Eq.
 Qed.
 
-Lemma ptrmap_lookup_op_r_equiv_pub (pm1 pm2: ptrmapUR) t h2 (VALID: ✓ (pm1 ⋅ pm2)):
+Lemma tmap_lookup_op_r_equiv_pub (pm1 pm2: tmapUR) t h2 (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t ≡ Some (to_tagKindR tkPub, h2) →
   ∃ h1, (pm1 ⋅ pm2) !! t ≡ Some (to_tagKindR tkPub, h1 ⋅ h2).
 Proof.
@@ -222,17 +224,17 @@ Proof.
   - intros _. exists (∅: gmap loc _). by rewrite 2!left_id HL.
 Qed.
 
-Lemma ptrmap_valid (r_f r: ptrmapUR) t h0 kh
+Lemma tmap_valid (r_f r: tmapUR) t h0 kh
   (Eqtg: r !! t = Some (to_tagKindR tkUnique, h0)) (VN: ✓ kh) :
   ✓ (r_f ⋅ r) → ✓ (r_f ⋅ (<[t:= kh]> r)).
 Proof.
   intros VALID.
   apply (local_update_discrete_valid_frame _ _ _ VALID).
-  have EQ := (ptrmap_insert_op_r _ _ _ _ kh VALID Eqtg). rewrite EQ.
+  have EQ := (tmap_insert_op_r _ _ _ _ kh VALID Eqtg). rewrite EQ.
   eapply (insert_local_update _ _ _
           (to_tagKindR tkUnique, h0) (to_tagKindR tkUnique, h0));
           [|exact Eqtg|by apply exclusive_local_update].
-  by rewrite (ptrmap_lookup_op_r _ _ _ _ VALID Eqtg).
+  by rewrite (tmap_lookup_op_r _ _ _ _ VALID Eqtg).
 Qed.
 
 (** heaplet *)
@@ -266,7 +268,7 @@ Proof.
   by destruct (h !! l) as [s|] eqn:Eql; rewrite Eql.
 Qed.
 
-Lemma ptrmap_lookup_core_pub (pm: ptrmapUR) t h:
+Lemma tmap_lookup_core_pub (pm: tmapUR) t h:
   pm !! t ≡ Some (to_tagKindR tkPub, h) →
   core pm !! t ≡ Some (to_tagKindR tkPub, h).
 Proof. intros Eq. rewrite lookup_core Eq /core /= core_id //. Qed.
