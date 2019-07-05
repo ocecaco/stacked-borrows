@@ -7,17 +7,17 @@ Set Default Proof Using "Type".
 
 Inductive tag_kind := tkUnique | tkPub.
 (* Ex() + Ag() *)
-Definition tagKindR := csumR (exclR unitO) (agreeR unitO).
+Definition tagKindR := csumR (exclR unitO) unitR.
 
 Definition to_tagKindR (tk: tag_kind) : tagKindR :=
-  match tk with tkUnique => Cinl (Excl ()) | tkPub => Cinr (to_agree ()) end.
+  match tk with tkUnique => Cinl (Excl ()) | tkPub => Cinr () end.
 
 Inductive call_state := csOwned (T: gset ptr_id) | csPub.
 (* Ex(ptr_id) + Ag() *)
-Definition callStateR := csumR (exclR (gsetO ptr_id)) (agreeR unitO).
+Definition callStateR := csumR (exclR (gsetO ptr_id)) unitR.
 
 Definition to_callStateR (cs: call_state) : callStateR :=
-  match cs with csOwned T => Cinl (Excl T) | csPub => Cinr (to_agree ()) end.
+  match cs with csOwned T => Cinl (Excl T) | csPub => Cinr () end.
 
 Definition cmap := gmap call_id call_state.
 (* call_id ⇀ CallState *)
@@ -35,7 +35,7 @@ Definition to_tmapUR (pm: tmap) : tmapUR :=
   fmap (λ tm, (to_tagKindR tm.1, to_heapletR tm.2)) pm.
 
 Definition lmap := gmap loc (scalar * stack).
-Definition lmapUR := gmapUR loc (csumR (exclR (leibnizO (scalar * stack))) (agreeR unitO)).
+Definition lmapUR := gmapUR loc (csumR (exclR (leibnizO (scalar * stack))) unitR).
 
 Definition res := (tmap * cmap * lmap)%type.
 Definition resUR := prodUR (prodUR tmapUR cmapUR) lmapUR.
@@ -55,11 +55,9 @@ Qed.
 Lemma tag_kind_incl_eq (k1 k2: tagKindR):
   ✓ k2 → k1 ≼ k2 → k1 ≡ k2.
 Proof.
-  move => VAL /csum_included [? |[[? [? [? [? Eq]]]]|[? [? [? [? LE]]]]]];
-    subst; [done|..].
-  - exfalso. eapply exclusive_included; [..|apply Eq|apply VAL]. apply _.
-  - apply Cinr_equiv, agree_op_inv. apply agree_included in LE.
-    rewrite -LE. apply VAL.
+  move => VAL /csum_included [? |[[? [? [? [? Eq]]]]|[[] [[] [? [? LE]]]]]];
+    subst; [done|..|done].
+  exfalso. eapply exclusive_included; [..|apply Eq|apply VAL]. apply _.
 Qed.
 
 Lemma tagKindR_exclusive (h0 h: heapletR) mb :
@@ -89,11 +87,11 @@ Proof.
 Qed.
 
 Lemma tagKindR_valid (k: tagKindR) :
-  valid k → ∃ k', k ≡ to_tagKindR k'.
+  valid k → ∃ k', k = to_tagKindR k'.
 Proof.
-  destruct k as [[[]|]|a |]; [|done|..|done]; intros VAL.
+  destruct k as [[[]|]|[]|]; [|done|..|done]; intros VAL.
   - by exists tkUnique.
-  - exists tkPub. by apply to_agree_uninj in VAL as [[] <-].
+  - by exists tkPub.
 Qed.
 
 (** cmap properties *)
@@ -143,8 +141,7 @@ Proof.
   intros HL. move : (VALID c). rewrite lookup_op HL.
   destruct (cm2 !! c) as [cs'|] eqn:Eqc; rewrite Eqc; [|done].
   rewrite -Some_op Some_valid.
-  destruct cs' as [[]|c2|]; auto; try inversion 1.
-  rewrite /= Cinr_op. intros Eq2%agree_op_inv. by rewrite -Eq2 agree_idemp.
+  destruct cs' as [[]|c2|]; auto; inversion 1.
 Qed.
 
 Lemma cmap_insert_op_r (cm1 cm2: cmapUR) c T cs (VALID: ✓ (cm1 ⋅ cm2)):

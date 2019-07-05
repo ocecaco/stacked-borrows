@@ -170,8 +170,7 @@ Proof.
     { apply (pair_valid tk2 h2). rewrite -pair_valid.
       apply (lookup_valid_Some r2.(rtm) t2); [apply VAL|]. by rewrite Eq1. }
     destruct Eq as [|[|Eq]]; [by subst|naive_solver|].
-    destruct Eq as [?[ag[? [? ?]]]]. simplify_eq.
-    apply to_agree_uninj in VL2 as [[] Eq]. rewrite -Eq.
+    destruct Eq as [?[[][? [? ?]]]]. simplify_eq.
     apply csum_included. naive_solver.
 Qed.
 
