@@ -1,4 +1,4 @@
-From stbor.sim Require Import local invariant refl_step.
+From stbor.sim Require Import local invariant refl_step tactics body.
 
 Set Default Proof Using "Type".
 
@@ -28,4 +28,14 @@ Definition ex1_opt : function :=
 
 Lemma ex1_sim_body fs ft : ⊨{fs,ft} ex1 ≥ᶠ ex1_opt.
 Proof.
+  intros r es et els elt σs σt FAs FAt FREL SUBSTs SUBSTt.
+  destruct els as [|efs []]; [done| |done].  simpl in SUBSTs.
+  destruct elt as [|eft []]; [done| |done].  simpl in SUBSTt. simplify_eq.
+
+  (* InitCall *)
+  exists 10%nat.
+  apply sim_body_init_call. simpl.
+
+  (* Alloc *)
+  sim_bind (Alloc _) (Alloc _).
 Abort.
