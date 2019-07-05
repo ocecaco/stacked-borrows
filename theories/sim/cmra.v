@@ -34,6 +34,9 @@ Definition to_heapletR (h: mem) : heapletR := fmap to_agree h.
 Definition to_ptrmapUR (pm: ptrmap) : ptrmapUR :=
   fmap (λ tm, (to_tagKindR tm.1, to_heapletR tm.2)) pm.
 
+Definition lmap := gmap loc (scalar * stack).
+Definition lmapUR := gmapR loc (csumR (exclR (leibnizO (scalar * stack))) (agreeR unitO)).
+
 Definition res := (ptrmap * cmap)%type.
 Definition resUR := prodUR ptrmapUR cmapUR.
 Definition to_resUR (r: res) : resUR := (to_ptrmapUR r.1, to_cmapUR r.2).
