@@ -2,6 +2,11 @@ From stbor.lang Require Export defs steps_foreach steps_list.
 
 Set Default Proof Using "Type".
 
+Definition tag_in t (stk: stack) :=
+  ∃ pm opro, pm ≠ Disabled ∧ mkItem pm (Tagged t) opro ∈ stk.
+Definition tag_in_stack σ l t :=
+  ∃ stk, σ.(sst) !! l = Some stk ∧ tag_in t stk.
+
 (** Active protector preserving *)
 Definition active_preserving (cids: call_id_stack) (stk stk': stack) :=
   ∀ pm t c, c ∈ cids → mkItem pm t (Some c) ∈ stk → mkItem pm t (Some c) ∈ stk'.
@@ -536,3 +541,36 @@ Proof.
   rewrite -{1}(take_drop n stk) in ND. intros ?.
   eapply (remove_check_incompatible_items _ _ _ _ idx it i ti ND); eauto.
 Qed.
+
+(* Property of [t] that when used to access [stk], it will not change [stk] *)
+Definition stack_preserving_tag
+  (stk: stack) (t: ptr_id) (k: access_kind) : Prop :=
+  ∃ n pm, find_granting stk k (Tagged t) = Some (n, pm) ∧
+    match k with
+    | AccessRead => ∀ it, it ∈ take n stk → it.(perm) ≠ Unique
+    | AccessWrite => find_first_write_incompatible (take n stk) pm = Some O
+    end.
+
+Lemma stack_preserving_tag_elim stk t kind :
+  stack_preserving_tag stk t kind →
+  ∀ cids, ∃ n stk',
+  access1 stk kind (Tagged t) cids = Some (n, stk') ∧ stk' = stk.
+Proof.
+Abort.
+
+Lemma stack_preserving_tag_intro stk kind t cids n stk' :
+  access1 stk kind (Tagged t) cids = Some (n, stk') →
+  stack_preserving_tag stk' t kind.
+Proof.
+Abort.
+
+Lemma stack_preserving_tag_unique_head stk t opro kind :
+  is_stack_head (mkItem Unique (Tagged t) opro) stk →
+  stack_preserving_tag stk t kind.
+Proof.
+Abort.
+
+Lemma stack_preserving_tag_active_SRO stk t :
+  t ∈ active_SRO stk → stack_preserving_tag stk t AccessRead.
+Proof.
+Abort.

@@ -5,28 +5,28 @@ Set Default Proof Using "Type".
 (* Assuming x : &mut i32 *)
 Definition ex1_2 : function :=
   fun: ["i"],
-  let: "x" := new_place (&mut int) &"i" in
-  Retag "x"  FnEntry ;;
-  *{int} "x" <- #[42] ;;
-  Call #[ScFnPtr "f"] [] ;;
-  *{int} "x" <- #[13]
+    let: "x" := new_place (&mut int) &"i" in
+    Retag "x"  FnEntry ;;
+    *{int} "x" <- #[42] ;;
+    Call #[ScFnPtr "f"] [] ;;
+    *{int} "x" <- #[13]
   .
 
 Definition ex1_2_opt_1 : function :=
   fun: ["i"],
-  let: "x" := new_place (&mut int) &"i" in
-  Retag "x"  FnEntry ;;
-  Call #[ScFnPtr "f"] [] ;;
-  *{int} "x" <- #[42] ;;
-  *{int} "x" <- #[13]
+    let: "x" := new_place (&mut int) &"i" in
+    Retag "x"  FnEntry ;;
+    Call #[ScFnPtr "f"] [] ;;
+    *{int} "x" <- #[42] ;;
+    *{int} "x" <- #[13]
   .
 
 Definition ex1_2_opt_2 : function :=
   fun: ["i"],
-  let: "x" := new_place (&mut int) &"i" in
-  Retag "x"  FnEntry ;;
-  Call #[ScFnPtr "f"] [] ;;
-  *{int} "x" <- #[13]
+    let: "x" := new_place (&mut int) &"i" in
+    Retag "x"  FnEntry ;;
+    Call #[ScFnPtr "f"] [] ;;
+    *{int} "x" <- #[13]
   .
 
 Lemma ex1_2_sim_fun fs ft : ⊨{fs,ft} ex1_2 ≥ᶠ ex1_2_opt_1.

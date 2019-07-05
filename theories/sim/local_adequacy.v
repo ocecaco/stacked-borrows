@@ -2,7 +2,8 @@ From Coq Require Import Program.Equality Lia.
 From Paco Require Import paco.
 
 From stbor.lang Require Import steps_wf steps_inversion.
-From stbor.sim Require Import behavior global local invariant sflib global_adequacy one_step.
+From stbor.sim Require Import sflib behavior global local.
+From stbor.sim Require Import invariant global_adequacy refl_step.
 
 Set Default Proof Using "Type".
 
