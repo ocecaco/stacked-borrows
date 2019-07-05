@@ -810,9 +810,6 @@ Tactic Notation "greflgen" constr(t) "as" ident(g)  :=
   generalize (eq_refl t); generalize t at -2 as g
   ; intros ? EQ ?; revert EQ.
 
-Ltac eadmit :=
-  exfalso; clear; admit.
-
 Ltac special H :=
   (* eapply mp; refine (H _). *)
   match type of H with
