@@ -26,7 +26,9 @@ theories/sim/program.v
 theories/sim/sflib.v
 theories/sim/instance.v
 theories/sim/body.v
-theories/sim/one_step.v
+theories/sim/refl_step.v
+theories/sim/left_step.v
+theories/sim/right_step.v
 theories/opt/ex1.v
 theories/opt/ex1_2.v
 theories/opt/ex2.v

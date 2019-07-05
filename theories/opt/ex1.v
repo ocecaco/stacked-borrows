@@ -1,4 +1,4 @@
-From stbor.sim Require Import local invariant one_step.
+From stbor.sim Require Import local invariant refl_step.
 
 Set Default Proof Using "Type".
 

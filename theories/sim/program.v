@@ -1,5 +1,6 @@
 From stbor.lang Require Import steps_wf steps_inversion.
-From stbor.sim Require Import sflib behavior global local invariant global_adequacy local_adequacy one_step.
+From stbor.sim Require Import sflib behavior global local invariant.
+From stbor.sim Require Import global_adequacy local_adequacy refl_step.
 
 Set Default Proof Using "Type".
 
