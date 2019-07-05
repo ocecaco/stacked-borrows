@@ -232,6 +232,7 @@ Proof.
   by rewrite (ptrmap_lookup_op_r _ _ _ _ VALID Eqtg).
 Qed.
 
+(** heaplet *)
 Lemma to_heapletR_valid h : ✓ (to_heapletR h).
 Proof.
   intros l. rewrite /to_heapletR lookup_fmap.
@@ -244,6 +245,13 @@ Proof.
   rewrite /to_heapletR lookup_fmap.
   destruct (h !! l) as [s'|] eqn:Eqs; rewrite Eqs /=; [|by inversion 1].
   intros Eq%Some_equiv_inj%to_agree_inj. by inversion Eq.
+Qed.
+
+Lemma heapletR_elem_of_dom (h: heapletR) l (VALID: valid h) :
+  l ∈ dom (gset loc) h → ∃ s, h !! l ≡ Some (to_agree s).
+Proof.
+  rewrite elem_of_dom. intros [sa Eqs]. move : (VALID l). rewrite Eqs.
+  intros [s Eq]%to_agree_uninj. exists s. by rewrite Eq.
 Qed.
 
 (** The Core *)

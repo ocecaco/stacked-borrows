@@ -1,7 +1,7 @@
 From iris.algebra Require Import local_updates.
 
 From stbor.lang Require Import steps_progress steps_inversion.
-From stbor.sim Require Export local invariant body.
+From stbor.sim Require Export instance.
 
 Set Default Proof Using "Type".
 
@@ -194,7 +194,12 @@ Proof.
       destruct ss as [| |l1 [t1|]|], st as [| |l2 [t2|]|]; auto; simpl; [|by intros [?[]]].
       intros [? [? [h' Eqh']]]. simplify_eq. do 2 (split; [done|]).
       exists h'. by apply ptrmap_lookup_core_pub. }
-    destruct PV as (c' & T' & h' & Eqci & InT').
+    destruct PV as (c' & T' & h' & Eqci & InT' & Eqh' & Inl).
+    specialize (CINV _ _ Eqci) as [Inc' CINV].
+    specialize (CINV _ InT') as [Ltt' CINV].
+    specialize (CINV _ _ Eqh' _ Inl) as (stk & pm & Eqstk & Instk).
+    specialize (PINV _ _ _ Eqh') as [_ PINV].
+    
     (* impossible: t' is protected by c' which is still active.
       So t ≠ t' and protected(t',c') is on top of (l +ₗ i), so access with t is UB *)
     admit.
