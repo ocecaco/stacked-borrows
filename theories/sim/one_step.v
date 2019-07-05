@@ -1,6 +1,6 @@
 From iris.algebra Require Import local_updates.
 
-From stbor.lang Require Import steps_progress steps_inversion.
+From stbor.lang Require Import steps_progress steps_inversion steps_retag.
 From stbor.sim Require Export instance.
 
 Set Default Proof Using "Type".

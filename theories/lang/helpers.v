@@ -140,3 +140,63 @@ Proof.
     apply IH. split; last split; [done..|]. intros j y Lt Eq.
     apply (Lt1 (S j) y); [lia|done].
 Qed.
+
+(* TODO: move *)
+Lemma list_subseteq_nil_sublist {A: Type} (x: list A):
+  x ⊆ [] → sublist x [].
+Proof. destruct x; set_solver. Qed.
+
+Lemma list_subseteq_nil_inv {A: Type} (x: list A):
+  x ⊆ [] → x = [].
+Proof.
+  intros. apply : anti_symm.
+  by apply list_subseteq_nil_sublist. by apply sublist_nil_l.
+Qed.
+
+Lemma NoDup_sublist {A: Type} (x y: list A) (SUB: sublist x y) :
+  NoDup y → NoDup x.
+Proof.
+  induction SUB as [|???? IH|???? IH].
+  - done.
+  - move => /NoDup_cons [NI /IH ND]. apply NoDup_cons. split; [|done].
+    move => In1. apply NI. move : In1. by apply elem_of_list_sublist_proper.
+  - move => /NoDup_cons [NI /IH //].
+Qed.
+
+Instance NoDup_sublist_proper {A: Type} :
+  Proper (sublist ==> flip impl) (@NoDup A).
+Proof. intros ????. by eapply NoDup_sublist. Qed.
+
+Lemma filter_sublist {A: Type} (P : A → Prop)
+  `{∀ x, Decision (P x)} (x y: list A) :
+  sublist x y → sublist (filter P x) (filter P y).
+Proof.
+  induction 1 as [|???? IH|???? IH].
+  - done.
+  - rewrite 2!filter_cons. case decide => ? //. by constructor 2.
+  - rewrite filter_cons. case decide => ? //. by constructor 3.
+Qed.
+
+Lemma filter_app {A: Type} (P : A → Prop)
+  `{∀ x, Decision (P x)} (x y: list A) :
+  filter P (x ++ y) = filter P x ++ filter P y.
+Proof.
+  induction x as [|a x IH]; [done|].
+  rewrite -app_comm_cons 2!filter_cons.
+  case decide => ? //. by rewrite -app_comm_cons IH.
+Qed.
+
+Lemma reserve_lookup {A: Type} (l: list A) (i : nat) (a: A) :
+  l !! i = Some a → ∃ j, reverse l !! j = Some a ∧ (i + j + 1)%nat = length l.
+Proof.
+  revert i. induction l as [|b l IH]; simpl; intros i; [naive_solver|].
+  rewrite reverse_cons.
+  destruct i.
+  - simpl. intros. simplify_eq. exists (length l). split; [|lia].
+    rewrite lookup_app_r; rewrite reverse_length //.
+    by rewrite Nat.sub_diag.
+  - simpl. intros Eqi. have Lt := lookup_lt_Some _ _ _ Eqi.
+    move : Eqi => /IH [j [Eqj Eql]].
+    exists j. rewrite Eql. split; [|done]. rewrite lookup_app_l //.
+    rewrite reverse_length. lia.
+Qed.
