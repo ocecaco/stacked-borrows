@@ -195,13 +195,18 @@ Proof.
       intros [? [? [h' Eqh']]]. simplify_eq. do 2 (split; [done|]).
       exists h'. by apply ptrmap_lookup_core_pub. }
     destruct PV as (c' & T' & h' & Eqci & InT' & Eqh' & Inl).
+     (* impossible: t' is protected by c' which is still active.
+      So t ≠ t' and protected(t',c') is on top of (l +ₗ i), so access with t is UB *)
+    exfalso.
     specialize (CINV _ _ Eqci) as [Inc' CINV].
     specialize (CINV _ InT') as [Ltt' CINV].
-    specialize (CINV _ _ Eqh' _ Inl) as (stk & pm & Eqstk & Instk).
+    specialize (CINV _ _ Eqh' _ Inl) as (stk & pm & Eqstk & Instk & NDIS).
     specialize (PINV _ _ _ Eqh') as [_ PINV].
-    
-    (* impossible: t' is protected by c' which is still active.
-      So t ≠ t' and protected(t',c') is on top of (l +ₗ i), so access with t is UB *)
+    have VALh' : ✓ h'.
+    { apply (Some_valid (to_tagKindR tkUnique,h')).
+      rewrite -Some_valid -Eqh'. apply VALID. }
+    destruct (heapletR_elem_of_dom _ _ VALh' Inl) as [s Eqs].
+    specialize (PINV _ _ Eqs _ Eqstk _ _ Instk NDIS) as (Eqss & HD).
     admit.
   }
   exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), (S n). split; last split.
@@ -234,10 +239,10 @@ Proof.
       destruct CINV as [IN CINV]. split; [done|].
       intros t1 InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
       intros k h Eqt l' Inh.
-      destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+      destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk' & NDIS).
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
-      exists stk, pm'. split; [done|]. by apply AS.
+      exists stk, pm'. split; last split; [done| |done]. by apply AS.
     - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?). }
   left.
   apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)). intros.
@@ -313,10 +318,10 @@ Proof.
       destruct CINV as [IN CINV]. split; [done|].
       intros t InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
       intros k h Eqt l' Inh.
-      destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+      destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk' & NDIS).
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
-      exists stk, pm'. split; [done|]. by apply AS.
+      exists stk, pm'. split; last split; [done| |done]. by apply AS.
     - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?). }
   left. pfold. split; last first.
   { constructor 1. intros vt' ? STEPT'. exfalso.
@@ -576,22 +581,22 @@ Proof.
           intros [Eqk Eqh]%Some_equiv_inj. simpl in Eqk, Eqh.
           have Eqt : (r_f ⋅ r).1 !! t ≡ Some (k, h0) by rewrite HL2 -Eqk.
           intros l'. rewrite -Eqh write_heaplet_dom. intros Inh.
-          destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+          destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk' & NDIS).
           destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
             as [stk [Eqstk AS]].
-          exists stk, pm'. split; [done|]. by apply AS. }
+          exists stk, pm'. split; last split; [done|by apply AS|done]. }
         { rewrite lookup_insert_ne //.
           intros Eqt l' Inh.
-          destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+          destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk' & NDIS).
           destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
             as [stk [Eqstk AS]].
-          exists stk, pm'. split; [done|]. by apply AS. }
+          exists stk, pm'. split; last split; [done|by apply AS|done]. }
       + (* if tg was public *)
         intros Eqt l' Inh.
-        destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk').
+        destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk' & NDIS).
         destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
           as [stk [Eqstk AS]].
-        exists stk, pm'. split; [done|]. by apply AS.
+        exists stk, pm'. split; last split; [done|by apply AS|done].
     - (* srel *)
       subst σt'. rewrite /srel /=. destruct SREL as (?&?&?&?&Eq).
       repeat split; [done..|].

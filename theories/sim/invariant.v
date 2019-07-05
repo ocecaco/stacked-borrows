@@ -51,7 +51,8 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
       (* if [l] is in that heaplet [h] *)
       ∀ (l: loc), l ∈ dom (gset loc) h →
       (* then a c-protector must be in the stack of l *)
-      ∃ stk pm, σ.(sst) !! l = Some stk ∧ mkItem pm (Tagged t) (Some c) ∈ stk
+      ∃ stk pm, σ.(sst) !! l = Some stk ∧
+        mkItem pm (Tagged t) (Some c) ∈ stk ∧ pm ≠ Disabled
   (* if c is a public call id *)
   | Cinr _ => (c < σ.(snc))%nat
   | _ => False
