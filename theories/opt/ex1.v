@@ -33,6 +33,12 @@ Proof.
   apply sim_simple_init_call=> c /= {css}.
   (* Alloc *)
   sim_apply sim_simple_alloc_local=> l t /=.
-  (* Let *)
   sim_apply sim_simple_let_place=>/=.
+  (* Write *)
+  rewrite (vrel_eq _ _ _ FREL).
+  sim_apply sim_simple_write_local; first solve_res.
+  intros s ->. clear dependent vs. simpl.
+  sim_apply sim_simple_let_val=>/=.
+  apply sim_simple_place.
+
 Abort.

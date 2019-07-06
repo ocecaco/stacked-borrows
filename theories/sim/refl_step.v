@@ -1240,28 +1240,28 @@ Qed.
 (** Let *)
 Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
   terminal es1 → terminal et1 →
-  r ⊨{n,fs,ft} (subst x es1 es2, σs) ≥ (subst x et1 et2, σt) : Φ →
-  r ⊨{n,fs,ft} (let: x := es1 in es2, σs) ≥ ((let: x := et1 in et2), σt) : Φ.
+  r ⊨{n,fs,ft} (subst' x es1 es2, σs) ≥ (subst' x et1 et2, σt) : Φ →
+  r ⊨{n,fs,ft} (let: x := es1 in es2, σs) ≥ (let: x := et1 in et2, σt) : Φ.
 Proof.
   intros TS TT SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
   { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
-    econstructor 1. econstructor; eauto. }
+    econstructor 1. eapply LetBS; eauto. }
   constructor 1. intros.
   destruct (tstep_let_inv _ _ _ _ _ _ _ TT STEPT). subst et' σt'.
-  exists (subst x es1 es2), σs, r, n. split.
+  exists (subst' x es1 es2), σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
   split; [done|]. by left.
 Qed.
 
-Lemma sim_body_let_val fs ft r n x (vs1 vt1: value) es2 et2 σs σt Φ :
-  r ⊨{n,fs,ft} (subst x vs1 es2, σs) ≥ (subst x vt1 et2, σt) : Φ →
-  r ⊨{n,fs,ft} (let: x := vs1 in es2, σs) ≥ ((let: x := vt1 in et2), σt) : Φ.
+Lemma sim_body_let_val fs ft r n b (vs1 vt1: value) es2 et2 σs σt Φ :
+  r ⊨{n,fs,ft} (subst' b vs1 es2, σs) ≥ (subst' b vt1 et2, σt) : Φ →
+  r ⊨{n,fs,ft} (let: b := vs1 in es2, σs) ≥ (let: b := vt1 in et2, σt) : Φ.
 Proof. apply sim_body_let; eauto. Qed.
 
 Lemma sim_body_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 σs σt Φ :
-  r ⊨{n,fs,ft} (subst x (Place ls ts tys) es2, σs) ≥ (subst x (Place lt tt tyt) et2, σt) : Φ →
+  r ⊨{n,fs,ft} (subst' x (Place ls ts tys) es2, σs) ≥ (subst' x (Place lt tt tyt) et2, σt) : Φ →
   r ⊨{n,fs,ft} (let: x := Place ls ts tys in es2, σs) ≥ ((let: x := Place lt tt tyt in et2), σt) : Φ.
 Proof. apply sim_body_let; eauto. Qed.
 

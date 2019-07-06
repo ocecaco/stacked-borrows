@@ -306,7 +306,7 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
                          SilentEvt (Place (l +ₗ off) lbor T') *)
 | LetBS x e1 e2 e' :
     is_Some (to_result e1) →
-    subst x e1 e2 = e' →
+    subst' x e1 e2 = e' →
     pure_expr_step FNs h (let: x := e1 in e2) SilentEvt e'
 | CaseBS i el e :
     0 ≤ i →

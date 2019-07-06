@@ -80,6 +80,20 @@ Proof.
   clear. simpl. intros r n vs σs vt σt HH. exact: HH.
 Qed.
 
+Lemma sim_simple_val fs ft r n (vs vt: value) css cst Φ :
+  Φ r n vs css vt cst →
+  r ⊨ˢ{S n,fs,ft} (vs, css) ≥ (vt, cst) : Φ.
+Proof.
+  intros HH σs σt <-<-. eapply (sim_body_result _ _ _ _ vs vt). done.
+Qed.
+
+Lemma sim_simple_place fs ft r n ls lt ts tt tys tyt css cst Φ :
+  Φ r n (PlaceR ls ts tys) css (PlaceR lt tt tyt) cst →
+  r ⊨ˢ{S n,fs,ft} (Place ls ts tys, css) ≥ (Place lt tt tyt, cst) : Φ.
+Proof.
+  intros HH σs σt <-<-. eapply (sim_body_result _ _ _ _ (PlaceR _ _ _) (PlaceR _ _ _)). done.
+Qed.
+
 (** * Administrative *)
 Lemma sim_simple_init_call fs ft r n es css et cst Φ :
   (∀ c: call_id,
@@ -93,22 +107,32 @@ Qed.
 
 (** * Memory *)
 Lemma sim_simple_alloc_local fs ft r n T css cst Φ :
-  (∀ (l: loc) (t: tag),
-    let r' := res_mapsto l ☠ (init_stack t) in
-    Φ (r ⋅ r') n (PlaceR l t T) css (PlaceR l t T) cst) →
+  (∀ (l: loc) (tg: nat),
+    let r' := res_mapsto l ☠ (init_stack (Tagged tg)) in
+    Φ (r ⋅ r') n (PlaceR l (Tagged tg) T) css (PlaceR l (Tagged tg) T) cst) →
   r ⊨ˢ{n,fs,ft} (Alloc T, css) ≥ (Alloc T, cst) : Φ.
 Proof.
   intros HH σs σt <-<-. apply sim_body_alloc_local=>/=. eauto.
 Qed.
 
+(* FIXME notation is so broken, can one write this down without the Val? *)
+Lemma sim_simple_write_local fs ft r r' n l tg Ts Tt v v' css cst Φ :
+  r ≡ r' ⋅ res_mapsto l v' (init_stack (Tagged tg)) →
+  (∀ s, v = [s] → Φ (r' ⋅ res_mapsto l s (init_stack (Tagged tg))) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
+  r ⊨ˢ{n,fs,ft}
+    (Place l (Tagged tg) Ts <- #v, css) ≥ (Place l (Tagged tg) Tt <- #v, cst)
+  : Φ.
+Proof.
+Admitted.
+
 (** * Pure *)
 Lemma sim_simple_let_val fs ft r n x (vs1 vt1: value) es2 et2 css cst Φ :
-  r ⊨ˢ{n,fs,ft} (subst x vs1 es2, css) ≥ (subst x vt1 et2, cst) : Φ →
+  r ⊨ˢ{n,fs,ft} (subst' x vs1 es2, css) ≥ (subst' x vt1 et2, cst) : Φ →
   r ⊨ˢ{n,fs,ft} (let: x := vs1 in es2, css) ≥ ((let: x := vt1 in et2), cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
 
 Lemma sim_simple_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 css cst Φ :
-  r ⊨ˢ{n,fs,ft} (subst x (Place ls ts tys) es2, css) ≥ (subst x (Place lt tt tyt) et2, cst) : Φ →
+  r ⊨ˢ{n,fs,ft} (subst' x (Place ls ts tys) es2, css) ≥ (subst' x (Place lt tt tyt) et2, cst) : Φ →
   r ⊨ˢ{n,fs,ft} (let: x := Place ls ts tys in es2, css) ≥ ((let: x := Place lt tt tyt in et2), cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
 

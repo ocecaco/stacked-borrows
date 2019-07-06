@@ -314,10 +314,10 @@ Proof.
   - by exists (Ki :: K').
 Qed.
 
-Lemma tstep_let_inv (x: string) e1 e2 e' σ σ'
+Lemma tstep_let_inv (x: binder) e1 e2 e' σ σ'
   (TERM: terminal e1)
   (STEP: ((let: x := e1 in e2)%E, σ) ~{fns}~> (e', σ')) :
-  e' = subst x e1 e2  ∧ σ' = σ.
+  e' = subst' x e1 e2  ∧ σ' = σ.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_let_decompose _ _ _ _ _ Eq)
