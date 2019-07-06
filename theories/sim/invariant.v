@@ -100,8 +100,8 @@ Definition wsat (r: resUR) (σs σt: state) : Prop :=
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)
 Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
-Definition vrel_expr (r: resUR) (e1 e2: expr) :=
-  ∃ v1 v2, e1 = Val v1 ∧ e2 = Val v2 ∧ vrel r v1 v2.
+Definition vrel_res (r: resUR) (e1 e2: result) :=
+  ∃ v1 v2, e1 = ValR v1 ∧ e2 = ValR v2 ∧ vrel r v1 v2.
 
 
 (** Condition for resource before EndCall *)
@@ -146,27 +146,14 @@ Proof.
   f_equal. by apply (arel_eq _ _ _ Eq1). by apply IH.
 Qed.
 
-Lemma vrel_expr_to_result r (e1 e2: result) :
-  vrel_expr r e1 e2 → to_result e1 = Some e2.
+Lemma vrel_res_eq r (e1 e2: result) :
+  vrel_res r e1 e2 → e1 = e2.
 Proof.
-  intros (v1 & v2 & Eq1 & Eq2 & VREL). rewrite Eq1 /=.
-  rewrite (_: (#v2)%E = of_result (ValR v2)) in Eq2; [|done].
-  apply of_result_inj in Eq2. rewrite Eq2. do 2 f_equal. by eapply vrel_eq.
+  intros (v1 & v2 & Eq1 & Eq2 & VREL). subst. f_equal. by eapply vrel_eq.
 Qed.
 
-Lemma vrel_expr_result r (e1 e2: result) :
-  vrel_expr r e1 e2 → ∃ v1 v2, e1 = ValR v1 ∧ e2 = ValR v2 ∧ vrel_expr r (Val v1) (Val v2).
-Proof.
-  intros (v1 & v2 & Eq1 & Eq2 & VREL). exists v1, v2.
-  rewrite (_: (#v1)%E = of_result (ValR v1)) in Eq1; [|done].
-  apply of_result_inj in Eq1. rewrite Eq1.
-  rewrite (_: (#v2)%E = of_result (ValR v2)) in Eq2; [|done].
-  apply of_result_inj in Eq2. rewrite Eq2.
-  repeat split. exists v1, v2. naive_solver.
-Qed.
-
-Lemma vrel_expr_vrel r (v1 v2: value) :
-  vrel_expr r #v1 #v2 → vrel r v1 v2.
+Lemma vrel_res_vrel r (v1 v2: value) :
+  vrel_res r #v1 #v2 → vrel r v1 v2.
 Proof. intros (? & ? & Eq1 & Eq2 & ?). by simplify_eq. Qed.
 
 Lemma arel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
@@ -197,8 +184,8 @@ Lemma vrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ v1 v2, vrel r1 v1 v2 → vrel r2 v1 v2.
 Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qed.
 
-Lemma vrel_expr_mono (r1 r2 : resUR) (VAL: ✓ r2) :
-  r1 ≼ r2 → ∀ v1 v2, vrel_expr r1 v1 v2 → vrel_expr r2 v1 v2.
+Lemma vrel_res_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ v1 v2, vrel_res r1 v1 v2 → vrel_res r2 v1 v2.
 Proof.
   move => Le v1 v2 [? [? [? [? /(vrel_mono _ _ VAL Le) ?]]]]. do 2 eexists. eauto.
 Qed.

@@ -55,7 +55,7 @@ Inductive sim_local_frames:
                                 (λ r _ vs σs vt σt,
                                   (∃ c, σt.(scs) = c :: cids) ∧
                                   end_call_sat r σs σt ∧
-                                  vrel_expr r (of_result vs) (of_result vt)))
+                                  vrel_res r vs vt))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
       frame.(callids)
@@ -75,7 +75,7 @@ Inductive sim_local_conf:
                            (λ r _ vs σs vt σt,
                               (∃ c, σt.(scs) = c :: cids) ∧
                               end_call_sat r σs σt ∧
-                              vrel_expr r (of_result vs) (of_result vt)))
+                              vrel_res r vs vt))
     (KE_SRC: Ke_src = fill K_src e_src)
     (KE_TGT: Ke_tgt = fill K_tgt e_tgt)
     (WSAT: wsat (r_f ⋅ rc) σ_src σ_tgt)
@@ -112,31 +112,32 @@ Proof.
     apply tstep_reducible_fill_inv in RED; [|done].
     apply tstep_reducible_fill.
     destruct RED as [e2 [σ2 Eq2]].
-    apply vrel_expr_result in VREL as (v1 & v2 & ? & ? & ?). subst vs' vt.
+    destruct VREL as (v1 & v2 & ? & ? & ?). subst vs' vt.
     move : Eq2. eapply end_call_tstep_src_tgt; eauto.
   - guardH sim_local_body_stuck.
     s. i. apply fill_result in H. unfold terminal in H. des. subst. inv FRAMES. ss.
     exploit sim_local_body_terminal; eauto. i. des.
     esplits; eauto; ss.
     + rewrite to_of_result. esplits; eauto.
-    + ii. clarify. eapply vrel_expr_to_result; eauto.
+    + ii. clarify. erewrite to_of_result. f_equal. eapply vrel_res_eq; eauto.
   - guardH sim_local_body_stuck.
     i. destruct eσ2_tgt as [e2_tgt σ2_tgt].
 
     exploit fill_step_inv_2; eauto. i. des; cycle 1.
     { (* return *)
       exploit sim_local_body_terminal; eauto. i. des.
+      rename x2 into HFRAME0.
 
       inv FRAMES; ss.
       { exfalso. apply result_tstep_stuck in H. naive_solver. }
 
       (* Simulatin EndCall *)
       rename σ_tgt into σt. rename σs' into σs.
-      destruct (vrel_expr_result _ _ _ x4) as (vs1 & vt1 & Eqvs1 & Eqv1 & VREL1).
-      simplify_eq. have VR: vrel r' vs1 vt1 by apply vrel_expr_vrel.
+      destruct x4 as (vs1 & vt1 & Eqvs1 & Eqv1 & VR).
+      simplify_eq.
 
       set Φ : resUR → nat → result → state → result → state → Prop :=
-        λ r2 _ vs2 σs2 vt2 σt2, vrel_expr r2 vs2 vt2 ∧
+        λ r2 _ vs2 σs2 vt2 σt2, vrel_res r2 vs2 vt2 ∧
           ∃ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 ∧
             σt.(scs) = c2 :: cids2 ∧
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
@@ -168,14 +169,12 @@ Proof.
       rewrite -(of_to_result _ _ x0) in STEPT2.
       destruct (sim_body_end_call_elim' _ _ _ _ _ _ _ _ _ SIMEND _ _ _ x1 NT4 STEPT2)
         as (r2 & idx2 & σs2 & STEPS & ? & HΦ2 & WSAT2). subst et2.
-      destruct HΦ2 as [VR2 HP2].
-      destruct VR2 as (? & ? & [=<-] & [=<-] & VR2).
 
       exploit (CONTINUATION r2).
       { rewrite cmra_assoc; eauto. }
-      { exact VR2. }
+      { apply vrel_res_vrel. apply HΦ2. }
       { exploit tstep_end_call_inv; try exact STEPT2; eauto. i. des. subst. ss.
-        rewrite x2 in x7. simplify_eq. ss.
+        rewrite HFRAME0 in x5. simplify_eq. ss.
       }
       intros [idx3 SIMFR]. rename σ2_tgt into σt2.
       do 2 eexists. split.
@@ -221,7 +220,7 @@ Proof.
           pclearbot. esplits; eauto.
         }
         { eapply sim_local_body_post_mono; [|apply SIMf]. simpl.
-          unfold vrel_expr. naive_solver. }
+          unfold vrel_res. naive_solver. }
         { done. }
         { s. rewrite -fill_app. eauto. }
         { ss. rewrite -cmra_assoc; eauto. }
