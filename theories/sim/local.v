@@ -119,12 +119,8 @@ Definition sim_local_fun
   (esat: A → state → state → Prop) (fn_src fn_tgt : function) : Prop :=
   ∀ r es et (vl_src vl_tgt: list value) σs σt
     (VALEQ: Forall2 (vrel r) vl_src vl_tgt)
-    (EQS: match fn_src with
-          | FunV xl e => subst_l xl (Val <$> vl_src) e = Some es
-          end)
-    (EQT: match fn_tgt with
-          | FunV xl e => subst_l xl (Val <$> vl_tgt) e = Some et
-          end),
+    (EQS: subst_l fn_src.(fun_b) (Val <$> vl_src) fn_src.(fun_e) = Some es)
+    (EQT: subst_l fn_tgt.(fun_b) (Val <$> vl_tgt) fn_tgt.(fun_e) = Some et),
     ∃ idx, sim_local_body r idx
                           (InitCall es) σs (InitCall et) σt
                           (λ r' _ rs' σs' rt' σt',
@@ -136,9 +132,7 @@ Definition sim_local_fun
 Definition sim_local_funs (esat: A → state → state → Prop) : Prop :=
   ∀ name fn_tgt, fnt !! name = Some fn_tgt → ∃ fn_src,
     fns !! name = Some fn_src ∧
-    match fn_src, fn_tgt with
-    | FunV xls _, FunV xlt _ => length xls = length xlt
-    end ∧
+    length (fn_src.(fun_b)) = length (fn_tgt.(fun_b)) ∧
     sim_local_fun esat fn_src fn_tgt.
 
 End local.

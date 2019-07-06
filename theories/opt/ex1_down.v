@@ -23,7 +23,7 @@ Definition ex1_down_opt : function :=
     .
 
 
-Lemma ex1_down_sim_fun fs ft : ⊨{fs,ft} ex1_down ≥ᶠ ex1_down_opt.
+Lemma ex1_down_sim_fun fs ft : ⊨ᶠ{fs,ft} ex1_down ≥ ex1_down_opt.
 Proof.
   intros r es et vls vlt σs σt FREL SUBSTs SUBSTt.
   destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.

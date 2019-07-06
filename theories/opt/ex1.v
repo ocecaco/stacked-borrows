@@ -1,4 +1,4 @@
-From stbor.sim Require Import local invariant refl_step tactics body.
+From stbor.sim Require Import local invariant refl_step tactics body simple.
 
 Set Default Proof Using "Type".
 
@@ -26,7 +26,7 @@ Definition ex1_opt : function :=
     "v"
   .
 
-Lemma ex1_sim_body fs ft : ⊨{fs,ft} ex1 ≥ᶠ ex1_opt.
+Lemma ex1_sim_body fs ft : ⊨ᶠ{fs,ft} ex1 ≥ ex1_opt.
 Proof.
   intros rf es et vls vlt σs σt FREL SUBSTs SUBSTt.
   destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.

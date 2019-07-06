@@ -32,7 +32,7 @@ Definition ex3_opt_2 : function :=
     Call #[ScFnPtr "f"] []
   .
 
-Lemma ex3_sim_fun fs ft : ⊨{fs,ft} ex3 ≥ᶠ ex3_opt_1.
+Lemma ex3_sim_fun fs ft : ⊨ᶠ{fs,ft} ex3 ≥ ex3_opt_1.
 Proof.
   intros r es et vls vlt σs σt FREL SUBSTs SUBSTt.
   destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.

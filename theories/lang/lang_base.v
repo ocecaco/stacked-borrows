@@ -285,8 +285,12 @@ Proof.
 Qed.
 
 (** Global static function table *)
-Inductive function :=
-| FunV (xl : list binder) (e : expr) `{Closed (xl +b+ []) e}.
+Record function := FunV {
+  fun_b: list binder;
+  fun_e: expr;
+  fun_closed: Closed (fun_b +b+ []) fun_e
+}.
+Arguments FunV _ _ {_}.
 Definition fn_env := gmap fn_id function.
 
 (** Main state: a heap of scalars. *)

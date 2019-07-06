@@ -34,7 +34,7 @@ Definition ex3_down_opt_2 : function :=
     "v"
   .
 
-Lemma ex3_down_sim_fun fs ft : ⊨{fs,ft} ex3_down ≥ᶠ ex3_down_opt_1.
+Lemma ex3_down_sim_fun fs ft : ⊨ᶠ{fs,ft} ex3_down ≥ ex3_down_opt_1.
 Proof.
   intros r es et vls vlt σs σt FREL SUBSTs SUBSTt.
   destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.

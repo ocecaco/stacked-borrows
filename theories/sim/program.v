@@ -17,7 +17,7 @@ Lemma sim_prog_sim_classical
 Proof.
   destruct MAINT as (ebt & HCt & Eqt).
   destruct (FUNS _ _ Eqt) as ([xls ebs HCs] & Eqs & Eql & SIMf).
-  apply nil_length_inv in Eql. subst xls.
+  apply nil_length_inv in Eql. simplify_eq/=.
   specialize (SIMf ε ebs ebt [] [] init_state init_state) as [idx SIM]; [simpl; done..|].
   unfold behave_prog.
   eapply (adequacy_classical _ _ idx); [apply NSD| |by apply wf_init_state..].
