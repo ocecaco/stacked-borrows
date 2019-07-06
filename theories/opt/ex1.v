@@ -37,9 +37,8 @@ Proof.
   apply sim_body_init_call. simpl.
 
   (* Alloc *)
-  sim_bind (Alloc _) (Alloc _). simpl.
-  apply sim_body_alloc_shared. simpl. intros -> ->.
+  sim_apply sim_body_alloc_local. simpl.
 
   (* Let *)
-  sim_bind (Let _ _ _) (Let _ _ _).
+  sim_apply sim_body_let_place. simpl.
 Abort.

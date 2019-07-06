@@ -32,3 +32,14 @@ Tactic Notation "sim_bind" open_constr(efocs) open_constr(efoct) :=
       )
     )
   end.
+
+Tactic Notation "sim_apply" open_constr(lem) :=
+  match goal with
+  | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+    reshape_expr es ltac:(fun Ks es =>
+      reshape_expr et ltac:(fun Kt et =>
+        eapply (sim_body_bind _ _ _ _ Ks Kt es et);
+        eapply lem
+      )
+    )
+  end.
