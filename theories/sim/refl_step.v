@@ -544,6 +544,7 @@ Proof.
   exists (#[☠])%V, σs', r', (S n). split; last split.
   { left. by constructor 1. }
   { have Eqrlm: (r_f ⋅ r').(rlm) ≡ (r_f ⋅ r).(rlm) by destruct k0.
+    destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 EQ2].
     split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
@@ -645,10 +646,10 @@ Proof.
         destruct k.
         * (* if k is Unique ∧ t ≠ tg, writing with tg must have popped t
             from top, contradicting In'. *)
-          destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 _].
-          rewrite EQL in Lti. destruct (EQ1 _ _ Lti Eqstk) as [ss' [Eq' EQ2]].
+          rewrite EQL in Lti. destruct (EQ1 _ _ Lti Eqstk) as [ss' [Eq' EQ3]].
           have ?: ss' = stk'. { rewrite Eqstk' in Eq'. by inversion Eq'. }
-          subst ss'. clear Eq'. move : EQ2. case access1 as [[n1 stk1]|] eqn:EQ3; [|done].
+          subst ss'. clear Eq'. move : EQ3.
+          case access1 as [[n1 stk1]|] eqn:EQ4; [|done].
           simpl. intros ?. simplify_eq.
           specialize (NEQ eq_refl).
           have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
@@ -657,11 +658,10 @@ Proof.
             [by eexists|done..].
         * (* if k is Public => t is for SRO, and must also have been popped,
              contradicting In'. *)
-          destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 _].
-          rewrite EQL in Lti. destruct (EQ1 _ _ Lti Eqstk) as [ss' [Eq' EQ2]].
+          rewrite EQL in Lti. destruct (EQ1 _ _ Lti Eqstk) as [ss' [Eq' EQ3]].
           have ?: ss' = stk'. { rewrite Eqstk' in Eq'. by inversion Eq'. }
-          subst ss'. clear Eq'. move : EQ2.
-          case access1 as [[n1 stk1]|] eqn:EQ3; [|done].
+          subst ss'. clear Eq'. move : EQ3.
+          case access1 as [[n1 stk1]|] eqn:EQ4; [|done].
           simpl. intros ?. simplify_eq.
           have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
           move : In'.
@@ -777,20 +777,20 @@ Proof.
       intros InD. specialize (LINV _ InD) as [? LINV].
       split. { subst σt'. rewrite /= write_mem_dom //. }
       intros s stk Eq. subst σt'. rewrite /=.
+      specialize (LINV _ _ Eq) as (?&?&?&?).
       destruct (write_mem_lookup l v σs.(shp)) as [_ HLs].
       destruct (write_mem_lookup l v σt.(shp)) as [_ HLt].
-      have ?: ∀ i, (i < length v)%nat → l' ≠ l +ₗ i.
+      have NEQ: ∀ i, (i < length v)%nat → l' ≠ l +ₗ i.
       { intros i Lti EQ. rewrite EQL in Lti. specialize (SHR _ Lti).
         subst l'. apply (lmap_lookup_op_r r_f.(rlm)) in SHR; [|apply VALID].
         move : Eq. rewrite SHR. intros Eqv%Some_equiv_inj. inversion Eqv. }
-      rewrite HLs // HLt //. move : Eq.
-      (* apply LINV. *)
-      admit.
+      destruct EQ2 as [_ EQ2].
+      rewrite HLs // HLt // EQ2 //. rewrite -EQL //.
   }
   left.
   eapply (sim_body_result fs ft r' n (ValR [☠%S]) (ValR [☠%S])).
   intros. simpl. subst σt'. by apply POST.
-Admitted.
+Qed.
 
 (** Retag *)
 
