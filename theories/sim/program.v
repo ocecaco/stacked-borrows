@@ -11,7 +11,7 @@ Lemma sim_prog_sim_classical
                     exists e' σ', (e, σ) ~{prog_src}~>* (e', σ') /\
                              ~ terminal e' /\
                              ~ reducible prog_src e' σ'}
-      (FUNS: sim_local_funs wsat vrel_expr prog_src prog_tgt end_call_sat)
+      (FUNS: sim_local_funs wsat vrel prog_src prog_tgt end_call_sat)
       (MAINT: ∃ ebt HCt, prog_tgt !! "main" = Some (@FunV [] ebt HCt))
   : behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.

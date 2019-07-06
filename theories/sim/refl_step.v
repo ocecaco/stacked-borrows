@@ -955,7 +955,7 @@ Lemma sim_body_end_call fs ft r n vs vt σs σt Φ :
                  | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r.(rcm)
                  | _ => r.(rcm)
                  end in
-      Wf σt → vrel_expr ((r.(rtm), r2'), r.(rlm)) vs vt →
+      Wf σt → vrel ((r.(rtm), r2'), r.(rlm)) vs vt →
       Φ ((r.(rtm), r2'), r.(rlm)) n (ValR vs) σs' (ValR vt) σt' : Prop) →
   r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ.
 Proof.
@@ -1044,7 +1044,6 @@ Proof.
     - intros ???. rewrite /=. apply LINV. }
   (* result *)
   left. apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).
-  have ?: vrel_expr ((r.(rtm), r2'), r.(rlm)) vs vt by do 2 eexists; eauto.
   intros VALID'.
   eapply POST; eauto. destruct SREL as (?&?&Eqs&?). by rewrite Eqs.
 Qed.
@@ -1064,7 +1063,7 @@ Proof.
   inversion STEPSS; last first.
   { exfalso. clear -CALLTGT. symmetry in CALLTGT.
     apply fill_end_call_decompose in CALLTGT as [[]|[K' [? Eq]]]; [done|].
-    destruct (fill_result ft K' (Call #[ScFnPtr fid] el_tgt)) as [[] ?];
+    destruct (fill_result ft K' (Call #[ScFnPtr fid] (Val <$> vl_tgt))) as [[] ?];
       [rewrite Eq; by eexists|done]. }
   specialize (STEP _ _ STEPT) as (es1 & σs1 & r1 & n1 & STEP1 & WSAT1 & SIMV).
   have STEPK: (EndCall #vs, σs) ~{fs}~>* (es1, σs1).
@@ -1112,7 +1111,7 @@ Proof.
   inversion STEPSS; last first.
   { exfalso. clear -CALLTGT. symmetry in CALLTGT.
     apply fill_end_call_decompose in CALLTGT as [[]|[K' [? Eq]]]; [done|].
-    destruct (fill_result ft K' (Call #[ScFnPtr fid] el_tgt)) as [[] ?];
+    destruct (fill_result ft K' (Call #[ScFnPtr fid] (Val <$> vl_tgt))) as [[] ?];
       [rewrite Eq; by eexists|done]. }
   specialize (STEP _ _ STEPT) as (es1 & σs1 & r1 & n1 & STEP1 & WSAT1 & SIMV).
   have STEPK: (EndCall #vs, σs) ~{fs}~>* (es1, σs1).
@@ -1149,24 +1148,23 @@ Qed.
 Lemma sim_body_step_over_call fs ft
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
   (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft)))
-  rc rv n fid els xlt et et' elt HCt σs σt Φ
-  (VS  : Forall (λ ei, is_Some (to_value ei)) els)
-  (VREL: Forall2 (vrel_expr rv) els elt)
+  rc rv n fid vls xlt et et' vlt HCt σs σt Φ
+  (VREL: Forall2 (vrel rv) vls vlt)
   (FT: ft !! fid = Some (@FunV xlt et HCt))
-  (VT : Forall (λ ei, is_Some (to_value ei)) elt)
-  (ST: subst_l xlt elt et = Some et') :
+  (ST: subst_l xlt (Val <$> vlt) et = Some et') :
   (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt) (STACK: σt.(scs) = σt'.(scs)), ∃ n',
     rc ⋅ r' ⊨{n',fs,ft} (fill Ks (Val vs), σs') ≥ (fill Kt (Val vt), σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
-    (fill Ks (Call #[ScFnPtr fid] els), σs) ≥ (fill Kt (Call #[ScFnPtr fid] elt), σt) : Φ.
+    (fill Ks (Call #[ScFnPtr fid] (Val <$> vls)), σs) ≥ (fill Kt (Call #[ScFnPtr fid] (Val <$> vlt)), σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT. split.
   { right. exists (fill Kt (EndCall (InitCall et'))), σt.
-     eapply (head_step_fill_tstep _ Kt). econstructor. by econstructor. }
+     eapply (head_step_fill_tstep _ Kt). econstructor. econstructor; try done.
+     apply list_Forall_to_value. eauto. }
   { intros vt. by rewrite fill_not_result. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
-            Ks _ fid elt els); eauto; [done|].
-  intros r' ? ? σs' σt' (vs&vt&?&?&VR) STACK. simplify_eq.
+            Ks _ fid vlt vls); eauto; [done|].
+  intros r' ? ? σs' σt' VR STACK. simplify_eq.
   destruct (CONT _ _ _ σs' σt' VR STACK) as [n' ?].
   exists n'. by left.
 Qed.
