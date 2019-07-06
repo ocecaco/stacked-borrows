@@ -26,8 +26,7 @@ Proof.
   - econs 1.
   - ss.
   - ss.
-  - eapply (sim_body_step_over_call _ _ [] [] init_res ε _ _ [] [] ebt ebt [] );
-      [done..|].
+  - eapply (sim_body_step_over_call _ _ init_res ε _ _ [] []); [done..|].
     intros. simpl. exists 1%nat.
     apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).
     intros VALID.
@@ -35,8 +34,8 @@ Proof.
     { do 2 eexists. do 2 (split; [done|]).
       eapply vrel_mono; [done|apply cmra_included_r|done]. }
     split; last split; [..|done].
-    { exists O. by rewrite -STACK. }
-    rewrite /end_call_sat -STACK.
+    { exists O. by rewrite -STACKT. }
+    rewrite /end_call_sat -STACKT.
     intros c Eq. simpl in Eq. simplify_eq.
     have HL: (init_res ⋅ r').(rcm) !! 0%nat ≡ Some (to_callStateR csPub).
     { apply cmap_lookup_op_l_equiv_pub; [apply VALID|].

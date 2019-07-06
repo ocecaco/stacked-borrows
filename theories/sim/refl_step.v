@@ -1200,7 +1200,9 @@ Lemma sim_body_step_over_call fs ft
   rc rv n fid vls vlt σs σt Φ
   (VREL: Forall2 (vrel rv) vls vlt)
   :
-  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt) (STACK: σt.(scs) = σt'.(scs)), ∃ n',
+  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt)
+    (STACKS: σs.(scs) = σs'.(scs))
+    (STACKT: σt.(scs) = σt'.(scs)), ∃ n',
     rc ⋅ r' ⊨{n',fs,ft} (Val vs, σs') ≥ (Val vt, σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
     (Call #[ScFnPtr fid] (Val <$> vls), σs) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), σt) : Φ.
