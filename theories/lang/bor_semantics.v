@@ -124,10 +124,11 @@ Definition access1 (stk: stack) (access: access_kind) (tg: tag) cids
   end.
 
 (* Initialize [l, l + n) with singleton stacks of `tg` *)
+Definition init_stack (t: tag) : stack := [mkItem Unique t None].
 Fixpoint init_stacks α (l:loc) (n:nat) (tg: tag) : stacks :=
   match n with
   | O => α
-  | S n => <[l:= [mkItem Unique tg None]]>(init_stacks α (l +ₗ 1) n tg)
+  | S n => <[l:= init_stack tg]>(init_stacks α (l +ₗ 1) n tg)
   end.
 
 Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)

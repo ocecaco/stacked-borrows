@@ -7,6 +7,24 @@ Set Default Proof Using "Type".
 
 (** MEM STEP -----------------------------------------------------------------*)
 
+Definition res_alloc_local l s stk : resUR :=
+  (ε, {[ l := to_locStateR (lsLocal s stk)]}).
+
+Lemma sim_body_alloc_local fs ft r n T σs σt Φ :
+  let l := (fresh_block σt.(shp), 0) in
+  let t := (Tagged σt.(snp)) in
+  let σs' := mkState (init_mem l (tsize T) σs.(shp))
+                     (init_stacks σs.(sst) l (tsize T) t) σs.(scs)
+                     (S σs.(snp)) σs.(snc) in
+  let σt' := mkState (init_mem l (tsize T) σt.(shp))
+                     (init_stacks σt.(sst) l (tsize T) t) σt.(scs)
+                     (S σt.(snp)) σt.(snc) in
+  let r' : resUR := res_alloc_local l ScPoison (init_stack t) in
+  Φ (r ⋅ r') n (PlaceR l t T) σs' (PlaceR l t T) σt' : Prop →
+  r ⊨{n,fs,ft} (Alloc T, σs) ≥ (Alloc T, σt) : Φ.
+Proof.
+Admitted.
+
 (** Alloc *)
 (* 
 Lemma sim_body_alloc_shared fs ft r n T σs σt Φ :

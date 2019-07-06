@@ -28,14 +28,14 @@ Proof. by rewrite -free_mem_foldr' shift_loc_0. Qed.
 
 Lemma init_stacks_foldr' α l n si (m: nat):
   init_stacks α (l +ₗ m) n si =
-  fold_right (λ (i: nat) hi, <[(l +ₗ i):=[mkItem Unique si None]]> hi) α (seq m n).
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):= init_stack si]> hi) α (seq m n).
 Proof.
   revert m. induction n as [|n IHn]; intros m; [done|]. simpl. f_equal.
   by rewrite shift_loc_assoc -(Nat2Z.inj_add m 1) Nat.add_1_r IHn.
 Qed.
 Lemma init_stacks_foldr α l n si:
   init_stacks α l n si =
-  fold_right (λ (i: nat) hi, <[(l +ₗ i):=[mkItem Unique si None]]> hi) α (seq 0 n).
+  fold_right (λ (i: nat) hi, <[(l +ₗ i):= init_stack si]> hi) α (seq 0 n).
 Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 
 
@@ -149,7 +149,7 @@ Proof. move => l' s' /init_mem_lookup_case [[//]|//]. Qed.
 
 Lemma init_stacks_lookup α l n t :
   (∀ (i: nat), (i < n)%nat →
-    init_stacks α l n t !! (l +ₗ i) = Some [mkItem Unique t None]) ∧
+    init_stacks α l n t !! (l +ₗ i) = Some (init_stack t)) ∧
   (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
     init_stacks α l n t !! l' = α !! l').
 Proof.
@@ -201,7 +201,7 @@ Lemma init_stacks_lookup_case_2 α l n t :
   ∀ l' s', α !! l' = Some s' →
   init_stacks α l n t !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
   ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i ∧
-    init_stacks α l n t !! l' = Some [mkItem Unique t None].
+    init_stacks α l n t !! l' = Some $ init_stack t.
 Proof.
   destruct (init_stacks_lookup α l n t) as [EQ1 EQ2].
   intros l1 s1 Eq'.
