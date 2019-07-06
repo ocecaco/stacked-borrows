@@ -110,26 +110,31 @@ we'd need tactic support for anything better. *)
 Lemma sim_simple_call n' vls vlt rv fs ft r r' n fid css cst Φ :
   Forall2 (vrel rv) vls vlt →
   r ≡ r' ⋅ rv →
-  (∀ r' vs vt, vrel r' vs vt →
-    r ⋅ r' ⊨ˢ{n',fs,ft} (Val vs, css) ≥ (Val vt, cst) : Φ) →
+  (∀ rret vs vt, vrel rret vs vt →
+    r' ⋅ rret ⊨ˢ{n',fs,ft} (Val vs, css) ≥ (Val vt, cst) : Φ) →
   r ⊨ˢ{n,fs,ft}
     (Call #[ScFnPtr fid] (Val <$> vls), css) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), cst) : Φ.
 Proof.
+  intros Hrel Hres HH σs σt <-<-.
+  eapply sim_body_res_proper; last apply: sim_body_step_over_call.
+  - symmetry. exact: Hres.
+  - done.
+  - intros. exists n'. eapply sim_body_res_proper; last apply: HH; try done.
 Admitted.
 
 (** * Memory *)
 Lemma sim_simple_alloc_local fs ft r n T css cst Φ :
   (∀ (l: loc) (tg: nat),
-    let r' := res_mapsto l ☠ (init_stack (Tagged tg)) in
+    let r' := res_mapsto l (tsize T) ☠ (init_stack (Tagged tg)) in
     Φ (r ⋅ r') n (PlaceR l (Tagged tg) T) css (PlaceR l (Tagged tg) T) cst) →
   r ⊨ˢ{n,fs,ft} (Alloc T, css) ≥ (Alloc T, cst) : Φ.
 Proof.
-  intros HH σs σt <-<-. apply sim_body_alloc_local=>/=. eauto.
+  intros HH σs σt <-<-. apply sim_body_alloc_local=>/=. exact: HH.
 Qed.
 
 Lemma sim_simple_write_local fs ft r r' n l tg Ts Tt v v' css cst Φ :
-  r ≡ r' ⋅ res_mapsto l v' (init_stack (Tagged tg)) →
-  (∀ s, v = [s] → Φ (r' ⋅ res_mapsto l s (init_stack (Tagged tg))) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
+  r ≡ r' ⋅ res_mapsto l 1 v' (init_stack (Tagged tg)) →
+  (∀ s, v = [s] → Φ (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft}
     (Place l (Tagged tg) Ts <- #v, css) ≥ (Place l (Tagged tg) Tt <- #v, cst)
   : Φ.
@@ -137,7 +142,7 @@ Proof.
 Admitted.
 
 Lemma sim_simple_retag_local fs ft r r' r'' rf n l s' s tg m ty css cst Φ :
-  r ≡ r' ⋅ res_mapsto l s (init_stack (Tagged tg)) →
+  r ≡ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg)) →
   arel rf s' s →
   r' ≡ r'' ⋅ rf →
   (∀ l_inner tg_inner hplt,
@@ -147,7 +152,7 @@ Lemma sim_simple_retag_local fs ft r r' r'' rf n l s' s tg m ty css cst Φ :
     | Mutable => is_Some (hplt !! l_inner)
     | Immutable => if is_freeze ty then is_Some (hplt !! l_inner) else True
     end →
-    Φ (r' ⋅ res_mapsto l s (init_stack (Tagged tg)) ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
+    Φ (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg)) ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft}
     (Retag (Place l (Tagged tg) (Reference (RefPtr m) ty)) Default, css)
   ≥

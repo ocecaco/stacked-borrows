@@ -339,7 +339,7 @@ Definition init_local_res l n s stk ls : lmapUR :=
   fmap (λ sstk, to_locStateR $ lsLocal sstk.1 sstk.2) (init_local l n s stk ls).
 
 Definition res_mapsto (l:loc) (n:nat) (s: scalar) (stk: stack) : resUR :=
-  (ε, init_local_res l n s stk ∅).
+  (ε, ε, init_local_res l n s stk ∅).
 
 Lemma init_local_lookup l n s stk ls :
   (∀ (i: nat), (i < n)%nat →
