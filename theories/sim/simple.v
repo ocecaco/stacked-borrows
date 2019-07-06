@@ -80,6 +80,7 @@ Proof.
   clear. simpl. intros r n vs σs vt σt HH. exact: HH.
 Qed.
 
+(** * Administrative *)
 Lemma sim_simple_init_call fs ft r n es css et cst Φ :
   (∀ c: call_id,
     let r' := res_callState c (csOwned ∅) in
@@ -90,13 +91,25 @@ Proof.
   apply HH; done.
 Qed.
 
+(** * Memory *)
 Lemma sim_simple_alloc_local fs ft r n T css cst Φ :
   (∀ (l: loc) (t: tag),
     let r' := res_mapsto l ☠ (init_stack t) in
     Φ (r ⋅ r') n (PlaceR l t T) css (PlaceR l t T) cst) →
   r ⊨ˢ{n,fs,ft} (Alloc T, css) ≥ (Alloc T, cst) : Φ.
 Proof.
-  intros HH σs σt <-<-. apply sim_body_alloc_local=>/=. apply HH.
+  intros HH σs σt <-<-. apply sim_body_alloc_local=>/=. eauto.
 Qed.
+
+(** * Pure *)
+Lemma sim_simple_let_val fs ft r n x (vs1 vt1: value) es2 et2 css cst Φ :
+  r ⊨ˢ{n,fs,ft} (subst x vs1 es2, css) ≥ (subst x vt1 et2, cst) : Φ →
+  r ⊨ˢ{n,fs,ft} (let: x := vs1 in es2, css) ≥ ((let: x := vt1 in et2), cst) : Φ.
+Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
+
+Lemma sim_simple_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 css cst Φ :
+  r ⊨ˢ{n,fs,ft} (subst x (Place ls ts tys) es2, css) ≥ (subst x (Place lt tt tyt) et2, cst) : Φ →
+  r ⊨ˢ{n,fs,ft} (let: x := Place ls ts tys in es2, css) ≥ ((let: x := Place lt tt tyt in et2), cst) : Φ.
+Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
 
 End simple.
