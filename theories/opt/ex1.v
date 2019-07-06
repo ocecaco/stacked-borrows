@@ -28,17 +28,15 @@ Definition ex1_opt : function :=
 
 Lemma ex1_sim_body fs ft : ⊨ᶠ{fs,ft} ex1 ≥ ex1_opt.
 Proof.
-  intros rf es et vls vlt σs σt FREL SUBSTs SUBSTt.
-  destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.
-  destruct vlt as [|vt []]; [done| |done].  simpl in SUBSTt. simplify_eq.
+  apply (sim_fun_simple1 10)=>// rf es css et cs vs vt FREL ??. simplify_eq/=.
 
   (* InitCall *)
-  exists 10%nat.
-  apply sim_body_init_call. simpl.
-
+  apply sim_simple_init_call=>c /= {css}.
+(*
   (* Alloc *)
   sim_apply sim_body_alloc_local. simpl.
 
   (* Let *)
   sim_apply sim_body_let_place. simpl.
+*)
 Abort.

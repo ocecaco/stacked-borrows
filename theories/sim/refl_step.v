@@ -906,7 +906,8 @@ Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
   let r'  : resUR := res_callState σt.(snc) (csOwned ∅) in
-  r ⋅ r' ⊨{n,fs,ft} (es, σs') ≥ (et, σt') : Φ →
+  (σs'.(scs) = σt'.(scs) →
+    r ⋅ r' ⊨{n,fs,ft} (es, σs') ≥ (et, σt') : Φ) →
   r ⊨{n,fs,ft} (InitCall es, σs) ≥ (InitCall et, σt) : Φ.
 Proof.
   intros σs' σt1 r' SIM. pfold.
@@ -925,8 +926,12 @@ Proof.
   { apply prod_local_update_1, prod_local_update_2.
     rewrite /= right_id (comm _ (_ ⋅ _)) -insert_singleton_op //.
     by apply alloc_singleton_local_update. }
+  have ANNOYING: scs σs' = scs σt1.
+  { simpl. destruct WSAT as (_ & _ & _ & _ & _ & SREL & _).
+    destruct SREL as (?&?&->&->&?). done. }
+  
   exists n. split; last split; cycle 2.
-  { (* sim cont *)  by punfold SIM. }
+  { (* sim cont *)  specialize (SIM ANNOYING). punfold SIM. }
   { (* STEP src *)  left. by apply tc_once. }
   (* WSAT new *)
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).

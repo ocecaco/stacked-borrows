@@ -32,6 +32,7 @@ theories/sim/body.v
 theories/sim/refl_step.v
 theories/sim/left_step.v
 theories/sim/right_step.v
+theories/sim/simple.v
 
 theories/opt/ex1.v
 theories/opt/ex1_down.v
