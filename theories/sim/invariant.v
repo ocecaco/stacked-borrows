@@ -23,19 +23,21 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
 
 Definition tmap_inv (r: resUR) (σ: state) : Prop :=
   ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tagKindR k, h) →
-  (t < σ.(snp))%nat ∧
-  (∀ (l: loc) (s: scalar), h !! l ≡ Some (to_agree s) →
-  ∀ (stk: stack), σ.(sst) !! l = Some stk →
-  ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk → pm ≠ Disabled →
-  (* as long as the tag [t] is in the stack [stk] (Disabled is considered not in),
-    then its heaplet [h] agree with the state [σ] *)
-  σ.(shp) !! l = Some s ∧
-  (* If [k] is Unique, then [t] must be Unique at the top of [stk]. Otherwise
-    if [k] is Pub, then [t] can be among the top SRO items. *)
-  match k with
-  | tkUnique => ∃ stk', stk = mkItem Unique (Tagged t) opro :: stk'
-  | tkPub => t ∈ active_SRO stk
-  end).
+    (t < σ.(snp))%nat ∧
+    ∀ (l: loc) (s: scalar),
+      h !! l ≡ Some (to_agree s) →
+      r.(rlm) !! l ≡ Some (to_locStateR lsShared) ∧
+      ∀ (stk: stack), σ.(sst) !! l = Some stk →
+        ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk → pm ≠ Disabled →
+          (* as long as the tag [t] is in the stack [stk] (Disabled is
+            considered not in), then its heaplet [h] agree with the state [σ] *)
+          σ.(shp) !! l = Some s ∧
+          (* If [k] is Unique, then [t] must be Unique at the top of [stk].
+            Otherwise if [k] is Pub, then [t] can be among the top SRO items. *)
+          match k with
+          | tkUnique => ∃ stk', stk = mkItem Unique (Tagged t) opro :: stk'
+          | tkPub => t ∈ active_SRO stk
+          end.
 
 Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   ∀ (c: call_id) (cs: callStateR), r.(rcm) !! c ≡ Some cs →
@@ -45,22 +47,23 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
       c ∈ σ.(scs) ∧
       (* for any tag [t] owned by c *)
       ∀ (t: ptr_id), t ∈ T →
-      t < σ.(snp) ∧
-      (* that protects the heaplet [h] *)
-      ∀ k h, r.(rtm) !! t ≡ Some (k, h) →
-      (* if [l] is in that heaplet [h] *)
-      ∀ (l: loc), l ∈ dom (gset loc) h →
-      (* then a c-protector must be in the stack of l *)
-      ∃ stk pm, σ.(sst) !! l = Some stk ∧
-        mkItem pm (Tagged t) (Some c) ∈ stk ∧ pm ≠ Disabled
+        t < σ.(snp) ∧
+        (* that protects the heaplet [h] *)
+        ∀ k h, r.(rtm) !! t ≡ Some (k, h) →
+          (* if [l] is in that heaplet [h] *)
+          ∀ (l: loc), l ∈ dom (gset loc) h →
+            (* then a c-protector must be in the stack of l *)
+            ∃ stk pm, σ.(sst) !! l = Some stk ∧
+              mkItem pm (Tagged t) (Some c) ∈ stk ∧ pm ≠ Disabled
   (* if c is a public call id *)
   | Cinr _ => (c < σ.(snc))%nat
   | _ => False
   end.
 
 Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ (l: loc) s stk, r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s stk)) →
-  σs.(shp) !! l = Some s ∧ σt.(shp) !! l = Some s.
+  ∀ (l: loc) s stk,
+    r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s stk)) →
+    σs.(shp) !! l = Some s ∧ σt.(shp) !! l = Some s.
 
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
@@ -69,12 +72,16 @@ Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
   r.(rcm) !! c ≡ Some (Cinl (Excl T)) ∧ t ∈ T ∧
   r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h) ∧ l ∈ dom (gset loc) h.
 
+Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
+  ∀ st, σt.(shp) !! l = Some st → ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st.
+
 (** State relation *)
 Definition srel (r: resUR) (σs σt: state) : Prop :=
   σs.(sst) = σt.(sst) ∧ σs.(snp) = σt.(snp) ∧
   σs.(scs) = σt.(scs) ∧ σs.(snc) = σt.(snc) ∧
-  ∀ (l: loc) st, σt.(shp) !! l = Some st →
-  (∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st) ∨ (∃ (t: ptr_id), priv_loc r l t).
+  ∀ (l: loc), l ∈ dom (gset loc) σt.(shp) →
+    r.(rlm) !! l ≡ Some (to_locStateR lsShared) →
+    pub_loc r l σs σt ∨ (∃ (t: ptr_id), priv_loc r l t).
 
 Definition wsat (r: resUR) (σs σt: state) : Prop :=
   (* Wellformedness *)
@@ -201,13 +208,13 @@ Qed.
 
 Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> iff) tmap_inv.
 Proof.
-  intros r1 r2 [[Eqt Eqc] Eqm] ? σ ?. subst. rewrite /tmap_inv /rtm.
-  by setoid_rewrite Eqt.
+  intros r1 r2 [[Eqt Eqc] Eqm] ? σ ?. subst. rewrite /tmap_inv.
+  setoid_rewrite Eqt. by setoid_rewrite Eqm.
 Qed.
 
 Instance cmap_inv_proper : Proper ((≡) ==> (=) ==> iff) cmap_inv.
 Proof.
-  intros r1 r2 [[Eqt Eqc] Eqm]  ? σ ?. subst. rewrite /cmap_inv /rcm /rtm.
+  intros r1 r2 [[Eqt Eqc] Eqm]  ? σ ?. subst. rewrite /cmap_inv.
   setoid_rewrite Eqc.
   split; intros EQ ?? Eq; specialize (EQ _ _ Eq);
     destruct cs as [[]| |]; eauto;
@@ -215,20 +222,18 @@ Proof.
 Qed.
 
 Instance arel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) arel.
-Proof. rewrite /arel /rtm. solve_proper. Qed.
+Proof. rewrite /arel. solve_proper. Qed.
 
 Instance priv_loc_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) priv_loc.
-Proof. rewrite /priv_loc /rcm /rtm. solve_proper. Qed.
+Proof. rewrite /priv_loc. solve_proper. Qed.
+
+Instance pub_loc_proper : Proper ((≡) ==> (=) ==> (=) ==> (=) ==> iff) pub_loc.
+Proof. rewrite /pub_loc. intros ???Eq?????????. subst. by setoid_rewrite Eq. Qed.
 
 Instance srel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) srel.
 Proof.
   intros r1 r2 Eqr ??????. subst. rewrite /srel.
-  split; move => [-> [-> [-> [-> PV]]]]; repeat split; intros l s Eqs;
-    (destruct (PV _ _ Eqs) as [[ss ?]|[t ?]]; [left|right]; [exists ss|exists t]).
-  - by rewrite -Eqr.
-  - by rewrite -Eqr.
-  - by rewrite Eqr.
-  - by rewrite Eqr.
+  split; move => [-> [-> [-> [->]]]]; by setoid_rewrite Eqr.
 Qed.
 
 Instance lmap_inv_proper  : Proper ((≡) ==> (=) ==> (=) ==> iff) lmap_inv.
