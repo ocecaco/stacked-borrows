@@ -51,6 +51,13 @@ Definition rtm (r: resUR) : tmapUR := r.1.1.
 Definition rcm (r: resUR) : cmapUR := r.1.2.
 Definition rlm (r: resUR) : lmapUR := r.2.
 
+Instance rtm_proper : Proper ((≡) ==> (≡)) rtm.
+Proof. solve_proper. Qed.
+Instance rcm_proper : Proper ((≡) ==> (≡)) rcm.
+Proof. solve_proper. Qed.
+Instance rlm_proper : Proper ((≡) ==> (≡)) rlm.
+Proof. solve_proper. Qed.
+
 Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
   ✓ (r_f ⋅ r) → (r_f ⋅ r, r) ~l~> (r_f ⋅ r', r') → ✓ (r_f ⋅ r').
 Proof.
@@ -261,6 +268,16 @@ Lemma heapletR_elem_of_dom (h: heapletR) l (VALID: valid h) :
 Proof.
   rewrite elem_of_dom. intros [sa Eqs]. move : (VALID l). rewrite Eqs.
   intros [s Eq]%to_agree_uninj. exists s. by rewrite Eq.
+Qed.
+
+(** lmap *)
+Lemma lmap_lookup_op_r (lm1 lm2 : lmapUR) (VALID: ✓ (lm1 ⋅ lm2)) l ls :
+  lm2 !! l ≡ Some ls → (lm1 ⋅ lm2) !! l ≡ Some ls.
+Proof.
+  intros Eq. move : (VALID l). rewrite lookup_op Eq.
+  destruct (lm1 !! l) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
+  rewrite -Some_op.
+  destruct ls as [|[]|], ls2 as [|[]|]; simpl; try inversion 1. done.
 Qed.
 
 (** The Core *)
