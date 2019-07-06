@@ -850,7 +850,7 @@ Abort.
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
   let σs' := mkState σs.(shp) σs.(sst) (σs.(snc) :: σs.(scs)) σs.(snp) (S σs.(snc)) in
   let σt' := mkState σt.(shp) σt.(sst) (σt.(snc) :: σt.(scs)) σt.(snp) (S σt.(snc)) in
-  let r'  : resUR := ((ε, {[σt.(snc) := to_callStateR (csOwned ∅)]}), ε) in
+  let r'  : resUR := res_callState σt.(snc) (csOwned ∅) in
   r ⋅ r' ⊨{n,fs,ft} (es, σs') ≥ (et, σt') : Φ →
   r ⊨{n,fs,ft} (InitCall es, σs) ≥ (InitCall et, σt) : Φ.
 Proof.

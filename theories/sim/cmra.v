@@ -293,3 +293,8 @@ Lemma tmap_lookup_core_pub (pm: tmapUR) t h:
   pm !! t ≡ Some (to_tagKindR tkPub, h) →
   core pm !! t ≡ Some (to_tagKindR tkPub, h).
 Proof. intros Eq. rewrite lookup_core Eq /core /= core_id //. Qed.
+
+(** Resources that we own. *)
+
+Definition res_callState (c: call_id) (cs: call_state) : resUR :=
+  ((ε, {[c := to_callStateR cs]}), ε).
