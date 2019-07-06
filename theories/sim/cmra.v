@@ -298,3 +298,6 @@ Proof. intros Eq. rewrite lookup_core Eq /core /= core_id //. Qed.
 
 Definition res_callState (c: call_id) (cs: call_state) : resUR :=
   ((ε, {[c := to_callStateR cs]}), ε).
+
+Definition res_mapsto l s stk : resUR :=
+  (ε, {[ l := to_locStateR (lsLocal s stk)]}).
