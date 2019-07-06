@@ -18,7 +18,7 @@ Proof.
   destruct MAINT as (ebt & HCt & Eqt).
   destruct (FUNS _ _ Eqt) as ([xls ebs HCs] & Eqs & Eql & SIMf).
   apply nil_length_inv in Eql. subst xls.
-  specialize (SIMf ε ebs ebt [] [] init_state init_state) as [idx SIM]; [done..|].
+  specialize (SIMf ε ebs ebt [] [] init_state init_state) as [idx SIM]; [simpl; done..|].
   unfold behave_prog.
   eapply (adequacy_classical _ _ idx); [apply NSD| |by apply wf_init_state..].
   eapply sim_local_conf_sim; eauto.

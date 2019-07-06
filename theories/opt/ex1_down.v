@@ -25,9 +25,9 @@ Definition ex1_down_opt : function :=
 
 Lemma ex1_down_sim_fun fs ft : ⊨{fs,ft} ex1_down ≥ᶠ ex1_down_opt.
 Proof.
-  intros r es et els elt σs σt FAs FAt FREL SUBSTs SUBSTt.
-  destruct els as [|efs []]; [done| |done].  simpl in SUBSTs.
-  destruct elt as [|eft []]; [done| |done].  simpl in SUBSTt. simplify_eq.
+  intros r es et vls vlt σs σt FREL SUBSTs SUBSTt.
+  destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.
+  destruct vlt as [|vt []]; [done| |done].  simpl in SUBSTt. simplify_eq.
 
   (* InitCall *)
   exists 10%nat.

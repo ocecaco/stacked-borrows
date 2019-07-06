@@ -267,6 +267,23 @@ Lemma is_Some_to_value_result (e: expr):
   is_Some (to_value e) → is_Some (to_result e).
 Proof. destruct e; simpl; intros []; naive_solver. Qed.
 
+Lemma Val_to_value e v : to_value e = Some v → Val v = e.
+Proof. destruct e; try discriminate. intros [= ->]. done. Qed.
+
+Lemma list_Forall_to_value (es: list expr):
+  Forall (λ ei, is_Some (to_value ei)) es ↔ (∃ vs, es = Val <$> vs).
+Proof.
+  induction es; split.
+  - intros _. exists []. done.
+  - intros _. constructor.
+  - intros [[v EQv] [vs EQvs]%IHes]%Forall_cons. exists (v::vs).
+    simpl. f_equal; last done.
+    erewrite Val_to_value; done.
+  - intros [[|v vs] EQ]; first discriminate.
+    move:EQ=> [= -> EQ]. constructor; first by eauto.
+    apply IHes. eexists. done.
+Qed.
+
 (** Global static function table *)
 Inductive function :=
 | FunV (xl : list binder) (e : expr) `{Closed (xl +b+ []) e}.

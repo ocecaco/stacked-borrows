@@ -200,12 +200,14 @@ Proof.
       destruct (FUNS _ _ x3) as ([xls ebs HCss] & Eqfs & Eql & SIMf).
       destruct (subst_l_is_Some xls el_src ebs) as [ess Eqss].
       { by rewrite (Forall2_length _ _ _ VREL) -(subst_l_is_Some_length _ _ _ _ x4). }
-      specialize (SIMf _ _ _ _ _ σ1_src σ_tgt VSRC VTGT VREL Eqss x4) as [idx2 SIMf].
+      apply list_Forall_to_value in VSRC. destruct VSRC as [vl_src ->].
+      apply list_Forall_to_value in VTGT. destruct VTGT as [vl_tgt ->].
+      specialize (SIMf _ _ _ _ _ σ1_src σ_tgt VREL Eqss x4) as [idx2 SIMf].
       esplits.
       * left. eapply tc_rtc_l.
         { apply fill_tstep_rtc. eauto. }
         { econs. rewrite -fill_app. eapply (head_step_fill_tstep).
-          econs; econs; eauto. }
+          econs; econs; eauto. apply list_Forall_to_value. eauto. }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _ _). ss.
           destruct (CONT _ _ _ σ_src' σ_tgt' VRET).

@@ -128,15 +128,13 @@ Qed.
   - The returned result must also be values and related by [vrel]. *)
 Definition sim_local_fun
   (esat: A → state → state → Prop) (fn_src fn_tgt : function) : Prop :=
-  ∀ r es et el_src el_tgt σs σt
-    (VALS: Forall (λ ei, is_Some (to_value ei)) el_src)
-    (VALT: Forall (λ ei, is_Some (to_value ei)) el_tgt)
-    (VALEQ: Forall2 (vrel r) el_src el_tgt)
+  ∀ r es et (vl_src vl_tgt: list value) σs σt
+    (VALEQ: Forall2 (vrel r) (Val <$> vl_src) (Val <$> vl_tgt))
     (EQS: match fn_src with
-          | FunV xl e => subst_l xl el_src e = Some es
+          | FunV xl e => subst_l xl (Val <$> vl_src) e = Some es
           end)
     (EQT: match fn_tgt with
-          | FunV xl e => subst_l xl el_tgt e = Some et
+          | FunV xl e => subst_l xl (Val <$> vl_tgt) e = Some et
           end),
     ∃ idx, sim_local_body r idx
                           (InitCall es) σs (InitCall et) σt

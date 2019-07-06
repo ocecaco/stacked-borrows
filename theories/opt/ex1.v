@@ -28,9 +28,9 @@ Definition ex1_opt : function :=
 
 Lemma ex1_sim_body fs ft : ⊨{fs,ft} ex1 ≥ᶠ ex1_opt.
 Proof.
-  intros rf es et els elt σs σt FAs FAt FREL SUBSTs SUBSTt.
-  destruct els as [|efs []]; [done| |done].  simpl in SUBSTs.
-  destruct elt as [|eft []]; [done| |done].  simpl in SUBSTt. simplify_eq.
+  intros rf es et vls vlt σs σt FREL SUBSTs SUBSTt.
+  destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.
+  destruct vlt as [|vt []]; [done| |done].  simpl in SUBSTt. simplify_eq.
 
   (* InitCall *)
   exists 10%nat.
