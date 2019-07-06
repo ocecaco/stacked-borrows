@@ -36,9 +36,18 @@ Proof.
   sim_apply sim_simple_let_place=>/=.
   (* Write *)
   rewrite (vrel_eq _ _ _ FREL).
-  sim_apply sim_simple_write_local; first solve_res.
-  intros s ->. clear dependent vs. simpl.
+  sim_apply sim_simple_write_local. solve_res.
+  intros s ->. simpl.
   sim_apply sim_simple_let_val=>/=.
   apply sim_simple_place.
-
+  (* Retag. *)
+  sim_apply sim_simple_let_place=>/=.
+  destruct vs as [|s' vs]; first by inversion FREL.
+  apply Forall2_cons_inv in FREL as [FREL FTAIL].
+  destruct vs as [|]; last by inversion FTAIL. clear FTAIL.
+  sim_apply sim_simple_retag_local. solve_res. done. solve_res.
+  move=>l_i tg_i hplt /= Hl_i.
+  (* Call *)
+  sim_apply sim_simple_let_val=>/=.
+  
 Abort.
