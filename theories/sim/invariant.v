@@ -3,6 +3,13 @@ From stbor.sim Require Export cmra.
 
 Set Default Proof Using "Type".
 
+Instance dom_proper `{Countable K} {A : cmraT} :
+  Proper ((≡) ==> (≡)) (dom (M:=gmap K A) (gset K)).
+Proof.
+  intros m1 m2 Eq. apply elem_of_equiv. intros i.
+  by rewrite !elem_of_dom Eq.
+Qed.
+
 (* TODO: define viewshift *)
 
 (** Public scalar relation *)
@@ -61,7 +68,8 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   end.
 
 Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ (l: loc) s stk,
+  ∀ (l: loc), l ∈ dom (gset loc) r.(rlm) → l ∈ dom (gset loc) σt.(shp) ∧
+    ∀ s stk,
     r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s stk)) →
     σs.(shp) !! l = Some s ∧ σt.(shp) !! l = Some s.
 
@@ -121,7 +129,7 @@ Proof.
       destruct cs as [[]| |]; [..|lia|]; by inversion Eq.
     + rewrite lookup_singleton_ne //. by inversion 1.
   - repeat split. simpl. set_solver.
-  - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
+  - intros ? HL. exfalso. move : HL. by rewrite /= dom_empty elem_of_empty.
 Qed.
 
 Lemma arel_eq (r: resUR) (s1 s2: scalar) :

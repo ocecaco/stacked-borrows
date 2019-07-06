@@ -9,13 +9,6 @@ Notation "⊨{ fs , ft } f1 ≥ᶠ f2" :=
   (sim_local_fun wsat vrel fs ft end_call_sat f1 f2)
   (at level 70, format "⊨{ fs , ft }  f1  ≥ᶠ  f2").
 
-Instance dom_proper `{Countable K} {A : cmraT} :
-  Proper ((≡) ==> (≡)) (dom (M:=gmap K A) (gset K)).
-Proof.
-  intros m1 m2 Eq. apply elem_of_equiv. intros i.
-  by rewrite !elem_of_dom Eq.
-Qed.
-
 Lemma sim_body_result fs ft r n es et σs σt Φ :
   (✓ r → Φ r n es σs et σt : Prop) →
   r ⊨{S n,fs,ft} (of_result es, σs) ≥ (of_result et, σt) : Φ.
