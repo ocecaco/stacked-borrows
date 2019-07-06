@@ -93,6 +93,9 @@ Proof. intros ->. rewrite - !assoc. f_equiv. exact: comm. Qed.
 Lemma res_search_found_left (F W : resUR) :
   W ⋅ F ≡ F ⋅ W.
 Proof. exact: comm. Qed.
+Lemma res_search_found_unit (F W : resUR) :
+  F ≡ F ⋅ ε.
+Proof. rewrite right_id //. Qed.
 Lemma res_search_singleton (R W : resUR) :
   W ≡ ε ⋅ W.
 Proof. rewrite left_id //. Qed.
@@ -100,6 +103,8 @@ Ltac solve_res :=
   match goal with
   | |- _ ⋅ _ ≡ _ =>
       reflexivity
+  | |- _ ≡ _ ⋅ ε =>
+      exact: res_search_found_unit
   | |- _ ⋅ _ ≡ _ =>
       exact: res_search_found_left
   | |- _ ≡ _ =>

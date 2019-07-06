@@ -105,6 +105,18 @@ Proof.
   apply HH; done.
 Qed.
 
+(* [Val <$> _] in the goal makes this not work with [apply], but
+we'd need tactic support for anything better. *)
+Lemma sim_simple_call n' vls vlt rv fs ft r r' n fid css cst Φ :
+  Forall2 (vrel rv) vls vlt →
+  r ≡ r' ⋅ rv →
+  (∀ r' vs vt, vrel r' vs vt →
+    r ⋅ r' ⊨ˢ{n',fs,ft} (Val vs, css) ≥ (Val vt, cst) : Φ) →
+  r ⊨ˢ{n,fs,ft}
+    (Call #[ScFnPtr fid] (Val <$> vls), css) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), cst) : Φ.
+Proof.
+Admitted.
+
 (** * Memory *)
 Lemma sim_simple_alloc_local fs ft r n T css cst Φ :
   (∀ (l: loc) (tg: nat),
