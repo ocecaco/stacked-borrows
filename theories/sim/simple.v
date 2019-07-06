@@ -7,10 +7,7 @@ To go the other direction, [apply sim_simplify NEW_POST]. Then you will likely
 want to clean some stuff from your context.
 *)
 
-From stbor.sim Require Export instance refl_step.
-
-Section simple.
-Implicit Types Φ: resUR → nat → result → call_id_stack → result → call_id_stack → Prop.
+From stbor.sim Require Import body instance refl_step.
 
 Definition fun_post_simple initial_call_id_stack (r: resUR) (n: nat) vs css vt cst :=
   (∃ c, cst = c::initial_call_id_stack) ∧
@@ -23,10 +20,13 @@ Definition sim_simple fs ft r n es css et cst
     r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) :
     (λ r n vs' σs' vt' σt', Φ r n vs' σs'.(scs) vt' σt'.(scs)).
 
-Notation "r ⊨ˢ{ n , fs , ft } ( es , css ) '≥' ( et , cst ) : Φ" :=
+Notation "r ⊨ˢ{ n , fs , ft } ( es , css ) ≥ ( et , cst ) : Φ" :=
   (sim_simple fs ft r n%nat es%E css et%E cst Φ)
   (at level 70, es, et at next level,
    format "'[hv' r  '/' ⊨ˢ{ n , fs , ft }  '/  ' '[ ' ( es ,  css ) ']'  '/' ≥  '/  ' '[ ' ( et ,  cst ) ']'  '/' :  Φ ']'").
+
+Section simple.
+Implicit Types Φ: resUR → nat → result → call_id_stack → result → call_id_stack → Prop.
 
 (* FIXME: does this [apply]? *)
 Lemma sim_simplify
@@ -37,7 +37,7 @@ Lemma sim_simplify
   r ⊨ˢ{ n , fs , ft } (es, σs.(scs)) ≥ (et, σt.(scs)) : Φnew →
   r ⊨{ n , fs , ft } (es, σs) ≥ (et, σt) : Φ.
 Proof.
-  intros HΦ HH. eapply sim_local_body_post_mono; last by apply HH.
+  intros HΦ HH. eapply sim_local_body_post_mono; last exact: HH.
   apply HΦ.
 Qed.
 
@@ -65,6 +65,20 @@ Proof.
   (* Currently [end_call_sat] still looks at the state, but we should be able to fix that. *)
   admit.
 Admitted.
+
+Lemma sim_simple_bind fs ft
+  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
+  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft)))
+  es et r n css cst Φ :
+  r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst)
+    : (λ r' n' es' css' et' cst',
+        r' ⊨ˢ{n',fs,ft} (fill Ks es', css') ≥ (fill Kt et', cst') : Φ) →
+  r ⊨ˢ{n,fs,ft} (fill Ks es, css) ≥ (fill Kt et, cst) : Φ.
+Proof.
+  intros HH σs σt <-<-. apply sim_body_bind.
+  eapply sim_local_body_post_mono; last exact: HH.
+  clear. simpl. intros r n vs σs vt σt HH. exact: HH.
+Qed.
 
 Lemma sim_simple_init_call fs ft r n es css et cst Φ :
   (∀ c: call_id,

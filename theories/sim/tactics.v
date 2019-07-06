@@ -1,4 +1,5 @@
 From stbor.lang Require Export lang.
+From stbor.sim Require Export simple.
 From stbor.sim Require Import body.
 
 Ltac reshape_expr e tac :=
@@ -31,6 +32,14 @@ Tactic Notation "sim_bind" open_constr(efocs) open_constr(efoct) :=
         eapply (sim_body_bind _ _ _ _ Ks Kt es et)
       )
     )
+  | |- _ ⊨ˢ{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+    reshape_expr es ltac:(fun Ks es =>
+      unify es efocs;
+      reshape_expr et ltac:(fun Kt et =>
+        unify et efoct;
+        eapply (sim_simple_bind _ _ Ks Kt es et)
+      )
+    )
   end.
 
 Tactic Notation "sim_apply" open_constr(lem) :=
@@ -39,6 +48,13 @@ Tactic Notation "sim_apply" open_constr(lem) :=
     reshape_expr es ltac:(fun Ks es =>
       reshape_expr et ltac:(fun Kt et =>
         eapply (sim_body_bind _ _ _ _ Ks Kt es et);
+        eapply lem
+      )
+    )
+  | |- _ ⊨ˢ{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+    reshape_expr es ltac:(fun Ks es =>
+      reshape_expr et ltac:(fun Kt et =>
+        eapply (sim_simple_bind _ _ Ks Kt es et);
         eapply lem
       )
     )

@@ -31,11 +31,12 @@ Proof.
   apply (sim_fun_simple1 10)=>// rf es css et cs vs vt FREL ??. simplify_eq/=.
 
   (* InitCall *)
-  apply sim_simple_init_call=>c /= {css}.
-(*
-  (* Alloc *)
-  sim_apply sim_body_alloc_local. simpl.
+  apply sim_simple_init_call=> c /= {css}.
 
+  (* Alloc *)
+  sim_apply sim_simple_alloc_local=> l t /=.
+
+(*
   (* Let *)
   sim_apply sim_body_let_place. simpl.
 *)
