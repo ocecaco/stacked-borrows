@@ -1,5 +1,5 @@
 From iris.algebra Require Export local_updates.
-From iris.algebra Require Export cmra gmap gset csum agree excl.
+From iris.algebra Require Export cmra gmap gset csum agree excl big_op.
 
 From stbor.lang Require Export lang.
 
@@ -280,6 +280,33 @@ Proof.
   destruct ls as [|[]|], ls2 as [|[]|]; simpl; try inversion 1. done.
 Qed.
 
+Lemma lmap_lookup_op_l (lm1 lm2 : lmapUR) (VALID: ✓ (lm1 ⋅ lm2)) l ls :
+  lm1 !! l ≡ Some ls → (lm1 ⋅ lm2) !! l ≡ Some ls.
+Proof.
+  intros Eq. move : (VALID l). rewrite lookup_op Eq.
+  destruct (lm2 !! l) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite right_id].
+  rewrite -Some_op.
+  destruct ls as [|[]|], ls2 as [|[]|]; simpl; try inversion 1. done.
+Qed.
+
+Lemma lmap_exclusive s stk mb :
+  mb ⋅ Some (to_locStateR (lsLocal s stk)) ≡ Some (to_locStateR lsShared) → False.
+Proof.
+  destruct mb as [c|]; [rewrite -Some_op|rewrite left_id];
+    intros Eq%Some_equiv_inj.
+  - destruct c as [[]| |]; inversion Eq.
+  - inversion Eq.
+Qed.
+
+Lemma lmap_exclusive_r s stk mb :
+  mb ⋅ Some (to_locStateR lsShared) ≡ Some (to_locStateR (lsLocal s stk)) → False.
+Proof.
+  destruct mb as [c|]; [rewrite -Some_op|rewrite left_id];
+    intros Eq%Some_equiv_inj.
+  - destruct c as [[]| |]; inversion Eq.
+  - inversion Eq.
+Qed.
+
 (** The Core *)
 
 Lemma heaplet_core (h: heapletR) : core h = h.
@@ -302,5 +329,148 @@ Definition res_tag tg tk h : resUR :=
 Definition res_callState (c: call_id) (cs: call_state) : resUR :=
   (ε, {[c := to_callStateR cs]}, ε).
 
-Definition res_mapsto l s stk : resUR :=
-  (ε, ε, {[ l := to_locStateR (lsLocal s stk)]}).
+Fixpoint init_local (l:loc) (n:nat) (s: scalar) (stk: stack)
+  (ls: gmap loc (scalar * stack)) : gmap loc (scalar * stack) :=
+  match n with
+  | O => ls
+  | S n => <[l := (s, stk)]>(init_local (l +ₗ 1) n s stk ls)
+  end.
+Definition init_local_res l n s stk ls : lmapUR :=
+  fmap (λ sstk, to_locStateR $ lsLocal sstk.1 sstk.2) (init_local l n s stk ls).
+
+Definition res_mapsto (l:loc) (n:nat) (s: scalar) (stk: stack) : resUR :=
+  (ε, init_local_res l n s stk ∅).
+
+Lemma init_local_lookup l n s stk ls :
+  (∀ (i: nat), (i < n)%nat →
+    init_local l n s stk ls !! (l +ₗ i) = Some (s,stk)) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
+    init_local l n s stk ls !! l' = ls !! l').
+Proof.
+  revert l ls. induction n as [|n IH]; intros l ls; simpl.
+  { split; intros ??; [lia|done]. }
+  destruct (IH (l +ₗ 1) ls) as [IH1 IH2].
+  split.
+  - intros i Lt. destruct i as [|i].
+    + rewrite shift_loc_0_nat lookup_insert //.
+    + have Eql: l +ₗ S i = (l +ₗ 1) +ₗ i.
+      { rewrite shift_loc_assoc. f_equal. lia. }
+      rewrite lookup_insert_ne.
+      * rewrite Eql. destruct (IH (l +ₗ 1) ls) as [IH' _].
+        apply IH'; lia.
+      * rewrite -{1}(shift_loc_0_nat l). intros ?%shift_loc_inj. lia.
+  - intros l' Lt. rewrite lookup_insert_ne.
+    + apply IH2. intros i Lt'.
+      rewrite (_: (l +ₗ 1) +ₗ i = l +ₗ S i); last first.
+      { rewrite shift_loc_assoc. f_equal. lia. }
+      apply Lt. lia.
+    + specialize (Lt O ltac:(lia)). by rewrite shift_loc_0_nat in Lt.
+Qed.
+
+Lemma init_local_lookup_case l n s stk ls :
+  ∀ l' s', init_local l n s stk ls !! l' = Some s' →
+  ls !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
+  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+Proof.
+  destruct (init_local_lookup l n s stk ls) as [EQ1 EQ2].
+  intros l1 s1 Eq'.
+  case (decide (l1.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    right. rewrite Eql2. eexists; split; [|done].
+    rewrite Eql2 /= in Lt. lia.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
+     rewrite EQ2 // in Eq'.
+  - left.
+    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
+    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
+    rewrite EQ2 // in Eq'.
+Qed.
+
+Lemma res_mapsto_lookup l n s stk :
+  (∀ (i: nat), (i < n)%nat →
+    rlm (res_mapsto l n s stk) !! (l +ₗ i) = Some $ to_locStateR $ lsLocal s stk) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
+    rlm (res_mapsto l n s stk) !! l' = None).
+Proof.
+  destruct (init_local_lookup l n s stk ∅) as [EQ1 EQ2]. split.
+  - intros i Lti. by rewrite /= lookup_fmap (EQ1 _ Lti).
+  - intros l' NEQ. by rewrite /= lookup_fmap (EQ2 _ NEQ).
+Qed.
+
+Lemma res_mapsto_lookup_case l n s stk :
+  ∀ l' s', rlm (res_mapsto l n s stk) !! l' ≡ Some s' →
+  s' = to_locStateR $ lsLocal s stk ∧ ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+Proof.
+  intros l' s' Eq'. apply leibniz_equiv_iff in Eq'.
+  move : Eq'. rewrite /= lookup_fmap.
+  destruct (init_local l n s stk ∅ !! l') as [[s1 stk1]|] eqn:Eql'; [|done].
+  simpl. intros. simplify_eq.
+  destruct (init_local_lookup_case _ _ _ _ _ _ _ Eql') as [[]|Eq']; [done|].
+  destruct Eq' as [i [[? Lti] Eqi]].
+  have Lti': (Z.to_nat i < n)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
+  destruct (init_local_lookup l n s stk ∅) as [EQ _].
+  specialize (EQ _ Lti'). rewrite Z2Nat.id // -Eqi Eql' in EQ. simplify_eq.
+  naive_solver.
+Qed.
+
+Lemma res_mapsto_lookup_shared l n s stk lm:
+  ∀ l', rlm (lm ⋅ res_mapsto l n s stk) !! l' ≡ Some (to_locStateR lsShared) →
+  rlm lm !! l' ≡  Some (to_locStateR lsShared) ∧
+  (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i).
+Proof.
+  intros l'. rewrite lookup_op.
+  destruct (rlm (res_mapsto l n s stk) !! l') as [s'|] eqn: Eqs'; rewrite Eqs'.
+  - apply leibniz_equiv_iff, res_mapsto_lookup_case in Eqs' as [Eqs' ?].
+    subst s'. by intros ?%lmap_exclusive.
+  - rewrite right_id. intros. split; [done|].
+    intros i Lt Eq. subst l'.
+    move : Eqs'. rewrite /= lookup_fmap.
+    destruct (init_local_lookup l n s stk ∅) as [EQ1 _].
+    by rewrite (EQ1 _ Lt).
+Qed.
+
+Lemma init_local_plus1 l n s stk :
+  init_local (l +ₗ 1) n s stk ∅ !! l = None.
+Proof.
+  destruct (init_local_lookup (l +ₗ 1) n s stk ∅) as [_ EQ].
+  rewrite EQ //. intros ??. rewrite shift_loc_assoc -{1}(shift_loc_0 l).
+  intros ?%shift_loc_inj. lia.
+Qed.
+
+Lemma init_local_res_S l n s stk :
+  init_local_res l (S n) s stk ∅ ≡
+  {[l := to_locStateR $ lsLocal s stk ]} ⋅ (init_local_res (l +ₗ 1) n s stk ∅).
+Proof.
+  rewrite {1}/init_local_res /= fmap_insert /= insert_singleton_op // lookup_fmap.
+  rewrite init_local_plus1 //.
+Qed.
+
+Lemma init_local_res_local_update lsf l n s stk:
+  (∀ i, (i < n)%nat → lsf !! (l +ₗ i) = None) →
+  (lsf, ε) ~l~> (lsf ⋅ init_local_res l n s stk ∅, init_local_res l n s stk ∅).
+Proof.
+  revert l lsf.
+  induction n as [|n IH]; intros l lsf HL.
+  - rewrite /init_local_res /= fmap_empty right_id //.
+  - rewrite /= init_local_res_S.
+    rewrite (cmra_comm {[l := to_locStateR (lsLocal s stk)]}
+                       (init_local_res _ _ _ _ _)).
+    rewrite cmra_assoc.
+    etrans.
+    + apply (IH (l +ₗ 1)).
+      intros i Lt. rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
+      apply HL. lia.
+    + have NEQ1: init_local_res (l +ₗ 1) n s stk ∅ !! l = None.
+      { rewrite {1}/init_local_res lookup_fmap init_local_plus1 //. }
+      have ?: (lsf ⋅ init_local_res (l +ₗ 1) n s stk ∅) !! l = None.
+      { rewrite lookup_op NEQ1 right_id_L.
+        specialize (HL O). rewrite shift_loc_0_nat in HL. apply HL. lia. }
+      rewrite 2!(cmra_comm _  {[l := to_locStateR (lsLocal s stk)]})
+              -insert_singleton_op // -insert_singleton_op //.
+      by apply alloc_local_update.
+Qed.
