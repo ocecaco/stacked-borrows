@@ -1149,6 +1149,11 @@ Proof.
   split; [done|]. by left.
 Qed.
 
+Lemma sim_body_let_val fs ft r n x (vs1 vt1: value) es2 et2 σs σt Φ :
+  r ⊨{n,fs,ft} (subst x vs1 es2, σs) ≥ (subst x vt1 et2, σt) : Φ →
+  r ⊨{n,fs,ft} (let: x := vs1 in es2, σs) ≥ ((let: x := vt1 in et2), σt) : Φ.
+Proof. apply sim_body_let; eauto. Qed.
+
 (** Ref *)
 Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
   r ⊨{n,fs,ft} (#[ScPtr l tgs], σs) ≥ (#[ScPtr l tgt], σt) : Φ →
