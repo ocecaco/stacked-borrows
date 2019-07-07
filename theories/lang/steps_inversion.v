@@ -108,6 +108,14 @@ Proof.
     by eapply fill_not_result, (result_head_stuck fns).
 Qed.
 
+Lemma result_tstep_rtc e σ e' σ' :
+  terminal e → (e, σ) ~{fns}~>* (e', σ') → e' = e ∧ σ' = σ.
+Proof.
+  intros [v Eqe].
+  inversion 1 as [|x [] z STEP]; [done|].
+  apply result_tstep_stuck in STEP. by rewrite Eqe in STEP.
+Qed.
+
 Lemma tstep_reducible_fill_inv K e σ :
   to_result e = None →
   reducible fns (fill K e) σ → reducible fns e σ.

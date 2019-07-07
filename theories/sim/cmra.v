@@ -307,6 +307,15 @@ Proof.
   - inversion Eq.
 Qed.
 
+Lemma lmap_exclusive_2 s1 stk1 s2 stk2 c :
+  Some c ⋅ Some (to_locStateR (lsLocal s1 stk1))
+    ≡ Some (to_locStateR (lsLocal s2 stk2))
+  → False.
+Proof.
+  rewrite -Some_op. intros Eq%Some_equiv_inj.
+  destruct c as [[]| |]; inversion Eq; simplify_eq.
+Qed.
+
 (** The Core *)
 
 Lemma heaplet_core (h: heapletR) : core h = h.

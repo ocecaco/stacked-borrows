@@ -63,11 +63,9 @@ Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
     (* if tgt is terminal *)
     ∀ vt (TERM: to_result et = Some vt),
       (* then src can get terminal *)
-      ∃ vs' σs' r' idx',
-        sflib.__guard__ ((es, σs) ~{fs}~>+ (of_result vs', σs') ∨
-                         ((idx' < idx)%nat ∧ (es, σs) = (of_result vs', σs'))) ∧
+      ∃ vs' σs' r', (es, σs) ~{fs}~>* (of_result vs', σs') ∧
         (* and re-establish wsat *)
-        wsat (r_f ⋅ r') σs' σt ∧ Φ r' idx' vs' σs' vt σt ;
+        wsat (r_f ⋅ r') σs' σt ∧ Φ r' idx vs' σs' vt σt ;
   sim_local_body_step :
       _sim_local_body_step r_f sim_local_body r idx es σs et σt Φ
 }.
@@ -100,7 +98,7 @@ Proof.
   intros NT r_f WSAT. specialize (SIM NT r_f WSAT) as [NOTS TE SIM].
   constructor; [done|..].
   { intros.
-    destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & HΦ).
+    destruct (TE _ TERM) as (vs' & σs' & r' & STEP' & WSAT' & HΦ).
     naive_solver. }
   inversion SIM.
   - left. intros.
@@ -165,7 +163,7 @@ Proof.
   specialize (SIM NT r_f WSAT2) as [NOTS TE SIM].
   constructor; [done|..].
   { intros.
-    destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & HΦ).
+    destruct (TE _ TERM) as (vs' & σs' & r' & STEP' & WSAT' & HΦ).
     naive_solver. }
   inversion SIM.
   - left. intros.

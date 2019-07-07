@@ -94,11 +94,10 @@ Proof.
     destruct sim_local_body_stuck as [vt Eqvt].
     rewrite -(of_to_result _ _ Eqvt).
     destruct (sim_local_body_terminal _ Eqvt)
-      as (vs' & σs' & r' & idx' & SS' & WSAT' & (c & CALLIDS & ESAT') & VREL).
+      as (vs' & σs' & r' & SS' & WSAT' & (c & CALLIDS & ESAT') & VREL).
     have STEPK: (fill (Λ:=bor_ectxi_lang fns) K_src0 e_src0, σ_src)
               ~{fns}~>* (fill (Λ:=bor_ectxi_lang fns) K_src0 vs', σs').
-    { apply fill_tstep_rtc. destruct SS' as [|[? Eq]].
-      by apply tc_rtc. clear -Eq. simplify_eq. constructor. }
+    { by apply fill_tstep_rtc. }
     have NT3:= never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
     clear -STEPK NT3 FRAMES WSAT' VREL.
     inversion FRAMES. { left. rewrite to_of_result. by eexists. }
@@ -141,7 +140,7 @@ Proof.
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
             σt2 = mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) ∧
             r2 = r'.
-      have SIMEND : r' ⊨{idx',fns,fnt} (EndCall vs1, σs) ≥ (EndCall vt1, σt) : Φ.
+      have SIMEND : r' ⊨{idx,fns,fnt} (EndCall vs1, σs) ≥ (EndCall vt1, σt) : Φ.
       { apply sim_body_end_call; auto; [naive_solver|].
         clear -VR. intros. rewrite /Φ. simpl. split; last naive_solver.
         by eexists _, _. }
@@ -154,8 +153,7 @@ Proof.
                         (EndCallCtx :: K_src frame0 ++ K_f_src) e_src0, σ_src)
             ~{fns}~>* (fill (Λ:= bor_ectxi_lang fns)
                         (EndCallCtx :: K_src frame0 ++ K_f_src) vs1, σs).
-      { apply fill_tstep_rtc. destruct x as [|[? Eq]].
-        by apply tc_rtc. clear -Eq. simplify_eq. constructor. }
+      { by apply fill_tstep_rtc. }
       have NT3 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NEVER_STUCK.
       rewrite /= in NT3.
       have NT4 := never_stuck_fill_inv _ _ _ _ NT3.
@@ -172,8 +170,7 @@ Proof.
       intros [idx3 SIMFR]. rename σ2_tgt into σt2.
       do 2 eexists. split.
       - left. apply fill_tstep_tc. eapply tc_rtc_l; [|apply STEPS].
-        apply (fill_tstep_rtc _ [EndCallCtx]).
-        clear -x. destruct x as [|[]]. by apply tc_rtc. simplify_eq. constructor.
+        by apply (fill_tstep_rtc _ [EndCallCtx]).
 
       - right. apply CIH. econs; eauto.
         + rewrite fill_app. eauto.
