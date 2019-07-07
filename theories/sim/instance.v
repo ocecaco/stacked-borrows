@@ -39,21 +39,58 @@ Proof.
     rewrite lookup_insert_ne //.
 Qed.
 
+Lemma sim_local_body_insert fs ft fns fnt x r n es et σs σt Φ 
+  (FRESH : fs !! x = None)
+  (HOLD: sim_local_funs_lookup fs ft) :
+  ⊨ᶠ{fs,ft} fns ≥ fnt →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
+  r ⊨{n,<[x:=fns]> fs,<[x:=fnt]> ft} (es, σs) ≥ (et, σt) : Φ.
+Proof.
+  intros FUN. revert r n es et σs σt Φ. pcofix CIH.
+  intros r1 n es et σs σt Φ SIM. punfold SIM. pfold.
+  intros NT r_f WSAT.
+  have NT2: never_stuck fs es σs. { admit. }
+  specialize (SIM NT2 r_f WSAT) as [NS TE ST]. split.
+  - destruct NS as [|RED]; [by left|]. right. admit.
+  - intros vt Eqvt.
+    specialize (TE _ Eqvt) as (vs' & σs' & r' & n' & STEPS' & WSAT' & HΦ).
+    exists vs', σs', r', n'. split; last split; [|done..].
+    { destruct STEPS' as [STEPS'|]; [|by right]. left. admit. }
+  - inversion ST.
+    + constructor 1.
+      intros et' σt' STEPT.
+      have STEPT2: (et, σt) ~{ft}~> (et', σt'). { admit. }
+      specialize (STEP _ _ STEPT2) as (vs' & σs' & r' & n' & STEPS' & WSAT' & CONT).
+      exists vs', σs', r', n'. split; last split; [|done|].
+      { admit. }
+      pclearbot. right. by apply CIH.
+    + econstructor 2; eauto.
+      { instantiate (1:= Ks). admit. }
+      intros r' vs vt σs' σt' VREL' WSAT' STACK'.
+      specialize (CONT r' vs vt σs' σt' VREL' WSAT' STACK') as [n' CONT].
+      exists n'. pclearbot. right. by apply CIH.
+Admitted.
+
 Lemma sim_local_funs_insert fns fnt x fs ft :
   length fns.(fun_b) = length fnt.(fun_b) →
+  fs !! x = None →
   (* FIXME: add notation for this. Probably replacing ⊨ᶠ. *)
   (∀ fs ft, sim_local_funs_lookup fs ft → ⊨ᶠ{ fs , ft } fns ≥ fnt) →
   sim_local_funs wsat vrel fs ft end_call_sat →
   sim_local_funs wsat vrel (<[x:=fns]>fs) (<[x:=fnt]>ft) end_call_sat.
 Proof.
-  intros ? Hnew Hold. intros f fn_src.
+  intros ?? Hnew Hold. intros f fn_src.
   destruct (decide (x=f)) as [->|Hne].
   - rewrite lookup_insert=>[=?]. subst. exists fnt. rewrite lookup_insert.
     split; first done. split; first done. apply Hnew.
     apply sim_local_funs_lookup_insert; first done.
     exact: sim_local_funs_to_lookup.
   - rewrite lookup_insert_ne // =>Hlk.
-    destruct (Hold _ _ Hlk) as (f_tgt & ? & ? & ?). exists f_tgt.
+    destruct (Hold _ _ Hlk) as (f_tgt & ? & ? & Hf). exists f_tgt.
     rewrite lookup_insert_ne //. split; first done.
     split; first done.
-Admitted.
+    have ? : sim_local_funs_lookup fs ft by eapply sim_local_funs_to_lookup.
+    intros r es et vs vt σs σt VREL SUBS SUBT.
+    specialize (Hf r es et vs vt σs σt VREL SUBS SUBT) as [n Hf].
+    exists n. apply sim_local_body_insert; [done..|by apply Hnew|done].
+Qed.
