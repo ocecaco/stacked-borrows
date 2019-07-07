@@ -42,6 +42,16 @@ Proof.
   apply HΦ.
 Qed.
 
+Lemma sim_simple_post_mono Φ1 Φ2 r n fs ft es css et cst :
+  Φ1 <6= Φ2 →
+  r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ1 →
+  r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ2.
+Proof.
+  intros HΦ Hold σs σt <-<-.
+  eapply sim_local_body_post_mono; last exact: Hold.
+  auto.
+Qed.
+
 (** Simple proof for a function taking one argument. *)
 (* TODO: make the two call stacks the same. *)
 Lemma sim_fun_simple1 n (esf etf: function) :

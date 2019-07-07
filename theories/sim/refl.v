@@ -1,5 +1,5 @@
-From stbor.lang Require Import lang.
-From stbor.sim Require Import refl_step.
+From stbor.lang Require Import lang subst_map.
+From stbor.sim Require Import refl_step simple tactics.
 
 Set Default Proof Using "Type".
 
@@ -40,10 +40,91 @@ Definition prog_wf (prog: fn_env) :=
   has_main prog ∧
   map_Forall (λ _ f, expr_wf f.(fun_body)) prog.
 
+Section sem.
+Context (fs ft: fn_env) `{!sim_local_funs_lookup fs ft}.
+Context (css cst: call_id_stack).
+
+Definition sem_steps := 10%nat.
+
+Definition rrel (r: resUR) rs rt: Prop :=
+  match rs, rt with
+  | ValR vs, ValR vt => vrel r vs vt
+  | PlaceR ls ts Ts, PlaceR lt t_t Tt =>
+    (* Places are related like pointers, and the types must be equal. *)
+    vrel r [ScPtr ls ts] [ScPtr lt t_t] ∧ Ts = Tt
+  | _, _ => False
+  end.
+Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
+  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel r rs rt.
+
+(** We define a "semantic well-formedness", in some context. *)
+Definition sem_wf (r: resUR) es et :=
+  ∀ xs : gmap string (result * result),
+    map_Forall (λ _ '(rs, rt), rrel r rs rt) xs →
+    r ⊨ˢ{sem_steps,fs,ft}
+      (subst_map (fst <$> xs) es, css)
+    ≥
+      (subst_map (snd <$> xs) et, cst)
+    : sem_post.
+
+Lemma value_wf_soundness r v :
+  value_wf v → vrel r v v.
+Proof.
+  intros Hwf. induction v.
+  - constructor.
+  - apply Forall_cons_1 in Hwf as [??]. constructor.
+    + destruct a; done.
+    + apply IHv. done.
+Qed.
+
+Lemma expr_wf_soundness r e :
+  expr_wf e → sem_wf r e e.
+Proof.
+  intros Hwf. induction e; simpl in Hwf.
+  - (* Value *)
+    move=>_ _ /=.
+    apply sim_simple_val.
+    split; first admit.
+    split; first done. split; first done.
+    apply value_wf_soundness. done.
+  - (* Variable *)
+    move=>{Hwf} xs Hxswf /=.
+    rewrite !lookup_fmap. specialize (Hxswf x).
+    destruct (xs !! x).
+    + simpl. intros σs σt ??.
+      eapply sim_body_result=>_.
+      split; first admit.
+      split; first done. split; first done.
+      specialize (Hxswf p). destruct p. auto.
+    + simpl.
+      (* FIXME: need lemma for when both sides are stuck on an unbound var. *)
+      admit.
+  - (* Call *)
+    move=>xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by apply Hwf|done].
+    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
+    admit.
+Admitted.
+
+End sem.
+
 Theorem sim_mod_fun_refl f :
   expr_wf f.(fun_body) →
   ⊨ᶠ f ≥ f.
 Proof.
+  intros Hwf fs ft Hlk r es et.
+  intros vs vt σs σt Hrel Hsubst1 Hsubst2. exists sem_steps.
+  apply sim_body_init_call=>/=.
+  set css := snc σs :: scs σs. set cst := snc σt :: scs σt. move=>Hstacks.
+  (* FIXME: viewshift to public call ID, use framing or something to get it to fun_post. *)
+  eapply sim_local_body_post_mono with
+    (Φ:=(λ r n vs' σs' vt' σt', sem_post css cst r n vs' σs'.(scs) vt' σt'.(scs))).
+  { intros r' n' rs css' rt cst' (-> & ? & ? & Hrrel).
+    split.
+    - eexists. split. subst cst css. rewrite <-Hstacks. congruence.
+      admit. (* end_call_sat *)
+    - admit. (* need to show they are values?!? *)
+  } 
 Admitted.
 
 Lemma sim_mod_funs_refl prog :
