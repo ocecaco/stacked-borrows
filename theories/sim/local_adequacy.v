@@ -203,19 +203,26 @@ Proof.
       { eapply list_Forall_to_value. eauto. }
       { exact x2. }
       eauto. i. des. subst.
-      destruct (FUNS _ _ x3) as ([xls ebs HCss] & Eqfs & Eql & SIMf).
-      destruct (subst_l_is_Some xls (Val <$> vl_src) ebs) as [ess Eqss].
-      { rewrite fmap_length (Forall2_length _ _ _ VREL).
-        rewrite Eql (subst_l_is_Some_length _ _ _ _ x4) fmap_length //. }
+      have NT: never_stuck fns (Call #[ScFnPtr fid] (Val <$> vl_src)) σ1_src.
+      { apply (never_stuck_fill_inv _ Ks).
+        eapply never_stuck_tstep_rtc; eauto.
+        by apply (never_stuck_fill_inv _ K_src0). }
+      edestruct NT as [[]|[e2 [σ2 RED]]]; [constructor 1|done|].
+      apply tstep_call_inv in RED; last first.
+      { apply list_Forall_to_value. eauto. }
+      destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ?). subst e2 σ2.
+      destruct (FUNS _ _ Eqfs) as ([xlt2 ebt2 HCt2] & Eqft2 & Eql2 & SIMf).
+      rewrite Eqft2 in x3. simplify_eq.
       specialize (SIMf _ _ _ _ _ σ1_src σ_tgt VREL Eqss x4) as [idx2 SIMf].
       esplits.
       * left. eapply tc_rtc_l.
         { apply fill_tstep_rtc. eauto. }
         { econs. rewrite -fill_app. eapply (head_step_fill_tstep).
-          econs; econs; eauto. apply list_Forall_to_value. eauto. }
+          econs. eapply (CallBS _ _ _ _ xls ebs); eauto.
+          apply list_Forall_to_value. eauto. }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _ _). ss.
-          destruct (CONT r' v_src v_tgt σ_src' σ_tgt' VRET).
+          destruct (CONT r' v_src v_tgt σ_src' σ_tgt' VRET WSAT').
           { rewrite CIDS. eauto. }
           pclearbot. esplits; eauto.
         }

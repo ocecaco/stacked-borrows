@@ -49,7 +49,7 @@ Proof.
   move=>l_i tg_i hplt /= Hl_i.
   (* Call *)
   sim_apply sim_simple_let_val=>/=.
-  sim_apply (sim_simple_call 10 [] [] ε). constructor. solve_res.
+  sim_apply (sim_simple_call 10 [] [] ε). admit. constructor. solve_res.
   intros rf frs frt FREL.
   apply sim_simple_val.
 

@@ -108,6 +108,7 @@ Qed.
 (* [Val <$> _] in the goal makes this not work with [apply], but
 we'd need tactic support for anything better. *)
 Lemma sim_simple_call n' vls vlt rv fs ft r r' n fid css cst Φ :
+  sim_local_funs wsat vrel fs ft end_call_sat →
   Forall2 (vrel rv) vls vlt →
   r ≡ r' ⋅ rv →
   (∀ rret vs vt, vrel rret vs vt →
@@ -115,12 +116,13 @@ Lemma sim_simple_call n' vls vlt rv fs ft r r' n fid css cst Φ :
   r ⊨ˢ{n,fs,ft}
     (Call #[ScFnPtr fid] (Val <$> vls), css) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), cst) : Φ.
 Proof.
-  intros Hrel Hres HH σs σt <-<-.
+  intros Hfns Hrel Hres HH σs σt <-<-.
   eapply sim_body_res_proper; last apply: sim_body_step_over_call.
   - symmetry. exact: Hres.
   - done.
+  - done.
   - intros. exists n'. eapply sim_body_res_proper; last apply: HH; try done.
-Admitted.
+Qed.
 
 (** * Memory *)
 Lemma sim_simple_alloc_local fs ft r n T css cst Φ :

@@ -49,6 +49,7 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
              (* For any new resource r' that supports the returned values are
                 related w.r.t. (r ⋅ r' ⋅ r_f) *)
              (VRET: vrel r' v_src v_tgt)
+             (WSAT: wsat (r_f ⋅ (rc ⋅ r')) σs' σt')
              (STACK: σt.(scs) = σt'.(scs)),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
                                (fill Ks (Val v_src)) σs'
@@ -106,8 +107,8 @@ Proof.
     specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
     exists es', σs', r', idx'. do 2 (split; [done|]).
     pclearbot. right. eapply CIH; eauto.
-  - econstructor 2; eauto. intros.
-    destruct (CONT _ _ _ σs' σt' VRET STACK) as [idx' SIM'].
+  - econstructor 2; eauto. intros r' vs vt σs' σt' VRET WSAT1 STACK.
+    destruct (CONT _ _ _ σs' σt' VRET WSAT1 STACK) as [idx' SIM'].
     exists idx'. pclearbot. right. eapply CIH; eauto.
 Qed.
 
@@ -131,8 +132,8 @@ Definition sim_local_fun
                           (fun_post esat σt.(scs)).
 
 Definition sim_local_funs (esat: A → state → state → Prop) : Prop :=
-  ∀ name fn_tgt, fnt !! name = Some fn_tgt → ∃ fn_src,
-    fns !! name = Some fn_src ∧
+  ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
+    fnt !! name = Some fn_tgt ∧
     length fn_src.(fun_b) = length fn_tgt.(fun_b) ∧
     sim_local_fun esat fn_src fn_tgt.
 

@@ -1199,7 +1199,7 @@ Qed.
 Lemma sim_body_step_over_call fs ft
   rc rv n fid vls vlt σs σt Φ
   (VREL: Forall2 (vrel rv) vls vlt)
-  :
+  (FUNS: sim_local_funs wsat vrel fs ft end_call_sat) :
   (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt)
     (STACKS: σs.(scs) = σs'.(scs))
     (STACKT: σt.(scs) = σt'.(scs)), ∃ n',
@@ -1207,16 +1207,28 @@ Lemma sim_body_step_over_call fs ft
   rc ⋅ rv ⊨{n,fs,ft}
     (Call #[ScFnPtr fid] (Val <$> vls), σs) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), σt) : Φ.
 Proof.
-  (* intros CONT. pfold. intros NT r_f WSAT. split; [|done|].
-  { right. exists (EndCall (InitCall et')), σt.
+  intros CONT. pfold. intros NT r_f WSAT.
+  edestruct NT as [[]|[e2 [σ2 RED]]]; [constructor 1|done|].
+  apply tstep_call_inv in RED; last first.
+  { apply list_Forall_to_value. eauto. }
+  destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ?). subst e2 σ2.
+  destruct (FUNS _ _ Eqfs) as ([xlt ebt HCt] & Eqft & Eql & SIMf).
+  simpl in Eql.
+  destruct (subst_l_is_Some xlt (Val <$> vlt) ebt) as [est Eqst].
+  { rewrite fmap_length -(Forall2_length _ _ _ VREL) -Eql
+            (subst_l_is_Some_length _ _ _ _ Eqss) fmap_length //. }
+  split; [|done|].
+  { right. exists (EndCall (InitCall est)), σt.
      eapply (head_step_fill_tstep _ []). econstructor. econstructor; try done.
      apply list_Forall_to_value. eauto. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             [] [] fid vlt vls); eauto; [done|].
-  intros r' ? ? σs' σt' VR STACK. simplify_eq.
-  destruct (CONT _ _ _ σs' σt' VR STACK) as [n' ?].
-  exists n'. by left. *)
-Admitted.
+  intros r' ? ? σs' σt' VR WSAT' STACK.
+  destruct (CONT _ _ _ σs' σt' VR) as [n' ?]; [|done|exists n'; by left].
+  destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (?&?&?Eqcss&?).
+  destruct WSAT' as (?&?&?&?&?&SREL'&?). destruct SREL' as (?&?&?Eqcss'&?).
+  by rewrite Eqcss' Eqcss.
+Qed.
 
 (** Let *)
 Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
