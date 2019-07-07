@@ -148,6 +148,33 @@ Proof.
   exists ft. auto.
 Qed.
 
+(* Viewshift *)
+Definition viewshift (r1 r2: A) σs σt : Prop :=
+  ∀ r_f, wsat (r_f ⋅ r1) σs σt → wsat (r_f ⋅ r2) σs σt.
+
+Lemma viewshift_sim_local_body r1 r2 n es σs et σt Φ :
+  viewshift r1 r2 σs σt →
+  sim_local_body r2 n es σs et σt Φ → sim_local_body r1 n es σs et σt Φ.
+Proof.
+  revert r1 r2 n es σs et σt Φ. pcofix CIH.
+  intros r1 r2 n es σs et σt Φ VS SIM.
+  pfold. punfold SIM; [|apply sim_local_body_mono].
+  intros NT r_f WSAT1. have WSAT2 := VS _ WSAT1.
+  specialize (SIM NT r_f WSAT2) as [NOTS TE SIM].
+  constructor; [done|..].
+  { intros.
+    destruct (TE _ TERM) as (vs' & σs' & r' & idx' & STEP' & WSAT' & HΦ).
+    naive_solver. }
+  inversion SIM.
+  - left. intros.
+    specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
+    exists es', σs', r', idx'. do 2 (split; [done|]).
+    pclearbot. right. eapply CIH; eauto. done.
+  - econstructor 2; eauto. intros r' vs vt σs' σt' VRET WSAT' STACK.
+    destruct (CONT _ _ _ σs' σt' VRET WSAT' STACK) as [idx' SIM'].
+    exists idx'. pclearbot. right. eapply CIH; eauto. done.
+Qed.
+
 End local.
 
 Hint Resolve sim_local_body_mono : paco.
