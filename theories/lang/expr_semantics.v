@@ -48,40 +48,28 @@ Definition subst' (mx : binder) (es : expr) : expr → expr :=
 Fixpoint subst_l (xl : list binder) (esl : list expr) (e : expr) : option expr :=
   match xl, esl with
   | [], [] => Some e
-  | x::xl, es::esl => subst' x es <$> subst_l xl esl e
+  | x::xl, es::esl => subst_l xl esl (subst' x es e)
   | _, _ => None
   end.
 Arguments subst_l _%binder _ _%E.
 
-Definition subst_v (xl : list binder) (vsl : vec result (length xl))
-                   (e : expr) : expr :=
-  Vector.fold_right2 (λ b, subst' b ∘ of_result) e _ (list_to_vec xl) vsl.
-Arguments subst_v _%binder _ _%E.
-
-Lemma subst_v_eq (xl : list binder) (vsl : vec result (length xl)) e :
-  Some $ subst_v xl vsl e = subst_l xl (of_result <$> vec_to_list vsl) e.
-Proof.
-  revert vsl. induction xl=>/= vsl; inv_vec vsl=>//=v vsl. by rewrite -IHxl.
-Qed.
-
 Lemma subst_l_is_Some xl el e :
   length xl = length el → is_Some (subst_l xl el e).
 Proof.
-  revert el. induction xl as [|x xl IH] => el.
+  revert el e. induction xl as [|x xl IH] => el e.
   { destruct el; [by eexists|done]. }
   destruct el as [|e1 el]; [done|].
   rewrite /= /subst'. intros ?.
-  destruct (IH el) as [? Eq2]; [lia|]. rewrite Eq2 /=. by eexists.
+  eapply IH. congruence.
 Qed.
 
 Lemma subst_l_is_Some_length xl el e e' :
   subst_l xl el e = Some e' → length xl = length el.
 Proof.
-  revert e' el. induction xl as [|x xl IH] => e' el; [by destruct el|].
+  revert e e' el. induction xl as [|x xl IH] => e e' el; [by destruct el|].
   destruct el as [|e1 el]; [done|].
   rewrite /= /subst'. intros Eq. f_equal.
-  destruct (subst_l xl el e) as [e2|] eqn:Eqs; [|done]. simplify_option_eq.
-  by apply (IH _ _ Eqs).
+  eapply IH. done.
 Qed.
 
 Lemma subst_l_nil_is_Some el e e' :

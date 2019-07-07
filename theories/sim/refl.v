@@ -59,12 +59,12 @@ Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
 
 (** We define a "semantic well-formedness", in some context. *)
 Definition sem_wf (r: resUR) es et :=
-  ∀ xs : gmap string (result * result),
-    map_Forall (λ _ '(rs, rt), rrel r rs rt) xs →
+  ∀ xs : list (string * (result * result)),
+    Forall (λ '(_, (rs, rt)), rrel r rs rt) xs →
     r ⊨ˢ{sem_steps,fs,ft}
-      (subst_map (fst <$> xs) es, css)
+      (subst_map (prod_map id fst <$> xs) es, css)
     ≥
-      (subst_map (snd <$> xs) et, cst)
+      (subst_map (prod_map id snd <$> xs) et, cst)
     : sem_post.
 
 Lemma value_wf_soundness r v :
@@ -75,6 +75,13 @@ Proof.
   - apply Forall_cons_1 in Hwf as [??]. constructor.
     + destruct a; done.
     + apply IHv. done.
+Qed.
+
+Lemma list_find_var {A B : Type} x (f : A → B) (xs : list (string * A)):
+  list_find (is_var x) (prod_map id f <$> xs) =
+  prod_map id (prod_map id f) <$> list_find (is_var x) xs.
+Proof.
+  rewrite list_find_fmap. f_equal. apply list_find_proper. auto.
 Qed.
 
 Lemma expr_wf_soundness r e :
@@ -89,13 +96,13 @@ Proof.
     apply value_wf_soundness. done.
   - (* Variable *)
     move=>{Hwf} xs Hxswf /=.
-    rewrite !lookup_fmap. specialize (Hxswf x).
-    destruct (xs !! x).
-    + simpl. intros σs σt ??.
-      eapply sim_body_result=>_.
+    rewrite !list_find_var. destruct (list_find (is_var x) xs) eqn:Hfind; simpl.
+    + destruct p as [i [x' [rs rt]]]. simpl.
+      destruct (list_find_Some _ _ _ _ Hfind).
+      intros σs σt ??. eapply sim_body_result=>_.
       split; first admit.
       split; first done. split; first done.
-      specialize (Hxswf p). destruct p. auto.
+      eapply (Forall_lookup_1 _ _ _ _ Hxswf H).
     + simpl.
       (* FIXME: need lemma for when both sides are stuck on an unbound var. *)
       admit.
@@ -124,7 +131,29 @@ Proof.
     - eexists. split. subst cst css. rewrite <-Hstacks. congruence.
       admit. (* end_call_sat *)
     - admit. (* need to show they are values?!? *)
-  } 
+  }
+  rewrite (subst_l_map _ _ _ _ Hsubst1).
+  rewrite (subst_l_map _ _ _ _ Hsubst2).
+  set subst := fn_lists_to_subst (fun_args f) (zip (ValR <$> vs) (ValR <$> vt)).
+  replace (fn_lists_to_subst (fun_args f) (ValR <$> vs)) with (prod_map id fst <$> subst); last first.
+  { rewrite /subst /fn_lists_to_subst. rewrite list_fmap_omap.
+    apply omap_ext'. revert Hrel. clear. revert vs vt.
+    induction (fun_args f); intros vs vt Hrel; simpl; first constructor.
+    inversion Hrel; simplify_eq/=; first constructor.
+    constructor. by destruct a. exact: IHl. }
+  replace (fn_lists_to_subst (fun_args f) (ValR <$> vt)) with (prod_map id snd <$> subst); last first.
+  { rewrite /subst /fn_lists_to_subst. rewrite list_fmap_omap.
+    apply omap_ext'. revert Hrel. clear. revert vs vt.
+    induction (fun_args f); intros vs vt Hrel; simpl; first constructor.
+    inversion Hrel; simplify_eq/=; first constructor.
+    constructor. by destruct a. exact: IHl. }
+  eapply sim_simplify, expr_wf_soundness; [done..|].
+  subst subst. revert Hrel. clear. revert vs vt.
+  induction (fun_args f); intros vs vt Hrel; simpl; first constructor.
+  inversion Hrel; simplify_eq/=; first constructor.
+  destruct a; first exact: IHl. constructor.
+  { admit. (* resource stuff. *) }
+  exact: IHl.
 Admitted.
 
 Lemma sim_mod_funs_refl prog :

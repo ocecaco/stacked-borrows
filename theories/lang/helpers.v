@@ -200,3 +200,38 @@ Proof.
     exists j. rewrite Eql. split; [|done]. rewrite lookup_app_l //.
     rewrite reverse_length. lia.
 Qed.
+
+Lemma list_find_fmap {A B : Type} (P : A → Prop) `{!∀ x, Decision (P x)}
+      (f : B → A) (l : list B) :
+  list_find P (f <$> l) = prod_map id f <$> list_find (P ∘ f) l.
+Proof.
+  induction l as [|x y IH]; [done|]. simpl.
+  case_decide; [done|].
+  change (list_fmap B A f y) with (f <$> y). (* FIXME it simplified too much *)
+  rewrite IH. by destruct (list_find (P ∘ f) y).
+Qed.
+
+Lemma list_find_proper {A : Type}  (P Q : A → Prop)
+      `{∀ x, Decision (P x)} `{∀ x, Decision (Q x)} l :
+  (∀ x, P x ↔ Q x) →
+  list_find P l = list_find Q l.
+Proof.
+  intros HPQ. induction l as [|x y IH]; [done|]. simpl.
+  erewrite decide_iff by done. by rewrite IH.
+Qed.
+
+Lemma list_fmap_omap {A B C : Type} (f : A → option B) (g : B → C) (l : list A) :
+  g <$> omap f l = omap (λ x, g <$> (f x)) l.
+Proof.
+  induction l as [|x y IH]; [done|]. simpl.
+  destruct (f x); [|done]. simpl. by f_equal.
+Qed.
+
+Lemma omap_ext' {A B C : Type} (f : A → option C) (g : B → option C) l1 l2 :
+  Forall2 (λ a b, f a = g b) l1 l2 →
+  omap f l1 = omap g l2.
+Proof.
+  induction 1 as [|x y l l' Hfg ? IH]; first done.
+  simpl. rewrite Hfg. destruct (g y); last done.
+  by f_equal.
+Qed.
