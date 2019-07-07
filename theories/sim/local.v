@@ -9,8 +9,17 @@ Set Default Proof Using "Type".
 Section local.
 Context {A: ucmraT}.
 Variable (wsat: A → state → state → Prop).
-Variable (rrel: A → result → result → Prop).
+Variable (vrel: A → value → value → Prop).
 Variable (fs ft: fn_env).
+
+Definition rrel (r: A) rs rt: Prop :=
+  match rs, rt with
+  | ValR vs, ValR vt => vrel r vs vt
+  | PlaceR ls ts Ts, PlaceR lt t_t Tt =>
+    (* Places are related like pointers, and the types must be equal. *)
+    vrel r [ScPtr ls ts] [ScPtr lt t_t] ∧ Ts = Tt
+  | _, _ => False
+  end.
 
 Notation PRED := (A → nat → result → state → result → state → Prop)%type.
 Notation SIM := (A → nat → expr → state → expr → state → PRED → Prop)%type.
@@ -122,10 +131,10 @@ Definition fun_post (esat: A → call_id → Prop) initial_call_id_stack
   rrel r rs rt.
 Definition sim_local_fun
   (esat: A → call_id → Prop) (fn_src fn_tgt : function) : Prop :=
-  ∀ r es et (vl_src vl_tgt: list result) σs σt
-    (VALEQ: Forall2 (rrel r) vl_src vl_tgt)
-    (EQS: subst_l fn_src.(fun_args) (of_result <$> vl_src) fn_src.(fun_body) = Some es)
-    (EQT: subst_l fn_tgt.(fun_args) (of_result <$> vl_tgt) fn_tgt.(fun_body) = Some et),
+  ∀ r es et (vl_src vl_tgt: list value) σs σt
+    (VALEQ: Forall2 (vrel r) vl_src vl_tgt)
+    (EQS: subst_l fn_src.(fun_args) (Val <$> vl_src) fn_src.(fun_body) = Some es)
+    (EQT: subst_l fn_tgt.(fun_args) (Val <$> vl_tgt) fn_tgt.(fun_body) = Some et),
     ∃ idx, sim_local_body r idx
                           (InitCall es) σs (InitCall et) σt
                           (fun_post esat σt.(scs)).

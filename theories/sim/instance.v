@@ -2,7 +2,7 @@ From stbor.lang Require Import steps_inversion.
 From stbor.sim Require Export local invariant.
 
 Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
-  (sim_local_body wsat rrel fs ft r n%nat es%E σs et%E σt Φ)
+  (sim_local_body wsat vrel fs ft r n%nat es%E σs et%E σt Φ)
   (at level 70, format "'[hv' r  '/' ⊨{ n , fs , ft }  '/  ' '[ ' ( es ,  '/' σs ) ']'  '/' ≥  '/  ' '[ ' ( et ,  '/' σt ) ']'  '/' :  Φ ']'").
 
 
@@ -14,7 +14,7 @@ fn table, allow giving a lower bound. But this is good enough for now.
 This could be done in general, but we just do it for the instance. *)
 Definition sim_mod_fun f1 f2 :=
   ∀ fs ft, sim_local_funs_lookup fs ft →
-           sim_local_fun wsat rrel fs ft end_call_sat f1 f2.
+           sim_local_fun wsat vrel fs ft end_call_sat f1 f2.
 
 Definition sim_mod_funs (fns fnt: fn_env) :=
   ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
@@ -67,7 +67,7 @@ Qed.
 assumption. *)
 Lemma sim_mod_funs_local fs ft :
   sim_mod_funs fs ft →
-  sim_local_funs wsat rrel fs ft end_call_sat.
+  sim_local_funs wsat vrel fs ft end_call_sat.
 Proof.
   intros Hmod. intros f fn_src Hlk.
   destruct (Hmod _ _ Hlk) as (fn_tgt & ? & ? & ?). exists fn_tgt.
@@ -84,3 +84,47 @@ Proof.
   intros Hne (ebs & HCs & EQ). exists ebs, HCs.
   rewrite lookup_insert_ne //.
 Qed.
+
+Lemma rrel_eq  r (e1 e2: result) :
+  rrel vrel r e1 e2 → e1 = e2.
+Proof.
+  destruct e1, e2; simpl; [|done..|].
+  - intros ?. f_equal. by eapply vrel_eq.
+  - intros [VREL ?]. subst. apply vrel_eq in VREL. by simplify_eq.
+Qed.
+
+Lemma rrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ v1 v2, rrel vrel r1 v1 v2 → rrel vrel r2 v1 v2.
+Proof.
+  intros Le v1 v2. destruct v1, v2; simpl; [|done..|].
+  - by apply vrel_mono.
+  - intros [VREL ?]. split; [|done]. move : VREL. by apply vrel_mono.
+Qed.
+
+Lemma list_Forall_result_value (es: list result) (vs: list value) :
+  of_result <$> es = Val <$> vs → es = ValR <$> vs.
+Proof.
+  revert vs. induction es as [|e es IH]; intros vs.
+  { intros Eq. symmetry in Eq. apply fmap_nil_inv in Eq. by subst vs. }
+  destruct vs as [|v vs]; [by intros ?%fmap_nil_inv|].
+  rewrite 3!fmap_cons. intros Eq.
+  inversion Eq as [Eq1].
+  rewrite (IH vs) //. f_equal.
+  have Eq2 := to_of_result e. rewrite Eq1 /= in Eq2. by simplify_eq.
+Qed.
+
+Lemma list_Forall_rrel_vrel r (es et: list result) :
+  Forall2 (rrel vrel r) es et →
+  Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> es) →
+  Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> et) →
+  ∃ vs vt,  es = ValR <$> vs ∧ et = ValR <$> vt ∧
+  Forall2 (vrel r) vs vt.
+Proof.
+  intros RREL [vs Eqs]%list_Forall_to_value [vt Eqt]%list_Forall_to_value.
+  exists vs, vt.
+  apply list_Forall_result_value in Eqs.
+  apply list_Forall_result_value in Eqt. subst es et.
+  do 2 (split; [done|]).
+  by rewrite -> Forall2_fmap in RREL.
+Qed.
+

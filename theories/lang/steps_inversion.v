@@ -186,6 +186,24 @@ Proof. apply never_stuck_tstep_tc'. Qed.
 
 (** PURE STEP ----------------------------------------------------------------*)
 
+(** Var *)
+Lemma fill_var_decompose K e var:
+  fill K e = Var var →
+  K = [] ∧ e = Var var.
+Proof.
+  revert e.
+  induction K as [|Ki K IH]; [done|]. simpl; intros ? [? ?]%IH.
+  by destruct Ki.
+Qed.
+
+Lemma tstep_var_inv var e' σ σ' :
+  (Var var, σ) ~{fns}~> (e', σ') → False.
+Proof.
+  intros STEP. inv_tstep. symmetry in Eq.
+  destruct (fill_var_decompose _ _ _ Eq); subst.
+  simpl in HS. inv_head_step.
+Qed.
+
 (** BinOp *)
 Lemma fill_bin_op_decompose K e op e1 e2:
   fill K e = BinOp op e1 e2 →

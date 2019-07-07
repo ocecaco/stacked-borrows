@@ -47,12 +47,12 @@ Context (css cst: call_id_stack).
 Definition sem_steps := 10%nat.
 
 Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
-  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel r rs rt.
+  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel vrel r rs rt.
 
 (** We define a "semantic well-formedness", in some context. *)
 Definition sem_wf (r: resUR) es et :=
   ∀ xs : list (string * (result * result)),
-    Forall (λ '(_, (rs, rt)), rrel r rs rt) xs →
+    Forall (λ '(_, (rs, rt)), rrel vrel r rs rt) xs →
     r ⊨ˢ{sem_steps,fs,ft}
       (subst_map (prod_map id fst <$> xs) es, css)
     ≥

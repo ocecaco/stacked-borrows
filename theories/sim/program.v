@@ -10,7 +10,7 @@ Theorem sim_prog_sim_classical
       prog_tgt
       `{NSD: stuck_decidable_1 prog_src}
       (MAINT: has_main prog_src)
-      (FUNS: sim_local_funs wsat rrel prog_src prog_tgt end_call_sat)
+      (FUNS: sim_local_funs wsat vrel prog_src prog_tgt end_call_sat)
   : behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
   destruct MAINT as (ebs & HCs & Eqs).
@@ -32,7 +32,7 @@ Proof.
     intros. simpl. exists 1%nat.
     apply sim_body_result.
     intros VALID.
-    have ?: rrel (init_res ⋅ r') vs vt.
+    have ?: rrel vrel (init_res ⋅ r') vs vt.
     { eapply rrel_mono; [done|apply cmra_included_r|exact VRET]. }
     split; [|done].
     exists O. split; [by rewrite -STACKT|].

@@ -1138,7 +1138,7 @@ Qed.
 
 (** EndCall *)
 Lemma end_call_tstep_src_tgt fs ft r_f r σs σt (rs rt: result) es' σs' :
-  rrel r rs rt →
+  rrel vrel r rs rt →
   wsat (r_f ⋅ r) σs σt →
   (EndCall rs, σs) ~{fs}~> (es', σs') →
   ∃ vs vt : value, rs = ValR vs ∧ rt = ValR vt ∧ reducible ft (EndCall rt) σt.
@@ -1158,7 +1158,7 @@ Qed.
 
 Lemma sim_body_end_call fs ft r n rs rt σs σt Φ :
   (* return values are related *)
-  rrel r rs rt →
+  rrel vrel r rs rt →
   (* The top of the call stack has no privately protected locations left *)
   (∃ c cids, σt.(scs) = c :: cids ∧ end_call_sat r c) →
   (∀ c1 c2 cids1 cids2 vs vt,
@@ -1281,7 +1281,7 @@ Lemma sim_body_step_over_call fs ft
   rc rv n fid vls vlt σs σt Φ
   (VREL: Forall2 (vrel rv) vls vlt)
   (FUNS: sim_local_funs_lookup fs ft) :
-  (∀ r' vs vt σs' σt' (VRET: rrel r' vs vt)
+  (∀ r' vs vt σs' σt' (VRET: rrel vrel r' vs vt)
     (STACKS: σs.(scs) = σs'.(scs))
     (STACKT: σt.(scs) = σt'.(scs)), ∃ n',
     rc ⋅ r' ⊨{n',fs,ft} (of_result vs, σs') ≥ (of_result vt, σt') : Φ) →
@@ -1312,6 +1312,15 @@ Proof.
   destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (?&?&?Eqcss&?).
   destruct WSAT' as (?&?&?&?&?&SREL'&?). destruct SREL' as (?&?&?Eqcss'&?).
   by rewrite Eqcss' Eqcss.
+Qed.
+
+
+Lemma sim_body_var fs ft r n σs σt var Φ :
+  r ⊨{n,fs,ft} (Var var, σs) ≥ (Var var, σt) : Φ.
+Proof.
+  pfold. intros NT r_f WSAT.
+  destruct (NT (Var var) σs) as [[]|[? [? RED%tstep_var_inv]]];
+    [constructor|done..].
 Qed.
 
 (** Let *)
