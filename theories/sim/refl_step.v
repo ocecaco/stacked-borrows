@@ -1153,7 +1153,7 @@ Qed.
 Lemma sim_body_step_over_call fs ft
   rc rv n fid vls vlt σs σt Φ
   (VREL: Forall2 (vrel rv) vls vlt)
-  (FUNS: sim_local_funs wsat vrel fs ft end_call_sat) :
+  (FUNS: sim_local_funs_lookup fs ft) :
   (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt)
     (STACKS: σs.(scs) = σs'.(scs))
     (STACKT: σt.(scs) = σt'.(scs)), ∃ n',
@@ -1166,7 +1166,7 @@ Proof.
   apply tstep_call_inv in RED; last first.
   { apply list_Forall_to_value. eauto. }
   destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ?). subst e2 σ2.
-  destruct (FUNS _ _ Eqfs) as ([xlt ebt HCt] & Eqft & Eql & SIMf).
+  destruct (FUNS _ _ Eqfs) as ([xlt ebt HCt] & Eqft & Eql).
   simpl in Eql.
   destruct (subst_l_is_Some xlt (Val <$> vlt) ebt) as [est Eqst].
   { rewrite fmap_length -(Forall2_length _ _ _ VREL) -Eql

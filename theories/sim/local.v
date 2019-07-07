@@ -136,6 +136,11 @@ Definition sim_local_funs (esat: A → call_id → Prop) : Prop :=
     length fn_src.(fun_b) = length fn_tgt.(fun_b) ∧
     sim_local_fun esat fn_src fn_tgt.
 
+Definition sim_local_funs_lookup : Prop :=
+  ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
+    fnt !! name = Some fn_tgt ∧
+    length fn_src.(fun_b) = length fn_tgt.(fun_b).
+
 End local.
 
 Hint Resolve sim_local_body_mono : paco.

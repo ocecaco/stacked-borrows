@@ -104,7 +104,7 @@ Qed.
 (* [Val <$> _] in the goal makes this not work with [apply], but
 we'd need tactic support for anything better. *)
 Lemma sim_simple_call n' vls vlt rv fs ft r r' n fid css cst Φ :
-  sim_local_funs wsat vrel fs ft end_call_sat →
+  sim_local_funs_lookup fs ft →
   Forall2 (vrel rv) vls vlt →
   r ≡ r' ⋅ rv →
   (∀ rret vs vt, vrel rret vs vt →
