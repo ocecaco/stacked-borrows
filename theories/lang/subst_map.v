@@ -1,12 +1,51 @@
 From stbor.lang Require Import expr_semantics.
 
+(** Induction scheme for expressions *)
+Lemma expr_ind (P : expr → Prop):
+  (∀ v, P (Val v)) →
+  (∀ x, P (Var x)) →
+  (∀ e el, P e → Forall P el → P (Call e el)) →
+  (∀ e, P e → P (InitCall e)) →
+  (∀ e, P e → P (EndCall e)) →
+  (∀ e1 e2, P e1 → P e2 → P (Proj e1 e2)) →
+  (∀ e1 e2, P e1 → P e2 → P (Conc e1 e2)) →
+  (∀ o e1 e2, P e1 → P e2 → P (BinOp o e1 e2)) →
+  (∀ l tg ty, P (Place l tg ty)) →
+  (∀ e ty, P e → P (Deref e ty)) →
+  (∀ e, P e → P (Ref e)) →
+  (∀ e, P e → P (Copy e)) →
+  (∀ e1 e2, P e1 → P e2 → P (Write e1 e2)) →
+  (∀ ty, P (Alloc ty)) →
+  (∀ e, P e → P (Free e)) →
+  (∀ e k, P e → P (Retag e k)) →
+  (∀ b e1 e2, P e1 → P e2 → P (Let b e1 e2)) →
+  (∀ e el, P e → Forall P el → P (Case e el)) →
+  ∀ e, P e.
+Proof.
+  intros. revert e. fix REC 1. destruct e; try
+  (* Find head symbol, then find lemma for that symbol.
+     We have to be this smart because we can't use the unguarded [REC]! *)
+  match goal with
+  | |- P (?head _ _ _) =>
+    match goal with H : context[head] |- _ => apply H; try done end
+  | |- P (?head _ _) =>
+    match goal with H : context[head] |- _ => apply H; try done end
+  | |- P (?head _) =>
+    match goal with H : context[head] |- _ => apply H; try done end
+  end.
+  (* 2 remaining cases: The [Forall]. *)
+  induction el; eauto using Forall.
+  induction el; eauto using Forall.
+Qed.
+
+(** Substitution with a list of pairs instead of a pair of lists.
+This lets us do a total operation. *)
+
 Definition is_var {T: Type} (y: string) (x: string * T) :=
   x.1 = y.
 Global Instance is_var_dec {T: Type} y x : Decision (@is_var T y x).
 Proof. rewrite /is_var /=. apply _. Qed.
 
-(** Substitution with a list of pairs instead of a pair of lists.
-This lets us do a total operation. *)
 Fixpoint subst_map (xs : list (string * result)) (e : expr) : expr :=
   match e with
   | Var y => if list_find (is_var y) xs is Some (_, (_, v)) then of_result v else Var y
@@ -35,16 +74,16 @@ Fixpoint subst_map (xs : list (string * result)) (e : expr) : expr :=
 Lemma subst_map_empty e :
   subst_map [] e = e.
 Proof.
-  induction e; simpl; f_equal; eauto.
-  - admit.
-  - destruct x; done.
-  - admit.
-Admitted.
+  induction e using expr_ind; simpl; f_equal; eauto.
+  - induction H; first done. simpl. by f_equal.
+  - destruct b; done.
+  - induction H; first done. simpl. by f_equal.
+Qed.
 
 Lemma subst_map_cons x rx xs e :
   subst_map ((x,rx)::xs) e = subst_map xs (subst x rx e).
 Proof.
-  revert x rx xs; induction e; intros xx rx xs; try (simpl; f_equal; eauto).
+  revert x rx xs; induction e using expr_ind; intros xx rx xs; try (simpl; f_equal; eauto).
   - destruct (decide (x=xx)) as [<-|ne].
     + rewrite decide_True //. rewrite bool_decide_true //.
       destruct rx; done.
@@ -52,15 +91,15 @@ Proof.
       rewrite bool_decide_false //.
       simpl. destruct (list_find (is_var x) xs); last done.
       simpl. destruct p as [? [? ?]]. done.
-  - admit.
-  - destruct x; simpl. done.
+  - induction H; first done. simpl. f_equal; done.
+  - destruct b; simpl. done.
     destruct (decide (s=xx)) as [<-|ne].
     + rewrite decide_False //. { intros HH. apply HH. done. }
       rewrite bool_decide_false //. intros ?. done.
     + rewrite decide_True //. { intros ?. apply ne. done. }
       rewrite bool_decide_true //. intros [= HH]. done.
-  - admit.
-Admitted.
+  - induction H; first done. simpl. f_equal; done.
+Qed.
 
 Definition fn_lists_to_subst {T: Type} (xbs : list binder) (xes : list T) :=
   omap (λ '(x, e), if x is BNamed s then Some (s, e) else None) (zip xbs xes).
