@@ -30,14 +30,15 @@ Proof.
 Qed.
 
 (** A classically provable assumption: each program is either never-stuck or it can get stuck. *)
-Definition stuck_decidable prog: Prop :=
+Definition stuck_decidable_1 prog: Prop :=
   ∀ e σ, never_stuck prog e σ \/
                     exists e' σ', (e, σ) ~{prog}~>* (e', σ') /\
                              ~ terminal e' /\
                              ~ reducible prog e' σ'.
+Definition stuck_decidable: Prop := ∀ prog, stuck_decidable_1 prog.
 
 Lemma classically_stuck_decidable :
-  (∀ P, P ∨ ¬P) → ∀ prog, stuck_decidable prog.
+  (∀ P, P ∨ ¬P) → stuck_decidable.
 Proof.
   intros EM prog e σ.
   set RHS := exists _, _. destruct (EM RHS) as [POS|NEG]; first by right.
@@ -112,7 +113,7 @@ Qed.
 Lemma adequacy_classical
       prog_src
       prog_tgt idx conf_src conf_tgt
-      `{NSD: stuck_decidable prog_src}
+      `{NSD: stuck_decidable_1 prog_src}
       (SIM: sim prog_src prog_tgt idx conf_src conf_tgt)
       (WFS: Wf conf_src.2)
       (WFT: Wf conf_tgt.2)

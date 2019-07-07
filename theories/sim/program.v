@@ -1,15 +1,26 @@
 From stbor.lang Require Import steps_wf steps_inversion.
-From stbor.sim Require Import sflib behavior global local invariant.
-From stbor.sim Require Import global_adequacy local_adequacy refl_step.
+From stbor.sim Require Import sflib global local invariant.
+From stbor.sim Require Import local_adequacy refl_step.
+From stbor.sim Require Export global_adequacy behavior.
 
 Set Default Proof Using "Type".
+
+Definition has_main (prog: fn_env) : Prop :=
+  ∃ ebs HCs, prog !! "main" = Some (@FunV [] ebs HCs).
+
+Lemma has_main_insert (prog: fn_env) (x: string) (f: function) :
+  x ≠ "main" → has_main prog → has_main (<[x:=f]> prog).
+Proof.
+  intros Hne (ebs & HCs & EQ). exists ebs, HCs.
+  rewrite lookup_insert_ne //.
+Qed.
 
 Lemma sim_prog_sim_classical
       prog_src
       prog_tgt
-      `{NSD: stuck_decidable prog_src}
+      `{NSD: stuck_decidable_1 prog_src}
+      (MAINT: has_main prog_src)
       (FUNS: sim_local_funs wsat vrel prog_src prog_tgt end_call_sat)
-      (MAINT: ∃ ebs HCs, prog_src !! "main" = Some (@FunV [] ebs HCs))
   : behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
   destruct MAINT as (ebs & HCs & Eqs).

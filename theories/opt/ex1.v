@@ -1,4 +1,4 @@
-From stbor.sim Require Import local invariant refl_step tactics body simple.
+From stbor.sim Require Import local invariant refl_step tactics body simple program.
 
 Set Default Proof Using "Type".
 
@@ -57,4 +57,19 @@ Proof.
   intros rf frs frt FREL.
   apply sim_simple_val.
 
-Abort.
+Admitted.
+
+Lemma ex1_sim (prog: fn_env) :
+  stuck_decidable →
+  has_main prog →
+  let prog_src := <["ex1":=ex1]> prog in
+  let prog_tgt := <["ex1":=ex1_opt]> prog in
+  behave_prog prog_tgt <1= behave_prog prog_src.
+Proof.
+  intros Hdec Hmain. apply sim_prog_sim_classical.
+  { apply Hdec. }
+  { apply has_main_insert; done. }
+  apply sim_local_funs_insert; first done.
+  - exact: ex1_sim_body.
+  - (* FIXME: Needs reflexivity. *)
+Admitted.

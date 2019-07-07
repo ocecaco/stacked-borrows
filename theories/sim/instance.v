@@ -24,3 +24,36 @@ Proof.
       apply POST. by destruct WSAT as (?&?&?%cmra_valid_op_r &?). }
   { left. rewrite to_of_result. by eexists. }
 Qed.
+
+Lemma sim_local_funs_lookup_insert fns fnt x fs ft :
+  length fns.(fun_b) = length fnt.(fun_b) →
+  sim_local_funs_lookup fs ft →
+  sim_local_funs_lookup (<[x:=fns]>fs) (<[x:=fnt]>ft).
+Proof.
+  intros Hnew Hold f f_src.
+  destruct (decide (x=f)) as [->|Hne].
+  - rewrite lookup_insert=>[=?]. subst. exists fnt. rewrite lookup_insert.
+    auto.
+  - rewrite lookup_insert_ne // =>Hlk.
+    destruct (Hold _ _ Hlk) as (f_tgt & ? & ?). exists f_tgt.
+    rewrite lookup_insert_ne //.
+Qed.
+
+Lemma sim_local_funs_insert fns fnt x fs ft :
+  length fns.(fun_b) = length fnt.(fun_b) →
+  (* FIXME: add notation for this. Probably replacing ⊨ᶠ. *)
+  (∀ fs ft, sim_local_funs_lookup fs ft → ⊨ᶠ{ fs , ft } fns ≥ fnt) →
+  sim_local_funs wsat vrel fs ft end_call_sat →
+  sim_local_funs wsat vrel (<[x:=fns]>fs) (<[x:=fnt]>ft) end_call_sat.
+Proof.
+  intros ? Hnew Hold. intros f fn_src.
+  destruct (decide (x=f)) as [->|Hne].
+  - rewrite lookup_insert=>[=?]. subst. exists fnt. rewrite lookup_insert.
+    split; first done. split; first done. apply Hnew.
+    apply sim_local_funs_lookup_insert; first done.
+    exact: sim_local_funs_to_lookup.
+  - rewrite lookup_insert_ne // =>Hlk.
+    destruct (Hold _ _ Hlk) as (f_tgt & ? & ? & ?). exists f_tgt.
+    rewrite lookup_insert_ne //. split; first done.
+    split; first done.
+Admitted.

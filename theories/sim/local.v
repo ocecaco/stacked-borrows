@@ -141,6 +141,13 @@ Definition sim_local_funs_lookup : Prop :=
     fnt !! name = Some fn_tgt ∧
     length fn_src.(fun_b) = length fn_tgt.(fun_b).
 
+Lemma sim_local_funs_to_lookup esat :
+  sim_local_funs esat → sim_local_funs_lookup.
+Proof.
+  intros Hlf name fs Hlk. destruct (Hlf _ _ Hlk) as (ft & ? & ? & ?).
+  exists ft. auto.
+Qed.
+
 End local.
 
 Hint Resolve sim_local_body_mono : paco.
