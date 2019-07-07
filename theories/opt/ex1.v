@@ -5,7 +5,7 @@ Set Default Proof Using "Type".
 (** Moving read of mutable reference up across code not using that ref. *)
 
 (* Assuming x : &mut i32 *)
-Definition ex1 : function :=
+Definition ex1_unopt : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in (* put argument into place *)
     Retag "x" Default ;;
@@ -28,7 +28,7 @@ Definition ex1_opt : function :=
 
 Lemma ex1_sim_body fs ft :
   sim_local_funs_lookup fs ft →
-  ⊨ᶠ{fs,ft} ex1 ≥ ex1_opt.
+  ⊨ᶠ{fs,ft} ex1_unopt ≥ ex1_opt.
 Proof.
   intros Hfst.
   apply (sim_fun_simple1 10)=>// rarg es css et cs args argt AREL ??.
@@ -59,10 +59,10 @@ Proof.
 
 Admitted.
 
-Lemma ex1_sim (prog: fn_env) :
+Lemma ex1 (prog: fn_env) :
   stuck_decidable →
   has_main prog →
-  let prog_src := <["ex1":=ex1]> prog in
+  let prog_src := <["ex1":=ex1_unopt]> prog in
   let prog_tgt := <["ex1":=ex1_opt]> prog in
   behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
