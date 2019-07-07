@@ -14,7 +14,7 @@ Qed.
 (** "Well-formed" code doen't contain literal
 pointers, places or administrative operations (init_call/end_call).
 Defined by recursion to make sure we don't miss a case. *)
-Fixpoint scalar_wf (a: scalar) : Prop :=
+Definition scalar_wf (a: scalar) : Prop :=
   match a with
   | ScPoison | ScInt _ | ScFnPtr _ => True
   | ScnPtr => False
@@ -36,6 +36,9 @@ Fixpoint expr_wf (e: expr) : Prop :=
   | Place _ _ _ => False
   | Free _ => False (* TODO: We'd like to support deallocation! *)
   end.
+Definition prog_wf (prog: fn_env) :=
+  has_main prog ∧
+  map_Forall (λ _ f, expr_wf f.(fun_body)) prog.
 
 Theorem sim_mod_fun_refl f :
   expr_wf f.(fun_body) →
@@ -44,10 +47,12 @@ Proof.
 Admitted.
 
 Lemma sim_mod_funs_refl prog :
+  prog_wf prog →
   sim_mod_funs prog prog.
 Proof.
-  induction prog using map_ind.
+  intros [_ WF]. induction prog using map_ind.
   { intros ??. rewrite lookup_empty. done. }
-  apply sim_mod_funs_insert; try done.
-  apply sim_mod_fun_refl.
-Admitted.
+  apply sim_mod_funs_insert; first done.
+  - apply sim_mod_fun_refl. eapply WF. erewrite lookup_insert. done.
+  - apply IHprog. eapply map_Forall_insert_12; done.
+Qed.

@@ -61,14 +61,14 @@ Admitted.
 "ex1" function are related. *)
 Corollary ex1 (prog: fn_env) :
   stuck_decidable →
-  has_main prog →
+  prog_wf prog →
   let prog_src := <["ex1":=ex1_unopt]> prog in
   let prog_tgt := <["ex1":=ex1_opt]> prog in
   behave_prog prog_tgt <1= behave_prog prog_src.
 Proof.
-  intros Hdec Hmain. apply sim_prog_sim_classical.
+  intros Hdec Hwf. apply sim_prog_sim_classical.
   { apply Hdec. }
-  { apply has_main_insert; done. }
+  { apply has_main_insert, Hwf; done. }
   apply sim_mod_funs_local.
   apply sim_mod_funs_insert; first done.
   - exact: ex1_sim_body.

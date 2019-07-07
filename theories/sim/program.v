@@ -5,16 +5,6 @@ From stbor.sim Require Export global_adequacy behavior.
 
 Set Default Proof Using "Type".
 
-Definition has_main (prog: fn_env) : Prop :=
-  ∃ ebs HCs, prog !! "main" = Some (@FunV [] ebs HCs).
-
-Lemma has_main_insert (prog: fn_env) (x: string) (f: function) :
-  x ≠ "main" → has_main prog → has_main (<[x:=f]> prog).
-Proof.
-  intros Hne (ebs & HCs & EQ). exists ebs, HCs.
-  rewrite lookup_insert_ne //.
-Qed.
-
 Theorem sim_prog_sim_classical
       prog_src
       prog_tgt

@@ -90,36 +90,6 @@ Definition never_stuck fs e σ :=
 Definition init_expr := (Call #["main"] []).
 Definition init_state := (mkState ∅ ∅ [O] O 1).
 
-Definition scalar_wf (s: scalar) : bool :=
-  match s with
-  | ScPtr _ _ => false
-  | _ => true
-  end.
-Definition value_wf (v: value) : bool := forallb scalar_wf v.
-
-Fixpoint expr_wf (e: expr) : bool :=
-  match e with
-  | Var y => true
-  | Val v => value_wf v
-  | Call e el => expr_wf e && forallb expr_wf el
-  | InitCall e => expr_wf e
-  | EndCall e => false
-  | Place l tag T => false
-  | BinOp op e1 e2 => expr_wf e1 && expr_wf e2
-  | Proj e1 e2 => expr_wf e1 && expr_wf e2
-  | Conc e1 e2 => expr_wf e1 && expr_wf e2
-  | Copy e => expr_wf e
-  | Write e1 e2 => expr_wf e1 && expr_wf e2
-  | Alloc T => true
-  | Free e => expr_wf e
-  | Deref e T => expr_wf e
-  | Ref e => expr_wf e
-  (* | Field e path => expr_wf e *)
-  | Retag e kind => expr_wf e
-  | Let x1 e1 e2 => expr_wf e1 && expr_wf e2
-  | Case e el => expr_wf e && forallb expr_wf el
-  end.
-
 (*=================================== UNUSED =================================*)
 (* Implicit Type (ρ: cfg bor_lang). *)
 

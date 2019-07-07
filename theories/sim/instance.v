@@ -72,3 +72,14 @@ Proof.
   destruct (Hmod _ _ Hlk) as (fn_tgt & ? & ? & ?). exists fn_tgt.
   eauto using sim_mod_funs_to_lookup.
 Qed.
+
+(** Whole-programs need a "main". *)
+Definition has_main (prog: fn_env) : Prop :=
+  ∃ ebs HCs, prog !! "main" = Some (@FunV [] ebs HCs).
+
+Lemma has_main_insert (prog: fn_env) (x: string) (f: function) :
+  x ≠ "main" → has_main prog → has_main (<[x:=f]> prog).
+Proof.
+  intros Hne (ebs & HCs & EQ). exists ebs, HCs.
+  rewrite lookup_insert_ne //.
+Qed.
