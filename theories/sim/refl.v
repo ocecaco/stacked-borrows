@@ -103,6 +103,21 @@ Proof.
     eapply sim_simple_post_mono, IHe; [|by apply Hwf|done].
     intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
     admit.
+  - (* InitCall *) done.
+  - (* EndCall *) done.
+  - (* Proj *) admit.
+  - (* Conc *) admit.
+  - (* BinOp *) admit.
+  - (* Place *) admit.
+  - (* Deref *) admit.
+  - (* Ref *) admit.
+  - (* Copy *) admit.
+  - (* Write *) admit.
+  - (* Alloc *) admit.
+  - (* Free *) done.
+  - (* Retag *) admit.
+  - (* Let *) admit.
+  - (* Case *) admit.
 Admitted.
 
 End sem.
@@ -127,6 +142,7 @@ Proof.
   rewrite (subst_l_map _ _ _ _ Hsubst1).
   rewrite (subst_l_map _ _ _ _ Hsubst2).
   set subst := fn_lists_to_subst (fun_args f) (zip (ValR <$> vs) (ValR <$> vt)).
+  (* FIXME: we do 3 very similar inductions here. Not sure how to generalize though. *)
   replace (fn_lists_to_subst (fun_args f) (ValR <$> vs)) with (prod_map id fst <$> subst); last first.
   { rewrite /subst /fn_lists_to_subst. rewrite list_fmap_omap.
     apply omap_ext'. revert Hrel. clear. revert vs vt.
