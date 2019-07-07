@@ -59,7 +59,7 @@ Admitted.
 
 (** Top-level theorem: Two programs that only differ in the
 "ex1" function are related. *)
-Lemma ex1 (prog: fn_env) :
+Corollary ex1 (prog: fn_env) :
   stuck_decidable →
   has_main prog →
   let prog_src := <["ex1":=ex1_unopt]> prog in

@@ -286,9 +286,9 @@ Qed.
 
 (** Global static function table *)
 Record function := FunV {
-  fun_b: list binder;
-  fun_e: expr;
-  fun_closed: Closed (fun_b +b+ []) fun_e
+  fun_args: list binder;
+  fun_body: expr;
+  fun_closed: Closed (fun_args +b+ []) fun_body
 }.
 Arguments FunV _ _ {_}.
 Definition fn_env := gmap fn_id function.

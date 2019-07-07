@@ -18,7 +18,7 @@ Definition sim_mod_fun f1 f2 :=
 Definition sim_mod_funs (fns fnt: fn_env) :=
   ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
     fnt !! name = Some fn_tgt ∧
-    length fn_src.(fun_b) = length fn_tgt.(fun_b) ∧
+    length fn_src.(fun_args) = length fn_tgt.(fun_args) ∧
     sim_mod_fun fn_src fn_tgt.
 
 Notation "⊨ᶠ f1 ≥ f2" :=
@@ -27,7 +27,7 @@ Notation "⊨ᶠ f1 ≥ f2" :=
 
 (** The modular version permits insertion. *)
 Lemma sim_local_funs_lookup_insert fns fnt x fs ft :
-  length fns.(fun_b) = length fnt.(fun_b) →
+  length fns.(fun_args) = length fnt.(fun_args) →
   sim_local_funs_lookup fs ft →
   sim_local_funs_lookup (<[x:=fns]>fs) (<[x:=fnt]>ft).
 Proof.
@@ -41,7 +41,7 @@ Proof.
 Qed.
 
 Lemma sim_mod_funs_insert fs ft x fns fnt :
-  length fns.(fun_b) = length fnt.(fun_b) →
+  length fns.(fun_args) = length fnt.(fun_args) →
   (⊨ᶠ fns ≥ fnt) →
   sim_mod_funs fs ft →
   sim_mod_funs (<[x:=fns]>fs) (<[x:=fnt]>ft).

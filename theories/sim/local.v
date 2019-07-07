@@ -126,8 +126,8 @@ Definition sim_local_fun
   (esat: A → call_id → Prop) (fn_src fn_tgt : function) : Prop :=
   ∀ r es et (vl_src vl_tgt: list value) σs σt
     (VALEQ: Forall2 (vrel r) vl_src vl_tgt)
-    (EQS: subst_l fn_src.(fun_b) (Val <$> vl_src) fn_src.(fun_e) = Some es)
-    (EQT: subst_l fn_tgt.(fun_b) (Val <$> vl_tgt) fn_tgt.(fun_e) = Some et),
+    (EQS: subst_l fn_src.(fun_args) (Val <$> vl_src) fn_src.(fun_body) = Some es)
+    (EQT: subst_l fn_tgt.(fun_args) (Val <$> vl_tgt) fn_tgt.(fun_body) = Some et),
     ∃ idx, sim_local_body r idx
                           (InitCall es) σs (InitCall et) σt
                           (fun_post esat σt.(scs)).
@@ -135,13 +135,13 @@ Definition sim_local_fun
 Definition sim_local_funs (esat: A → call_id → Prop) : Prop :=
   ∀ name fn_src, fs !! name = Some fn_src → ∃ fn_tgt,
     ft !! name = Some fn_tgt ∧
-    length fn_src.(fun_b) = length fn_tgt.(fun_b) ∧
+    length fn_src.(fun_args) = length fn_tgt.(fun_args) ∧
     sim_local_fun esat fn_src fn_tgt.
 
 Definition sim_local_funs_lookup : Prop :=
   ∀ name fn_src, fs !! name = Some fn_src → ∃ fn_tgt,
     ft !! name = Some fn_tgt ∧
-    length fn_src.(fun_b) = length fn_tgt.(fun_b).
+    length fn_src.(fun_args) = length fn_tgt.(fun_args).
 
 Lemma sim_local_funs_to_lookup esat :
   sim_local_funs esat → sim_local_funs_lookup.

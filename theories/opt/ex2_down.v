@@ -23,13 +23,6 @@ Definition ex2_down_opt : function :=
     .
 
 
-Lemma ex2_down_sim_fun fs ft : ⊨ᶠ{fs,ft} ex2_down ≥ ex2_down_opt.
+Lemma ex2_down_sim_fun : ⊨ᶠ ex2_down ≥ ex2_down_opt.
 Proof.
-  intros r es et vls vlt σs σt FREL SUBSTs SUBSTt.
-  destruct vls as [|vs []]; [done| |done].  simpl in SUBSTs.
-  destruct vlt as [|vt []]; [done| |done].  simpl in SUBSTt. simplify_eq.
-
-  (* InitCall *)
-  exists 10%nat.
-  apply sim_body_init_call. simpl.
 Abort.

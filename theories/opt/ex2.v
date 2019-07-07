@@ -24,6 +24,6 @@ Definition ex2_opt : function :=
     "v"
   .
 
-Lemma ex2_sim_body fs ft : ⊨ᶠ{fs,ft} ex2 ≥ ex2_opt.
+Lemma ex2_sim_body : ⊨ᶠ ex2 ≥ ex2_opt.
 Proof.
 Abort.

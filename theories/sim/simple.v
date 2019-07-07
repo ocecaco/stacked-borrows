@@ -45,13 +45,13 @@ Qed.
 (** Simple proof for a function taking one argument. *)
 (* TODO: make the two call stacks the same. *)
 Lemma sim_fun_simple1 n (esf etf: function) :
-  length (esf.(fun_b)) = 1%nat →
-  length (etf.(fun_b)) = 1%nat →
+  length (esf.(fun_args)) = 1%nat →
+  length (etf.(fun_args)) = 1%nat →
   (∀ fs ft rf es css et cst vs vt,
     sim_local_funs_lookup fs ft →
     vrel rf vs vt →
-    subst_l (esf.(fun_b)) [Val vs] (esf.(fun_e)) = Some es →
-    subst_l (etf.(fun_b)) [Val vt] (etf.(fun_e)) = Some et →
+    subst_l (esf.(fun_args)) [Val vs] (esf.(fun_body)) = Some es →
+    subst_l (etf.(fun_args)) [Val vt] (etf.(fun_body)) = Some et →
     rf ⊨ˢ{n,fs,ft} (InitCall es, css) ≥ (InitCall et, cst) : fun_post_simple cst) →
   ⊨ᶠ esf ≥ etf.
 Proof.
