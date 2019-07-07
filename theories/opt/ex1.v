@@ -40,7 +40,7 @@ Proof.
   sim_apply sim_simple_let_place=>/=.
   (* Write *)
   rewrite (vrel_eq _ _ _ AREL).
-  sim_apply sim_simple_write_local; [solve_res|].
+  sim_apply sim_simple_write_local; [done|solve_res|].
   intros arg ->. simpl.
   sim_apply sim_simple_let_val=>/=.
   apply sim_simple_place.
@@ -72,6 +72,7 @@ Proof.
   { apply Hdec. }
   { apply has_main_insert; done. }
   apply sim_local_funs_insert; first done.
+  - admit.
   - exact: ex1_sim_body.
   - (* FIXME: Needs reflexivity. *)
 Admitted.

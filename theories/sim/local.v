@@ -176,5 +176,7 @@ Proof.
 Qed.
 
 End local.
-
+(*
+Definition sim_mod_fun 
+*)
 Hint Resolve sim_local_body_mono : paco.

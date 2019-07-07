@@ -130,27 +130,28 @@ Proof.
   intros HH σs σt <-<-. apply sim_body_alloc_local=>/=. exact: HH.
 Qed.
 
-Lemma sim_simple_write_local fs ft r r' n l tg Ts Tt v v' css cst Φ :
+Lemma sim_simple_write_local fs ft r r' n l tg ty v v' css cst Φ :
+  tsize ty = 1%nat →
   r ≡ r' ⋅ res_mapsto l 1 v' (init_stack (Tagged tg)) →
   (∀ s, v = [s] → Φ (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft}
-    (Place l (Tagged tg) Ts <- #v, css) ≥ (Place l (Tagged tg) Tt <- #v, cst)
+    (Place l (Tagged tg) ty <- #v, css) ≥ (Place l (Tagged tg) ty <- #v, cst)
   : Φ.
 Proof.
 Admitted.
 
-Lemma sim_simple_retag_local fs ft r r' r'' rf n l s' s tg m ty css cst Φ :
+Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg m ty css cst Φ :
   r ≡ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg)) →
-  arel rf s' s →
-  r' ≡ r'' ⋅ rf →
+  arel rs s' s →
+  r' ≡ r'' ⋅ rs →
   (∀ l_inner tg_inner hplt,
-    let s := ScPtr l_inner (Tagged tg_inner) in
+    let s_new := ScPtr l_inner (Tagged tg_inner) in
     let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
     match m with 
     | Mutable => is_Some (hplt !! l_inner)
     | Immutable => if is_freeze ty then is_Some (hplt !! l_inner) else True
     end →
-    Φ (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg)) ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
+    Φ (r'' ⋅ rs ⋅ res_mapsto l 1 s_new (init_stack (Tagged tg)) ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft}
     (Retag (Place l (Tagged tg) (Reference (RefPtr m) ty)) Default, css)
   ≥
