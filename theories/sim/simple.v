@@ -149,8 +149,7 @@ Lemma sim_simple_write_local fs ft r r' n l tg ty v v' css cst Φ :
   r ⊨ˢ{n,fs,ft}
     (Place l (Tagged tg) ty <- #v, css) ≥ (Place l (Tagged tg) ty <- #v, cst)
   : Φ.
-Proof.
-Admitted.
+Proof. intros Hty Hres HH σs σt <-<-. eapply sim_body_write_local_1; eauto. Qed.
 
 Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg m ty css cst Φ :
   r ≡ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg)) →
