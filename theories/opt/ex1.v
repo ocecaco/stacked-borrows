@@ -26,9 +26,13 @@ Definition ex1_opt : function :=
     "v"
   .
 
-Lemma ex1_sim_body fs ft : ⊨ᶠ{fs,ft} ex1 ≥ ex1_opt.
+Lemma ex1_sim_body fs ft :
+  sim_local_funs_lookup fs ft →
+  ⊨ᶠ{fs,ft} ex1 ≥ ex1_opt.
 Proof.
-  apply (sim_fun_simple1 10)=>// rarg es css et cs args argt AREL ??. simplify_eq/=.
+  intros Hfst.
+  apply (sim_fun_simple1 10)=>// rarg es css et cs args argt AREL ??.
+  simplify_eq/=.
   (* InitCall *)
   apply sim_simple_init_call=> c /= {css}.
   (* Alloc *)
@@ -36,7 +40,7 @@ Proof.
   sim_apply sim_simple_let_place=>/=.
   (* Write *)
   rewrite (vrel_eq _ _ _ AREL).
-  sim_apply sim_simple_write_local. solve_res.
+  sim_apply sim_simple_write_local; [solve_res|].
   intros arg ->. simpl.
   sim_apply sim_simple_let_val=>/=.
   apply sim_simple_place.
@@ -45,11 +49,11 @@ Proof.
   destruct args as [|args args']; first by inversion AREL.
   apply Forall2_cons_inv in AREL as [AREL ATAIL].
   destruct args' as [|]; last by inversion ATAIL. clear ATAIL.
-  sim_apply sim_simple_retag_local. solve_res. done. solve_res.
+  sim_apply sim_simple_retag_local; [solve_res|done|solve_res|].
   move=>l_i tg_i hplt /= Hl_i.
   (* Call *)
   sim_apply sim_simple_let_val=>/=.
-  sim_apply (sim_simple_call 10 [] [] ε). admit. constructor. solve_res.
+  sim_apply (sim_simple_call 10 [] [] ε); [done|done|solve_res|].
   intros rf frs frt FREL.
   apply sim_simple_val.
 
