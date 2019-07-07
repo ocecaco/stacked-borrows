@@ -574,3 +574,64 @@ Lemma stack_preserving_tag_active_SRO stk t :
   t ∈ active_SRO stk → stack_preserving_tag stk t AccessRead.
 Proof.
 Abort.
+
+
+Lemma tag_unique_head_access cids stk t opro kind :
+  is_stack_head (mkItem Unique (Tagged t) opro) stk →
+  ∃ n, access1 stk kind (Tagged t) cids = Some (n, stk).
+Proof.
+  intros [stk1 Eqstk]. 
+  rewrite /access1.
+  have Eq1: list_find (matched_grant kind (Tagged t)) stk =
+    Some (O, mkItem Unique (Tagged t) opro).
+  { apply list_find_Some_not_earlier. split; last split.
+    rewrite Eqstk //. done. intros; lia. }
+  have Eq2: find_granting stk kind (Tagged t) = Some (O, Unique).
+  { rewrite /= /find_granting Eq1 //. }
+  rewrite Eq2 /=.
+  exists O. by destruct kind.
+Qed.
+
+Lemma replace_check'_preserve cids acc stk :
+  (∀ it, it ∈ stk → it.(perm) ≠ Unique) →
+  replace_check' cids acc stk = Some (acc ++ stk).
+Proof.
+  revert acc. induction stk as [|it' stk IH]; intros acc IN.
+  { rewrite /= app_nil_r //. }
+  rewrite /= decide_False; last by (apply IN; left).
+  rewrite (app_assoc acc [it'] stk). apply IH. set_solver.
+Qed.
+
+Lemma replace_check_preserve cids stk :
+  (∀ it, it ∈ stk → it.(perm) ≠ Unique) →
+  replace_check cids stk = Some stk.
+Proof. apply replace_check'_preserve. Qed.
+
+Lemma tag_SRO_top_access cids stk t :
+  t ∈ active_SRO stk →
+  ∃ n, access1 stk AccessRead (Tagged t) cids = Some (n, stk).
+Proof.
+  intros IN.
+  destruct (active_SRO_elem_of _ _ IN) as (i1 & it1 & Eqit1 & Eqt1 & Eqp1 & HL1).
+  rewrite /= /access1.
+   have Eq1: is_Some (list_find (matched_grant AccessRead (Tagged t)) stk).
+  { apply (list_find_elem_of _ _ it1).
+    by eapply elem_of_list_lookup_2. by rewrite /matched_grant Eqp1. }
+  destruct Eq1 as [[n2 it2] Eq2].
+  have Eq3: find_granting stk AccessRead (Tagged t) = Some (n2, it2.(perm)).
+  { rewrite /= /find_granting Eq2 //. }
+  rewrite Eq3 /=. exists n2.
+  rewrite replace_check_preserve.
+  - rewrite /= take_drop //.
+  - apply list_find_Some_not_earlier in Eq2 as (Eq2 & GR & LT).
+    have Lti1: (n2 ≤ i1)%nat.
+    { case (decide (n2 ≤ i1)%nat) => [//|/Nat.nle_gt Lt].
+      exfalso. apply (LT _ _ Lt Eqit1). rewrite /matched_grant Eqp1 //. }
+    intros it [k Eqk]%elem_of_list_lookup_1.
+    have Ltk : (k < n2)%nat.
+    { rewrite -(take_length_le stk n2).
+      by eapply lookup_lt_Some. apply Nat.lt_le_incl; by eapply lookup_lt_Some. }
+    have HL: stk !! k = Some it. { rewrite -(lookup_take _ n2) //. }
+    have Ltk2: (k < i1)%nat. { eapply Nat.lt_le_trans; eauto. }
+    by rewrite (HL1 _ _ Ltk2 HL).
+Qed.
