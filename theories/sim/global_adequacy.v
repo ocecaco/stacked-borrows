@@ -85,12 +85,9 @@ Proof.
       * unfold reducible in ST. des. eapply NS.
         destruct x. eauto.
     + clear sim_stuck. exploit sim_terminal; eauto. i. des.
-      pfold. econs.
-      * instantiate (1 := eσ2_src). unguardH x0. des.
-        { apply tc_rtc. eauto. }
-        { subst. reflexivity. }
-      * unfold terminal in *. des.
-        econs 2. unfold term. erewrite x2; eauto.
+      pfold. econs; eauto.
+      unfold terminal in *. des.
+      econs 2. unfold term. erewrite x2; eauto.
     + pclearbot. exploit sim_step; eauto. i. revert sim_stuck.
       rename s' into conf'_tgt.
       have WFT': Wf conf'_tgt.2 by eapply tstep_wf; eauto.

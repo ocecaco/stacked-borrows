@@ -35,7 +35,7 @@ Proof.
   have STEPS: (Alloc T, σs) ~{fs}~> (Place l t T, σs').
   { subst l σs' t. rewrite Eqlst -Eqnp.
     eapply (head_step_fill_tstep _ []),  alloc_head_step. }
-  eexists _, σs', (r ⋅ r'), (S n). split; last split.
+  eexists _, σs', (r ⋅ r'), n. split; last split.
   { left. by apply tc_once. }
   { have HLF : ∀ i, (i < tsize T)%nat → (r_f ⋅ r).(rlm) !! (l +ₗ i) = None.
     { intros i Lti.
@@ -366,7 +366,7 @@ Proof.
     have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
     admit.
   }
-  exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), (S n). split; last split.
+  exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), n. split; last split.
   { left. by constructor 1. }
   { rewrite cmra_assoc -CORE.
     split; last split; last split; last split; last split; last split.
@@ -549,7 +549,7 @@ Proof.
     rewrite EQL in EqD. rewrite -Eqnp in IN.
     eapply (head_step_fill_tstep _ []), write_head_step'; eauto. }
 
-  exists (#[☠])%V, σs', (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))), (S n).
+  exists (#[☠])%V, σs', (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))), n.
   split; last split.
   { left. by constructor 1. }
   { have HLlrf: (r_f ⋅ r) .(rlm) !! l ≡ Some (to_locStateR (lsLocal v' (init_stack (Tagged tg)))).
@@ -699,7 +699,7 @@ Proof.
   have HL2: if k0 then  (r_f.(rtm) ⋅ r.(rtm)) !! tg = Some (to_tagKindR tkUnique, h0) else True.
   { destruct k0; [|done].
     by apply (tmap_lookup_op_r _ _ _ _ (proj1 (proj1 VALID)) Eqtg). }
-  exists (#[☠])%V, σs', r', (S n). split; last split.
+  exists (#[☠])%V, σs', r', n. split; last split.
   { left. by constructor 1. }
   { have Eqrlm: (r_f ⋅ r').(rlm) ≡ (r_f ⋅ r).(rlm) by destruct k0.
     destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 EQ2].
@@ -1180,7 +1180,7 @@ Proof.
   { destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (? & ? & Eqcs' & ?).
     eapply (head_step_fill_tstep _ []).
     econstructor. by econstructor. econstructor. by rewrite Eqcs'. }
-  exists (Val vs), σs', r, (S n).
+  exists (Val vs), σs', r, n.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; last split.
   { left. by constructor 1. }
@@ -1216,8 +1216,8 @@ Lemma sim_body_end_call_elim' fs ft r n vs vt σs σt Φ :
   ∀ r_f et' σt' (WSAT: wsat (r_f ⋅ r) σs σt)
     (NT: never_stuck fs (EndCall (Val vs)) σs)
     (STEPT: (EndCall (Val vt), σt) ~{ft}~> (et', σt')),
-  ∃ r' idx' σs', (EndCall (Val vs), σs) ~{fs}~>+ (Val vs, σs') ∧ et' = Val vt ∧
-    Φ r' idx' (ValR vs) σs' (ValR vt) σt' ∧
+  ∃ r' n' σs', (EndCall (Val vs), σs) ~{fs}~>+ (Val vs, σs') ∧ et' = Val vt ∧
+    Φ r' n' (ValR vs) σs' (ValR vt) σt' ∧
     wsat (r_f ⋅ r') σs' σt'.
 Proof.
   intros SIM r_f et' σt' WSAT NT STEPT.
@@ -1236,73 +1236,27 @@ Proof.
   specialize (SIMV NT1 _ WSAT1) as [ST1 TE1 STEPS1].
   apply tstep_end_call_inv in STEPT as (? & Eq1 &? & ? & ? & ? & ?);
         [|by eexists]. simpl in Eq1. symmetry in Eq1. simplify_eq.
-  specialize (TE1 vt eq_refl) as (vs2 & σs2 & r2 & idx2 & STEP2 & WSAT2 & POST).
-  exists r2, idx2, σs2.
-  have ?: vs2 = vs.
+  specialize (TE1 vt eq_refl) as (vs2 & σs2 & r2 & STEP2 & WSAT2 & POST).
+  exists r2, n1, σs2.
+  assert (vs2 = vs ∧ (EndCall #vs, σs) ~{fs}~>+ ((#vs)%E, σs2)) as [].
   { clear -STEP1 STEP2.
     destruct STEP1 as [STEP1|[Eq11 Eq12]]; [|simplify_eq].
-    - apply tstep_end_call_inv_tc in STEP1 as (? & Eq1 &? & ? & ? & ? & ?);
-        [|by eexists]. simpl in Eq1.
-      simplify_eq. destruct STEP2 as [?%result_tstep_tc_stuck|[]]; [done|].
-      simplify_eq.
-      have Eq := to_of_result vs2. rewrite -H1 /= in Eq. by simplify_eq.
-    - have Eq := to_of_result vs2.
-      destruct STEP2 as [STEP2|[? STEP2]].
-      + apply tstep_end_call_inv_tc in STEP2 as (? & Eq' &? & ? & ? & ? & ?);
-          [|by eexists].
-        simpl in Eq'. simplify_eq.
-        rewrite H /= in Eq. by simplify_eq.
-      + simplify_eq. by rewrite -H0 in Eq. }
-  subst vs2. split; [|done].
-  destruct STEP1 as [|[]], STEP2 as [|[]]; simplify_eq.
-  - eapply tc_rtc_l; eauto.
-  - done.
-  - done.
-Qed.
-
-Lemma sim_body_end_call_elim fs ft r n vs vt σs σt Φ :
-  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ →
-  ∀ r_f σs' σt' (WSAT: wsat (r_f ⋅ r) σs σt)
-    (NT: never_stuck fs (EndCall (Val vs)) σs)
-    (STEPS: (EndCall (Val vs), σs) ~{fs}~> (Val vs, σs'))
-    (STEPT: (EndCall (Val vt), σt) ~{ft}~> (Val vt, σt')),
-  ∃ r' idx', Φ r' idx' (ValR vs) σs' (ValR vt) σt' ∧ wsat (r_f ⋅ r') σs' σt'.
-Proof.
-  intros SIM r_f σs' σt' WSAT NT STEPS STEPT.
-  punfold SIM.
-  specialize (SIM NT _ WSAT) as [NOSK TERM STEPSS].
-  inversion STEPSS; last first.
-  { exfalso. clear -CALLTGT. symmetry in CALLTGT.
-    apply fill_end_call_decompose in CALLTGT as [[]|[K' [? Eq]]]; [done|].
-    destruct (fill_result ft K' (Call #[ScFnPtr fid] (Val <$> vl_tgt))) as [[] ?];
-      [rewrite Eq; by eexists|done]. }
-  specialize (STEP _ _ STEPT) as (es1 & σs1 & r1 & n1 & STEP1 & WSAT1 & SIMV).
-  have STEPK: (EndCall #vs, σs) ~{fs}~>* (es1, σs1).
-  { destruct STEP1 as [|[]]. by apply tc_rtc. by simplify_eq. }
-  have NT1 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
-  pclearbot. punfold SIMV.
-  specialize (SIMV NT1 _ WSAT1) as [ST1 TE1 STEPS1].
-  specialize (TE1 vt eq_refl) as (vs2 & σs2 & r2 & idx2 & STEP2 & WSAT2 & POST).
-  exists r2, idx2.
-  assert (σs2 = σs' ∧ vs2 = vs) as [].
-  { clear -STEP1 STEP2 STEPS.
-    apply tstep_end_call_inv in STEPS as (? & ? &? & ? & ? & ? & ?);
-      [|by eexists].
-    destruct STEP1 as [STEP1|[Eq11 Eq12]]; [|simplify_eq].
-    - apply tstep_end_call_inv_tc in STEP1 as (? & ? &? & ? & ? & ? & ?);
-        [|by eexists].
-      simplify_eq. destruct STEP2 as [?%result_tstep_tc_stuck|[]]; [done|].
-      simplify_eq.
-      rewrite H1 in H5. simplify_eq. split; [done|].
-      have Eq := to_of_result vs2. rewrite -H2 in Eq. by simplify_eq.
-    - have Eq := to_of_result vs2. 
-      destruct STEP2 as [STEP2|[? STEP2]].
-      + apply tstep_end_call_inv_tc in STEP2 as (? & ? &? & ? & ? & ? & ?);
-          [|by eexists].
-        rewrite H1 in H3. simplify_eq. split; [done|].
-        rewrite H2 in Eq. by simplify_eq.
-      + simplify_eq. by rewrite -H2 in Eq. }
-  subst σs2 vs2. done.
+    - have STEP1' := STEP1.
+       apply tstep_end_call_inv_tc in STEP1 as (v1 & Eq1 &? & ? & ? & ? & ?);
+        [|by eexists]. simplify_eq.
+      apply result_tstep_rtc in STEP2 as [Eq3 Eq4]; [|by eexists].
+      rewrite /to_result in Eq1. simplify_eq.
+      have Eq := to_of_result vs2. rewrite Eq3 /to_result in Eq. by simplify_eq.
+    - inversion STEP2 as [x1 x2 Eq2|x1 [] x3 STEP3 STEP4]; simplify_eq.
+      + have Eq := to_of_result vs2. by rewrite -Eq2 in Eq.
+      + have STEP3' := STEP3.
+        apply tstep_end_call_inv in STEP3 as (v1 & Eq1 &? & ? & ? & ? & ?);
+          [|by eexists]. simplify_eq.
+        apply result_tstep_rtc in STEP4 as [Eq3 Eq4]; [|by eexists].
+        rewrite /to_result in Eq1. simplify_eq.
+        have Eq := to_of_result vs2. rewrite Eq3 /to_result in Eq.
+        simplify_eq. split; [done|]. by apply tc_once. }
+  by subst vs2.
 Qed.
 
 (** PURE STEP ----------------------------------------------------------------*)

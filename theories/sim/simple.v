@@ -90,14 +90,14 @@ Qed.
 
 Lemma sim_simple_val fs ft r n (vs vt: value) css cst Φ :
   Φ r n vs css vt cst →
-  r ⊨ˢ{S n,fs,ft} (vs, css) ≥ (vt, cst) : Φ.
+  r ⊨ˢ{n,fs,ft} (vs, css) ≥ (vt, cst) : Φ.
 Proof.
   intros HH σs σt <-<-. eapply (sim_body_result _ _ _ _ vs vt). done.
 Qed.
 
 Lemma sim_simple_place fs ft r n ls lt ts tt tys tyt css cst Φ :
   Φ r n (PlaceR ls ts tys) css (PlaceR lt tt tyt) cst →
-  r ⊨ˢ{S n,fs,ft} (Place ls ts tys, css) ≥ (Place lt tt tyt, cst) : Φ.
+  r ⊨ˢ{n,fs,ft} (Place ls ts tys, css) ≥ (Place lt tt tyt, cst) : Φ.
 Proof.
   intros HH σs σt <-<-. eapply (sim_body_result _ _ _ _ (PlaceR _ _ _) (PlaceR _ _ _)). done.
 Qed.
