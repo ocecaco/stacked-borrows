@@ -1314,13 +1314,38 @@ Proof.
   by rewrite Eqcss' Eqcss.
 Qed.
 
-
+(** Var *)
 Lemma sim_body_var fs ft r n σs σt var Φ :
   r ⊨{n,fs,ft} (Var var, σs) ≥ (Var var, σt) : Φ.
 Proof.
   pfold. intros NT r_f WSAT.
   destruct (NT (Var var) σs) as [[]|[? [? RED%tstep_var_inv]]];
     [constructor|done..].
+Qed.
+
+(** Proj *)
+Lemma sim_body_proj fs ft r n (v i: result) σs σt Φ :
+  (∀ vi vv iv, v = ValR vv → i = ValR [ScInt iv] →
+    vv !! (Z.to_nat iv) = Some vi → 0 ≤ iv →
+    Φ r n (ValR [vi]) σs (ValR [vi]) σt : Prop) →
+  r ⊨{n,fs,ft} (Proj v i, σs) ≥ (Proj v i, σt) : Φ.
+Proof.
+  intros POST. pfold. intros NT r_f WSAT.
+  edestruct NT as [[]|[es1 [σs1 RED]]]; [constructor 1|done|].
+  split; [|done|].
+  { right.
+    destruct (tstep_proj_inv _ _ _ _ _ _ RED)
+      as (vv & iv & vi & ? & ? & ? & ? & ? & ?). subst v i es1 σs1.
+    do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor. econstructor; eauto. }
+  constructor 1. intros.
+  destruct (tstep_proj_inv _ _ _ _ _ _ STEPT)
+    as (vv & iv & vi & ? & ? & ? & ? & ? & ?). subst v i et' σt'.
+  exists (#[vi])%E, σs, r, n. split; last split; [|done|].
+  { left. constructor 1. eapply (head_step_fill_tstep _ []).
+    by econstructor; econstructor. }
+  left. apply (sim_body_result _ _ _ _ (ValR _) (ValR _)). intros.
+  eapply POST; eauto.
 Qed.
 
 (** Let *)
@@ -1353,7 +1378,7 @@ Proof. apply sim_body_let; eauto. Qed.
 
 (** Ref *)
 Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
-  r ⊨{n,fs,ft} (#[ScPtr l tgs], σs) ≥ (#[ScPtr l tgt], σt) : Φ →
+  Φ r n (ValR [ScPtr l tgs]) σs (ValR [ScPtr l tgt]) σt : Prop →
   r ⊨{n,fs,ft} ((& (Place l tgs Ts))%E, σs) ≥ ((& (Place l tgt Tt))%E, σt) : Φ.
 Proof.
   intros SIM. pfold.
@@ -1374,13 +1399,14 @@ Proof.
   exists #[ScPtr l tgs]%E, σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
-  split; [done|]. by left.
+  split; [done|]. left.
+  by apply (sim_body_result _ _ _ _ (ValR _) (ValR _)).
 Qed.
 
 (** Deref *)
 Lemma sim_body_deref fs ft r n l tgs tgt Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt) :
-  r ⊨{n,fs,ft} (Place l tgs Ts, σs) ≥ (Place l tgt Tt, σt) : Φ →
+  Φ r n (PlaceR l tgs Ts) σs (PlaceR l tgt Tt) σt : Prop →
   r ⊨{n,fs,ft} (Deref #[ScPtr l tgs] Ts, σs) ≥ (Deref #[ScPtr l tgt] Tt, σt) : Φ.
 Proof.
   intros SIM. pfold.
@@ -1399,5 +1425,6 @@ Proof.
   exists (Place l tgs Ts), σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
-  split; [done|]. by left.
+  split; [done|].
+  left. by apply (sim_body_result _ _ _ _ (PlaceR _ _ _) (PlaceR _ _ _)).
 Qed.

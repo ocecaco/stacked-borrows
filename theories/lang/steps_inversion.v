@@ -204,6 +204,47 @@ Proof.
   simpl in HS. inv_head_step.
 Qed.
 
+
+(** Proj *)
+Lemma fill_proj_decompose K e e1 e2:
+  fill K e = Proj e1 e2 →
+  K = [] ∧ e = Proj e1 e2 ∨
+  (∃ K', K = K' ++ [ProjLCtx e2] ∧ fill K' e = e1) ∨
+  (∃ v1 K', K = K' ++ [ProjRCtx v1] ∧ fill K' e = e2 ∧ to_result e1 = Some v1).
+Proof.
+  revert e e1 e2.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e1 e2 EqK. right.
+  destruct (IH _ _ _ EqK) as [[? _]|[[K0 [? Eq0]]|[r1 [K' [? Eq']]]]].
+  - subst. simpl in *. destruct Ki; try done.
+    + simpl in EqK. simplify_eq. left. exists []. naive_solver.
+    + right. simpl in EqK. inversion EqK; subst.
+      eexists _, []. naive_solver eauto using to_of_result.
+  - subst K. left. by exists (Ki :: K0).
+  - subst K. right. by exists r1, (Ki :: K').
+Qed.
+
+Lemma tstep_proj_inv e' (v i: result) σ σ'
+  (STEP: (Proj v i, σ) ~{fns}~> (e', σ')) :
+  ∃ vv iv (vi: scalar), v = ValR vv ∧ i = ValR [ScInt iv] ∧
+  vv !! (Z.to_nat iv) = Some vi ∧ 0 ≤ iv ∧ e' = (Val [vi]%V) ∧ σ' = σ.
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_proj_decompose _ _ _ _ Eq)
+    as [[? _]|[[K0 [? Eq0]]|[r1 [K' [? [Eq' Eq2]]]]]]; subst.
+  - simpl in Eq. subst e1'.
+    simpl in HS. inv_head_step.
+    have Eq1:= to_of_result v. rewrite -H0 /to_result in Eq1.
+    have Eq2:= to_of_result i. rewrite -H1 /to_result in Eq2. simplify_eq.
+    naive_solver.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K0 e1') as [? Eq1'].
+    + rewrite /= Eq0 to_of_result. by eexists.
+    + by rewrite Eq1' in HS.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq' to_of_result. by eexists.
+    + by rewrite Eq1' in HS.
+Qed.
+
 (** BinOp *)
 Lemma fill_bin_op_decompose K e op e1 e2:
   fill K e = BinOp op e1 e2 →
@@ -468,6 +509,7 @@ Proof.
       rewrite Eq2. set_solver.
     + by rewrite /= HS in Eqv.
 Qed.
+
 
 (** MEM STEP -----------------------------------------------------------------*)
 
