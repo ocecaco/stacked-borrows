@@ -13,7 +13,6 @@ Qed.
 (* TODO: define viewshift *)
 
 (** Public scalar relation *)
-(* No case for poison *)
 Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
   match s1, s2 with
   | ScPoison, ScPoison => True
@@ -257,3 +256,32 @@ Qed.
 Lemma wsat_heap_dom r σs σt :
   wsat r σs σt → dom (gset loc) σt.(shp) ≡ dom (gset loc) σs.(shp).
 Proof. intros (?&?&?&?&?&?&?). by eapply srel_heap_dom. Qed.
+
+Lemma arel_persistent r a1 a2 :
+  arel r a1 a2 → arel (core r) a1 a2.
+Proof.
+  destruct a1, a2; try done. simpl.
+  destruct tg; last done.
+  intros (<- & <- & [h Hlk]).
+  split; first done. split; first done.
+  exists (core h). move: Hlk.
+  destruct r as [[tmap cmap] lmap].
+  change (core (tmap, cmap, lmap)) with (core tmap, core cmap, core lmap).
+  rewrite /rtm /=. rewrite lookup_core=>->.
+  rewrite /core /core' /=.
+  rewrite {1}/pcore /cmra_pcore /=. rewrite /prod_pcore //.
+Qed.
+
+Lemma vrel_persistent r v1 v2 :
+  vrel r v1 v2 → vrel (core r) v1 v2.
+Proof.
+  rewrite /vrel=>Hrel. eapply Forall2_impl; first done.
+  eauto using arel_persistent.
+Qed.
+
+Lemma vrel_list_persistent r vl1 vl2 :
+  Forall2 (vrel r) vl1 vl2 → Forall2 (vrel (core r)) vl1 vl2.
+Proof.
+  intros Hrel. eapply Forall2_impl; first done.
+  eauto using vrel_persistent.
+Qed.

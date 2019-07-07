@@ -59,6 +59,8 @@ Proof.
 
 Admitted.
 
+(** Top-level theorem: Two programs that only differ in the
+"ex1" function are related. *)
 Lemma ex1 (prog: fn_env) :
   stuck_decidable →
   has_main prog →
@@ -73,3 +75,5 @@ Proof.
   - exact: ex1_sim_body.
   - (* FIXME: Needs reflexivity. *)
 Admitted.
+
+Print Assumptions ex1.
