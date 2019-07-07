@@ -1,4 +1,4 @@
-From stbor.sim Require Import local invariant refl_step tactics body simple program.
+From stbor.sim Require Import local invariant refl tactics simple program.
 
 Set Default Proof Using "Type".
 
@@ -26,12 +26,10 @@ Definition ex1_opt : function :=
     "v"
   .
 
-Lemma ex1_sim_body fs ft :
-  sim_local_funs_lookup fs ft →
-  ⊨ᶠ{fs,ft} ex1_unopt ≥ ex1_opt.
+Lemma ex1_sim_body :
+  ⊨ᶠ ex1_unopt ≥ ex1_opt.
 Proof.
-  intros Hfst.
-  apply (sim_fun_simple1 10)=>// rarg es css et cs args argt AREL ??.
+  apply (sim_fun_simple1 10)=>// fs ft rarg es css et cs args argt LOOK AREL ??.
   simplify_eq/=.
   (* InitCall *)
   apply sim_simple_init_call=> c /= {css}.
@@ -71,10 +69,10 @@ Proof.
   intros Hdec Hmain. apply sim_prog_sim_classical.
   { apply Hdec. }
   { apply has_main_insert; done. }
-  apply sim_local_funs_insert; first done.
-  - admit.
+  apply sim_mod_funs_local.
+  apply sim_mod_funs_insert; first done.
   - exact: ex1_sim_body.
-  - (* FIXME: Needs reflexivity. *)
-Admitted.
+  - exact: sim_mod_funs_refl.
+Qed.
 
 Print Assumptions ex1.

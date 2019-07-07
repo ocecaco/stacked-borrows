@@ -10,7 +10,7 @@ Section local.
 Context {A: ucmraT}.
 Variable (wsat: A → state → state → Prop).
 Variable (vrel: A → value → value → Prop).
-Variable (fns fnt: fn_env).
+Variable (fs ft: fn_env).
 
 Notation PRED := (A → nat → result → state → result → state → Prop)%type.
 Notation SIM := (A → nat → expr → state → expr → state → PRED → Prop)%type.
@@ -21,25 +21,25 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop :=
 (* If tgt makes 1 step, src can make some step *)
 | sim_local_body_step_next
-    (STEP: ∀ et' σt' (STEPT: (et, σt) ~{fnt}~> (et', σt')),
+    (STEP: ∀ et' σt' (STEPT: (et, σt) ~{ft}~> (et', σt')),
       (* then we locally can makes some step and pick a new resource r' *)
       ∃ es' σs' r' idx',
-        ((es, σs) ~{fns}~>+ (es', σs') ∨
+        ((es, σs) ~{fs}~>+ (es', σs') ∨
          ((idx' < idx)%nat ∧ (es', σs') = (es, σs))) ∧
         wsat (r_f ⋅ r') σs' σt' ∧
         sim_local_body r' idx' es' σs' et' σt' Φ)
 (* If tgt prepares to make a call to [name], src should be able to make the same
   call. Here we do not want to step into the call of [name], but to step over it. *)
 | sim_local_body_step_over_call
-    (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fns)))
-    (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang fnt)))
+    (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
+    (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft)))
     fid (vl_tgt: list value)
     (vl_src: list value) σ1_src
     rc rv
     (* tgt is ready to make a call of [name] *)
     (CALLTGT: et = fill Kt (Call #[ScFnPtr fid] (Val <$> vl_tgt)))
     (* src is ready to make a call of [name] *)
-    (CALLSRC: (es, σs) ~{fns}~>* (fill Ks (Call #[ScFnPtr fid] (Val <$> vl_src)), σ1_src))
+    (CALLSRC: (es, σs) ~{fs}~>* (fill Ks (Call #[ScFnPtr fid] (Val <$> vl_src)), σ1_src))
     (* and we can pick a resource [rv] for the arguments *)
     (WSAT: wsat (r_f ⋅ (rc ⋅ rv)) σ1_src σt)
     (* [rv] justifies the arguments *)
@@ -58,13 +58,13 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
 Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop := {
   sim_local_body_stuck :
-    (terminal et ∨ reducible fnt et σt) ;
+    (terminal et ∨ reducible ft et σt) ;
   sim_local_body_terminal :
     (* if tgt is terminal *)
     ∀ vt (TERM: to_result et = Some vt),
       (* then src can get terminal *)
       ∃ vs' σs' r' idx',
-        sflib.__guard__ ((es, σs) ~{fns}~>+ (of_result vs', σs') ∨
+        sflib.__guard__ ((es, σs) ~{fs}~>+ (of_result vs', σs') ∨
                          ((idx' < idx)%nat ∧ (es, σs) = (of_result vs', σs'))) ∧
         (* and re-establish wsat *)
         wsat (r_f ⋅ r') σs' σt ∧ Φ r' idx' vs' σs' vt σt ;
@@ -75,7 +75,7 @@ Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
 Definition _sim_local_body (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop :=
   (* assuming that src cannot get stuck *)
-  ∀ (NEVER_STUCK: never_stuck fns es σs)
+  ∀ (NEVER_STUCK: never_stuck fs es σs)
     (* for any frame r_f that is compatible with our resource r has world satisfaction *)
     r_f (WSAT: wsat (r_f ⋅ r) σs σt),
     sim_local_body_base r_f sim_local_body r idx es σs et σt Φ.
@@ -112,10 +112,12 @@ Proof.
     exists idx'. pclearbot. right. eapply CIH; eauto.
 Qed.
 
-(* Simulating functions:
+(** Simulating functions:
   - We start after the substitution.
   - We assume the arguments are values related by [r]
-  - The returned result must also be values and related by [vrel]. *)
+  - The returned result must also be values and related by [vrel].
+This is called "local" because it considers one function at a time.
+However, it does assume full knowledge about the GLOBAL function table! *)
 Definition fun_post (esat: A → call_id → Prop) initial_call_id_stack
   (r: A) (n: nat) rs (σs: state) rt σt :=
   (∃ c, σt.(scs) = c :: initial_call_id_stack ∧ esat r c) ∧
@@ -131,21 +133,21 @@ Definition sim_local_fun
                           (fun_post esat σt.(scs)).
 
 Definition sim_local_funs (esat: A → call_id → Prop) : Prop :=
-  ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
-    fnt !! name = Some fn_tgt ∧
+  ∀ name fn_src, fs !! name = Some fn_src → ∃ fn_tgt,
+    ft !! name = Some fn_tgt ∧
     length fn_src.(fun_b) = length fn_tgt.(fun_b) ∧
     sim_local_fun esat fn_src fn_tgt.
 
 Definition sim_local_funs_lookup : Prop :=
-  ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
-    fnt !! name = Some fn_tgt ∧
+  ∀ name fn_src, fs !! name = Some fn_src → ∃ fn_tgt,
+    ft !! name = Some fn_tgt ∧
     length fn_src.(fun_b) = length fn_tgt.(fun_b).
 
 Lemma sim_local_funs_to_lookup esat :
   sim_local_funs esat → sim_local_funs_lookup.
 Proof.
-  intros Hlf name fs Hlk. destruct (Hlf _ _ Hlk) as (ft & ? & ? & ?).
-  exists ft. auto.
+  intros Hlf name fns Hlk. destruct (Hlf _ _ Hlk) as (fnt & ? & ? & ?).
+  eauto.
 Qed.
 
 (* Viewshift *)
@@ -176,7 +178,5 @@ Proof.
 Qed.
 
 End local.
-(*
-Definition sim_mod_fun 
-*)
+
 Hint Resolve sim_local_body_mono : paco.

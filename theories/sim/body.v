@@ -3,6 +3,22 @@ From stbor.sim Require Export instance.
 
 Set Default Proof Using "Type".
 
+Lemma sim_body_result fs ft r n es et σs σt Φ :
+  (✓ r → Φ r n es σs et σt : Prop) →
+  r ⊨{S n,fs,ft} (of_result es, σs) ≥ (of_result et, σt) : Φ.
+Proof.
+  intros POST. pfold.  split; last first.
+  { constructor 1. intros vt' ? STEPT'. exfalso.
+    apply result_tstep_stuck in STEPT'. by rewrite to_of_result in STEPT'. }
+  { move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
+    exists es, σs, r, n. split; last split.
+    - right. split; [lia|]. eauto.
+    - eauto.
+    - rewrite to_of_result in Eqvt'. simplify_eq.
+      apply POST. by destruct WSAT as (?&?&?%cmra_valid_op_r &?). }
+  { left. rewrite to_of_result. by eexists. }
+Qed.
+
 Lemma sim_body_res_proper fs ft n es σs et σt Φ r1 r2:
   r1 ≡ r2 →
   r1 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →

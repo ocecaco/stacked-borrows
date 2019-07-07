@@ -7,7 +7,8 @@ To go the other direction, [apply sim_simplify NEW_POST]. Then you will likely
 want to clean some stuff from your context.
 *)
 
-From stbor.sim Require Import body instance refl_step.
+From stbor.sim Require Export body instance.
+From stbor.sim Require Import refl_step.
 
 Definition fun_post_simple
   initial_call_id_stack (r: resUR) (n: nat) vs (css: call_id_stack) vt cst :=
@@ -43,17 +44,18 @@ Qed.
 
 (** Simple proof for a function taking one argument. *)
 (* TODO: make the two call stacks the same. *)
-Lemma sim_fun_simple1 n fs ft (esf etf: function) :
+Lemma sim_fun_simple1 n (esf etf: function) :
   length (esf.(fun_b)) = 1%nat →
   length (etf.(fun_b)) = 1%nat →
-  (∀ rf es css et cst vs vt,
+  (∀ fs ft rf es css et cst vs vt,
+    sim_local_funs_lookup fs ft →
     vrel rf vs vt →
     subst_l (esf.(fun_b)) [Val vs] (esf.(fun_e)) = Some es →
     subst_l (etf.(fun_b)) [Val vt] (etf.(fun_e)) = Some et →
     rf ⊨ˢ{n,fs,ft} (InitCall es, css) ≥ (InitCall et, cst) : fun_post_simple cst) →
-  ⊨ᶠ{fs,ft} esf ≥ etf.
+  ⊨ᶠ esf ≥ etf.
 Proof.
-  intros Hls Hlt HH rf es et vls vlt σs σt FREL SUBSTs SUBSTt. exists n.
+  intros Hls Hlt HH fs ft Hlook rf es et vls vlt σs σt FREL SUBSTs SUBSTt. exists n.
   move:(subst_l_is_Some_length _ _ _ _ SUBSTs) (subst_l_is_Some_length _ _ _ _ SUBSTt).
   rewrite Hls Hlt.
   destruct vls as [|vs []]; [done| |done].
