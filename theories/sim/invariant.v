@@ -100,8 +100,15 @@ Definition wsat (r: resUR) (σs σt: state) : Prop :=
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)
 Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
-Definition vrel_res (r: resUR) (e1 e2: result) :=
-  ∃ v1 v2, e1 = ValR v1 ∧ e2 = ValR v2 ∧ vrel r v1 v2.
+
+Definition rrel (r: resUR) rs rt: Prop :=
+  match rs, rt with
+  | ValR vs, ValR vt => vrel r vs vt
+  | PlaceR ls ts Ts, PlaceR lt t_t Tt =>
+    (* Places are related like pointers, and the types must be equal. *)
+    vrel r [ScPtr ls ts] [ScPtr lt t_t] ∧ Ts = Tt
+  | _, _ => False
+  end.
 
 
 (** Condition for resource before EndCall *)
@@ -141,15 +148,13 @@ Proof.
   f_equal. by apply (arel_eq _ _ _ Eq1). by apply IH.
 Qed.
 
-Lemma vrel_res_eq r (e1 e2: result) :
-  vrel_res r e1 e2 → e1 = e2.
+Lemma rrel_eq r (e1 e2: result) :
+  rrel r e1 e2 → e1 = e2.
 Proof.
-  intros (v1 & v2 & Eq1 & Eq2 & VREL). subst. f_equal. by eapply vrel_eq.
+  destruct e1, e2; simpl; [|done..|].
+  - intros ?. f_equal. by eapply vrel_eq.
+  - intros [VREL ?]. subst. apply vrel_eq in VREL. by simplify_eq.
 Qed.
-
-Lemma vrel_res_vrel r (v1 v2: value) :
-  vrel_res r #v1 #v2 → vrel r v1 v2.
-Proof. intros (? & ? & Eq1 & Eq2 & ?). by simplify_eq. Qed.
 
 Lemma arel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
@@ -179,10 +184,12 @@ Lemma vrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ v1 v2, vrel r1 v1 v2 → vrel r2 v1 v2.
 Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qed.
 
-Lemma vrel_res_mono (r1 r2 : resUR) (VAL: ✓ r2) :
-  r1 ≼ r2 → ∀ v1 v2, vrel_res r1 v1 v2 → vrel_res r2 v1 v2.
+Lemma rrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ v1 v2, rrel r1 v1 v2 → rrel r2 v1 v2.
 Proof.
-  move => Le v1 v2 [? [? [? [? /(vrel_mono _ _ VAL Le) ?]]]]. do 2 eexists. eauto.
+  intros Le v1 v2. destruct v1, v2; simpl; [|done..|].
+  - by apply vrel_mono.
+  - intros [VREL ?]. split; [|done]. move : VREL. by apply vrel_mono.
 Qed.
 
 Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :

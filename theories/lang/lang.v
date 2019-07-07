@@ -59,6 +59,13 @@ Proof. by intros ?? Hv; apply (inj Some); rewrite -2!to_of_result Hv /=. Qed.
 Lemma is_closed_to_result X e v : to_result e = Some v → is_closed X e.
 Proof. intros <-%of_to_result. apply is_closed_of_result. Qed.
 
+Lemma list_Forall_to_of_result vl :
+  Forall (λ ei, is_Some (to_result ei)) (of_result <$> vl).
+Proof.
+  apply Forall_forall. move => e /elem_of_list_fmap [? [-> ?]].
+  rewrite to_of_result. by eexists.
+Qed.
+
 (* Lemma subst_is_closed X x es e :
   is_closed X es → is_closed (x::X) e → is_closed X (subst x es e).
 Proof.

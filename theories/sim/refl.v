@@ -46,14 +46,6 @@ Context (css cst: call_id_stack).
 
 Definition sem_steps := 10%nat.
 
-Definition rrel (r: resUR) rs rt: Prop :=
-  match rs, rt with
-  | ValR vs, ValR vt => vrel r vs vt
-  | PlaceR ls ts Ts, PlaceR lt t_t Tt =>
-    (* Places are related like pointers, and the types must be equal. *)
-    vrel r [ScPtr ls ts] [ScPtr lt t_t] ∧ Ts = Tt
-  | _, _ => False
-  end.
 Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
   n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel r rs rt.
 
@@ -130,7 +122,7 @@ Proof.
     split.
     - eexists. split. subst cst css. rewrite <-Hstacks. congruence.
       admit. (* end_call_sat *)
-    - admit. (* need to show they are values?!? *)
+    - done.
   }
   rewrite (subst_l_map _ _ _ _ Hsubst1).
   rewrite (subst_l_map _ _ _ _ Hsubst2).

@@ -427,6 +427,30 @@ Proof.
     + by rewrite /= HS in Eqv.
 Qed.
 
+Lemma tstep_call_inv_result (fid: fn_id) el e' σ σ'
+  (TERM: Forall (λ ei, is_Some (to_result ei)) el)
+  (STEP: (Call #[fid] el, σ) ~{fns}~> (e', σ')) :
+  ∃ xl e HC es, fns !! fid = Some (@FunV xl e HC) ∧
+    subst_l xl el e = Some es ∧ e' = (EndCall (InitCall es)) ∧ σ' = σ ∧
+    Forall (λ ei, is_Some (to_value ei)) el.
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_call_decompose _ _ _ _ Eq)
+    as [[]|[[K' [? Eq']]|[K' [v1 [vl [e2 [el2 [? Eq']]]]]]]]; subst.
+  - simpl in *. inv_head_step. naive_solver.
+  - exfalso. simpl in *. apply result_head_stuck in HS.
+    destruct (fill_val (Λ:=bor_ectx_lang fns) K' e1') as [? Eqv].
+    + rewrite /= Eq'. by eexists.
+    + by rewrite /= HS in Eqv.
+  - exfalso. simpl in *. destruct Eq' as [Eq1 Eq2].
+    apply result_head_stuck in HS.
+    destruct (fill_val (Λ:=bor_ectx_lang fns) K' e1') as [? Eqv].
+    + rewrite /= Eq1.
+      apply (Forall_forall (λ ei, is_Some (to_result ei)) el); [exact TERM|].
+      rewrite Eq2. set_solver.
+    + by rewrite /= HS in Eqv.
+Qed.
+
 (** MEM STEP -----------------------------------------------------------------*)
 
 (** Alloc *)

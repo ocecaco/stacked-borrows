@@ -9,7 +9,7 @@ Set Default Proof Using "Type".
 Section local.
 Context {A: ucmraT}.
 Variable (wsat: A → state → state → Prop).
-Variable (vrel: A → value → value → Prop).
+Variable (rrel: A → result → result → Prop).
 Variable (fs ft: fn_env).
 
 Notation PRED := (A → nat → result → state → result → state → Prop)%type.
@@ -33,27 +33,27 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
 | sim_local_body_step_over_call
     (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
     (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft)))
-    fid (vl_tgt: list value)
-    (vl_src: list value) σ1_src
+    fid (vl_tgt: list result)
+    (vl_src: list result) σ1_src
     rc rv
     (* tgt is ready to make a call of [name] *)
-    (CALLTGT: et = fill Kt (Call #[ScFnPtr fid] (Val <$> vl_tgt)))
+    (CALLTGT: et = fill Kt (Call #[ScFnPtr fid] (of_result <$> vl_tgt)))
     (* src is ready to make a call of [name] *)
-    (CALLSRC: (es, σs) ~{fs}~>* (fill Ks (Call #[ScFnPtr fid] (Val <$> vl_src)), σ1_src))
+    (CALLSRC: (es, σs) ~{fs}~>* (fill Ks (Call #[ScFnPtr fid] (of_result <$> vl_src)), σ1_src))
     (* and we can pick a resource [rv] for the arguments *)
     (WSAT: wsat (r_f ⋅ (rc ⋅ rv)) σ1_src σt)
     (* [rv] justifies the arguments *)
-    (VREL: Forall2 (vrel rv) vl_src vl_tgt)
+    (VREL: Forall2 (rrel rv) vl_src vl_tgt)
     (* and after the call our context can continue *)
-    (CONT: ∀ r' v_src v_tgt σs' σt'
-             (* For any new resource r' that supports the returned values are
+    (CONT: ∀ r' r_src r_tgt σs' σt'
+             (* For any new resource r' that supports the returned results are
                 related w.r.t. (r ⋅ r' ⋅ r_f) *)
-             (VRET: vrel r' v_src v_tgt)
+             (VRET: rrel r' r_src r_tgt)
              (WSAT: wsat (r_f ⋅ (rc ⋅ r')) σs' σt')
              (STACK: σt.(scs) = σt'.(scs)),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
-                               (fill Ks (Val v_src)) σs'
-                               (fill Kt (Val v_tgt)) σt' Φ).
+                               (fill Ks (of_result r_src)) σs'
+                               (fill Kt (of_result r_tgt)) σt' Φ).
 
 Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop := {
@@ -112,20 +112,20 @@ Qed.
 
 (** Simulating functions:
   - We start after the substitution.
-  - We assume the arguments are values related by [r]
-  - The returned result must also be values and related by [vrel].
+  - We assume the arguments are results related by [r]
+  - The returned result must also be related by [rrel].
 This is called "local" because it considers one function at a time.
 However, it does assume full knowledge about the GLOBAL function table! *)
 Definition fun_post (esat: A → call_id → Prop) initial_call_id_stack
   (r: A) (n: nat) rs (σs: state) rt σt :=
   (∃ c, σt.(scs) = c :: initial_call_id_stack ∧ esat r c) ∧
-  (∃ vs vt, rs = ValR vs ∧ rt = ValR vt ∧ vrel r vs vt).
+  rrel r rs rt.
 Definition sim_local_fun
   (esat: A → call_id → Prop) (fn_src fn_tgt : function) : Prop :=
-  ∀ r es et (vl_src vl_tgt: list value) σs σt
-    (VALEQ: Forall2 (vrel r) vl_src vl_tgt)
-    (EQS: subst_l fn_src.(fun_args) (Val <$> vl_src) fn_src.(fun_body) = Some es)
-    (EQT: subst_l fn_tgt.(fun_args) (Val <$> vl_tgt) fn_tgt.(fun_body) = Some et),
+  ∀ r es et (vl_src vl_tgt: list result) σs σt
+    (VALEQ: Forall2 (rrel r) vl_src vl_tgt)
+    (EQS: subst_l fn_src.(fun_args) (of_result <$> vl_src) fn_src.(fun_body) = Some es)
+    (EQT: subst_l fn_tgt.(fun_args) (of_result <$> vl_tgt) fn_tgt.(fun_body) = Some et),
     ∃ idx, sim_local_body r idx
                           (InitCall es) σs (InitCall et) σt
                           (fun_post esat σt.(scs)).

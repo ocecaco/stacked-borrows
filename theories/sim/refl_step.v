@@ -1137,45 +1137,53 @@ Proof.
 Qed.
 
 (** EndCall *)
-Lemma end_call_tstep_src_tgt fs ft r σs σt (vs vt: value) es' σs' :
-  wsat r σs σt →
-  (EndCall vs, σs) ~{fs}~> (es', σs') →
-  reducible ft (EndCall vt) σt.
+Lemma end_call_tstep_src_tgt fs ft r_f r σs σt (rs rt: result) es' σs' :
+  rrel r rs rt →
+  wsat (r_f ⋅ r) σs σt →
+  (EndCall rs, σs) ~{fs}~> (es', σs') →
+  ∃ vs vt : value, rs = ValR vs ∧ rt = ValR vt ∧ reducible ft (EndCall rt) σt.
 Proof.
-  intros WSAT STEPS.
-  edestruct (tstep_end_call_inv _ vs _ _ _ (ltac:(by eexists))
-                STEPS) as (vs' & Eqvs & ? & c & cids & Eqc & Eqs).
+  intros RREL WSAT STEPS.
+  edestruct (tstep_end_call_inv _ rs _ _ _ (ltac:(rewrite to_of_result; by eexists))
+                STEPS) as (vs & Eqvs & ? & c & cids & Eqc & Eqs).
   subst. simpl in Eqvs. symmetry in Eqvs. simplify_eq.
   destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (? & ? & Eqcs' & ?).
+  rewrite to_of_result in Eqvs. simplify_eq.
+  destruct rt as [vt|]; [|done].
+  exists vs, vt. do 2 (split; [done|]).
   exists (#vt)%E, (mkState σt.(shp) σt.(sst) cids σt.(snp) σt.(snc)).
   eapply (head_step_fill_tstep _ []).
   econstructor. by econstructor. econstructor. by rewrite -Eqcs'.
 Qed.
 
-Lemma sim_body_end_call fs ft r n vs vt σs σt Φ :
+Lemma sim_body_end_call fs ft r n rs rt σs σt Φ :
   (* return values are related *)
-  vrel r vs vt →
+  rrel r rs rt →
   (* The top of the call stack has no privately protected locations left *)
   (∃ c cids, σt.(scs) = c :: cids ∧ end_call_sat r c) →
-  (∀ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 → σt.(scs) = c2 :: cids2 →
+  (∀ c1 c2 cids1 cids2 vs vt,
+      σs.(scs) = c1 :: cids1 → σt.(scs) = c2 :: cids2 →
+      rs = ValR vs → rt = ValR vt →
       let σs' := mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) in
       let σt' := mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) in
       Wf σt →
-      Φ r n (ValR vs) σs' (ValR vt) σt' : Prop) →
-  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ.
+      Φ r n rs σs' rt σt' : Prop) →
+  r ⊨{n,fs,ft} (EndCall (of_result rs), σs) ≥ (EndCall (of_result rt), σt) : Φ.
 Proof.
   intros VREL ESAT POST. pfold. intros NT r_f WSAT.
   split; [|done|].
   { right.
-    destruct (NT (EndCall #vs) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
-    move : WSAT STEPS. apply end_call_tstep_src_tgt. }
+    destruct (NT (EndCall rs) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
+    eapply (end_call_tstep_src_tgt fs ft r_f r) in STEPS as (?&?&?&?&?); eauto. }
   constructor 1. intros et' σt' STEPT.
-  destruct (tstep_end_call_inv _ #vt _ _ _ (ltac:(by eexists)) STEPT)
+  destruct (tstep_end_call_inv ft (of_result rt) et' σt σt'
+              (ltac:(rewrite to_of_result; by eexists)) STEPT)
     as (vt' & Eqvt & ? & c & cids & Eqc & Eqs).
-  subst. simpl in Eqvt. symmetry in Eqvt. simplify_eq.
+  subst. rewrite to_of_result in Eqvt. simplify_eq.
   rewrite /end_call_sat Eqc in ESAT.
   destruct ESAT as [c' [cs [Eqcs ESAT]]]. symmetry in Eqcs. simplify_eq.
   set σs' := (mkState σs.(shp) σs.(sst) cids σs.(snp) σs.(snc)).
+  destruct rs as [vs|]; [|done].
   have STEPS: (EndCall #vs, σs) ~{fs}~> ((#vs)%E, σs').
   { destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (? & ? & Eqcs' & ?).
     eapply (head_step_fill_tstep _ []).
@@ -1206,17 +1214,17 @@ Proof.
       intros l InD SHR. by specialize (Eqhp _ InD SHR).
     - intros ??. rewrite /=. by apply LINV. }
   (* result *)
-  left. apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).
+  left. apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt')).
   intros VALID'.
   eapply POST; eauto. destruct SREL as (?&?&Eqs&?). by rewrite Eqs.
 Qed.
 
-Lemma sim_body_end_call_elim' fs ft r n vs vt σs σt Φ :
-  r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ →
+Lemma sim_body_end_call_elim' fs ft r n (rs rt: result) σs σt Φ :
+  r ⊨{n,fs,ft} (EndCall rs, σs) ≥ (EndCall rt, σt) : Φ →
   ∀ r_f et' σt' (WSAT: wsat (r_f ⋅ r) σs σt)
-    (NT: never_stuck fs (EndCall (Val vs)) σs)
-    (STEPT: (EndCall (Val vt), σt) ~{ft}~> (et', σt')),
-  ∃ r' n' σs', (EndCall (Val vs), σs) ~{fs}~>+ (Val vs, σs') ∧ et' = Val vt ∧
+    (NT: never_stuck fs (EndCall rs) σs)
+    (STEPT: (EndCall rt, σt) ~{ft}~> (et', σt')),
+  ∃ r' n' σs' vs vt, (EndCall rs, σs) ~{fs}~>+ (Val vs, σs') ∧ et' = Val vt ∧
     Φ r' n' (ValR vs) σs' (ValR vt) σt' ∧
     wsat (r_f ⋅ r') σs' σt'.
 Proof.
@@ -1226,50 +1234,57 @@ Proof.
   inversion STEPSS; last first.
   { exfalso. clear -CALLTGT. symmetry in CALLTGT.
     apply fill_end_call_decompose in CALLTGT as [[]|[K' [? Eq]]]; [done|].
-    destruct (fill_result ft K' (Call #[ScFnPtr fid] (Val <$> vl_tgt))) as [[] ?];
-      [rewrite Eq; by eexists|done]. }
+    destruct (fill_result ft K' (Call #[ScFnPtr fid] (of_result <$> vl_tgt))) as [[] ?];
+      [rewrite Eq to_of_result; by eexists|done]. }
   specialize (STEP _ _ STEPT) as (es1 & σs1 & r1 & n1 & STEP1 & WSAT1 & SIMV).
-  have STEPK: (EndCall #vs, σs) ~{fs}~>* (es1, σs1).
+  have STEPK: (EndCall rs, σs) ~{fs}~>* (es1, σs1).
   { destruct STEP1 as [|[]]. by apply tc_rtc. by simplify_eq. }
   have NT1 := never_stuck_tstep_rtc _ _ _ _ _ STEPK NT.
   pclearbot. punfold SIMV.
   specialize (SIMV NT1 _ WSAT1) as [ST1 TE1 STEPS1].
-  apply tstep_end_call_inv in STEPT as (? & Eq1 &? & ? & ? & ? & ?);
-        [|by eexists]. simpl in Eq1. symmetry in Eq1. simplify_eq.
-  specialize (TE1 vt eq_refl) as (vs2 & σs2 & r2 & STEP2 & WSAT2 & POST).
+  apply tstep_end_call_inv in STEPT as (vt & Eq1 &? & ? & ? & ? & ?);
+        [|by rewrite to_of_result; eexists].
+  rewrite to_of_result /= in Eq1. simplify_eq.
+  specialize (TE1 vt eq_refl) as (rs2 & σs2 & r2 & STEP2 & WSAT2 & POST).
   exists r2, n1, σs2.
-  assert (vs2 = vs ∧ (EndCall #vs, σs) ~{fs}~>+ ((#vs)%E, σs2)) as [].
+  assert (rs2 = rs ∧ ∃ vs, (EndCall rs, σs) ~{fs}~>+ ((#vs)%E, σs2) ∧ rs = ValR vs)
+    as [? [vs [??]]].
   { clear -STEP1 STEP2.
     destruct STEP1 as [STEP1|[Eq11 Eq12]]; [|simplify_eq].
     - have STEP1' := STEP1.
-       apply tstep_end_call_inv_tc in STEP1 as (v1 & Eq1 &? & ? & ? & ? & ?);
-        [|by eexists]. simplify_eq.
+       apply tstep_end_call_inv_tc in STEP1 as (vs & Eq1 &? & ? & ? & ? & ?);
+        [|by rewrite to_of_result; eexists]. simplify_eq.
       apply result_tstep_rtc in STEP2 as [Eq3 Eq4]; [|by eexists].
-      rewrite /to_result in Eq1. simplify_eq.
-      have Eq := to_of_result vs2. rewrite Eq3 /to_result in Eq. by simplify_eq.
+      rewrite to_of_result in Eq1. simplify_eq.
+      have Eq := to_of_result rs2.
+      rewrite Eq3 /to_result in Eq. simplify_eq. naive_solver.
     - inversion STEP2 as [x1 x2 Eq2|x1 [] x3 STEP3 STEP4]; simplify_eq.
-      + have Eq := to_of_result vs2. by rewrite -Eq2 in Eq.
+      + by destruct rs, rs2.
       + have STEP3' := STEP3.
         apply tstep_end_call_inv in STEP3 as (v1 & Eq1 &? & ? & ? & ? & ?);
-          [|by eexists]. simplify_eq.
+          [|by rewrite to_of_result; eexists]. simplify_eq.
         apply result_tstep_rtc in STEP4 as [Eq3 Eq4]; [|by eexists].
-        rewrite /to_result in Eq1. simplify_eq.
-        have Eq := to_of_result vs2. rewrite Eq3 /to_result in Eq.
-        simplify_eq. split; [done|]. by apply tc_once. }
-  by subst vs2.
+        rewrite to_of_result in Eq1. simplify_eq.
+        have Eq := to_of_result rs2. rewrite Eq3 /to_result in Eq.
+        simplify_eq. split; [done|]. eexists. split; [|done]. by apply tc_once. }
+  subst. simpl. by exists vs, vt.
 Qed.
 
 (** PURE STEP ----------------------------------------------------------------*)
+
+Lemma of_result_list_expr (vl: list value) :
+  (of_result <$> (ValR <$> vl)) = Val <$> vl.
+Proof. induction vl as [|v vl IH]; [done|]. by rewrite 3!fmap_cons IH. Qed.
 
 (** Call - step over *)
 Lemma sim_body_step_over_call fs ft
   rc rv n fid vls vlt σs σt Φ
   (VREL: Forall2 (vrel rv) vls vlt)
   (FUNS: sim_local_funs_lookup fs ft) :
-  (∀ r' vs vt σs' σt' (VRET: vrel r' vs vt)
+  (∀ r' vs vt σs' σt' (VRET: rrel r' vs vt)
     (STACKS: σs.(scs) = σs'.(scs))
     (STACKT: σt.(scs) = σt'.(scs)), ∃ n',
-    rc ⋅ r' ⊨{n',fs,ft} (Val vs, σs') ≥ (Val vt, σt') : Φ) →
+    rc ⋅ r' ⊨{n',fs,ft} (of_result vs, σs') ≥ (of_result vt, σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
     (Call #[ScFnPtr fid] (Val <$> vls), σs) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), σt) : Φ.
 Proof.
@@ -1288,7 +1303,10 @@ Proof.
      eapply (head_step_fill_tstep _ []). econstructor. econstructor; try done.
      apply list_Forall_to_value. eauto. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
-            [] [] fid vlt vls); eauto; [done|].
+            [] [] fid (ValR <$> vlt) (ValR <$> vls)); eauto.
+  { by rewrite of_result_list_expr. }
+  { by rewrite of_result_list_expr. }
+  { eapply Forall2_fmap, Forall2_impl; eauto. }
   intros r' ? ? σs' σt' VR WSAT' STACK.
   destruct (CONT _ _ _ σs' σt' VR) as [n' ?]; [|done|exists n'; by left].
   destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (?&?&?Eqcss&?).

@@ -2,7 +2,7 @@ From stbor.lang Require Import steps_inversion.
 From stbor.sim Require Export local invariant.
 
 Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
-  (sim_local_body wsat vrel fs ft r n%nat es%E σs et%E σt Φ)
+  (sim_local_body wsat rrel fs ft r n%nat es%E σs et%E σt Φ)
   (at level 70, format "'[hv' r  '/' ⊨{ n , fs , ft }  '/  ' '[ ' ( es ,  '/' σs ) ']'  '/' ≥  '/  ' '[ ' ( et ,  '/' σt ) ']'  '/' :  Φ ']'").
 
 
@@ -13,7 +13,8 @@ fn table, allow giving a lower bound. But this is good enough for now.
 
 This could be done in general, but we just do it for the instance. *)
 Definition sim_mod_fun f1 f2 :=
-  ∀ fs ft, sim_local_funs_lookup fs ft → sim_local_fun wsat vrel fs ft end_call_sat f1 f2.
+  ∀ fs ft, sim_local_funs_lookup fs ft →
+           sim_local_fun wsat rrel fs ft end_call_sat f1 f2.
 
 Definition sim_mod_funs (fns fnt: fn_env) :=
   ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
@@ -66,7 +67,7 @@ Qed.
 assumption. *)
 Lemma sim_mod_funs_local fs ft :
   sim_mod_funs fs ft →
-  sim_local_funs wsat vrel fs ft end_call_sat.
+  sim_local_funs wsat rrel fs ft end_call_sat.
 Proof.
   intros Hmod. intros f fn_src Hlk.
   destruct (Hmod _ _ Hlk) as (fn_tgt & ? & ? & ?). exists fn_tgt.
