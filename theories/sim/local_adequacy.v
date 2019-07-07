@@ -53,8 +53,7 @@ Inductive sim_local_frames:
                                 (fill frame.(K_src) (Val v_src)) σ_src'
                                 (fill frame.(K_tgt) (Val v_tgt)) σ_tgt'
                                 (λ r _ vs σs vt σt,
-                                  (∃ c, σt.(scs) = c :: cids) ∧
-                                  end_call_sat r σs σt ∧
+                                  (∃ c, σt.(scs) = c :: cids ∧ end_call_sat r c) ∧
                                   vrel_res r vs vt))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
@@ -73,8 +72,7 @@ Inductive sim_local_conf:
     (FRAMES: sim_local_frames r_f cids K_src K_tgt frames)
     (LOCAL: sim_local_body wsat vrel fns fnt rc idx e_src σ_src e_tgt σ_tgt
                            (λ r _ vs σs vt σt,
-                              (∃ c, σt.(scs) = c :: cids) ∧
-                              end_call_sat r σs σt ∧
+                              (∃ c, σt.(scs) = c :: cids ∧ end_call_sat r c) ∧
                               vrel_res r vs vt))
     (KE_SRC: Ke_src = fill K_src e_src)
     (KE_TGT: Ke_tgt = fill K_tgt e_tgt)
@@ -96,7 +94,7 @@ Proof.
     destruct sim_local_body_stuck as [vt Eqvt].
     rewrite -(of_to_result _ _ Eqvt).
     destruct (sim_local_body_terminal _ Eqvt)
-      as (vs' & σs' & r' & idx' & SS' & WSAT' & CALLIDS & ESAT' & VREL).
+      as (vs' & σs' & r' & idx' & SS' & WSAT' & (c & CALLIDS & ESAT') & VREL).
     have STEPK: (fill (Λ:=bor_ectxi_lang fns) K_src0 e_src0, σ_src)
               ~{fns}~>* (fill (Λ:=bor_ectxi_lang fns) K_src0 vs', σs').
     { apply fill_tstep_rtc. destruct SS' as [|[? Eq]].
@@ -133,7 +131,7 @@ Proof.
 
       (* Simulatin EndCall *)
       rename σ_tgt into σt. rename σs' into σs.
-      destruct x4 as (vs1 & vt1 & Eqvs1 & Eqv1 & VR).
+      destruct x3 as (vs1 & vt1 & Eqvs1 & Eqv1 & VR).
       simplify_eq.
 
       set Φ : resUR → nat → result → state → result → state → Prop :=
@@ -142,16 +140,11 @@ Proof.
             σt.(scs) = c2 :: cids2 ∧
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
             σt2 = mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) ∧
-            r2 = ((r'.(rtm),
-                    match (r'.(rcm) !! c2) with
-                    | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r'.(rcm)
-                    | _ => r'.(rcm)
-                    end), r'.(rlm)).
+            r2 = r'.
       have SIMEND : r' ⊨{idx',fns,fnt} (EndCall vs1, σs) ≥ (EndCall vt1, σt) : Φ.
-      { apply sim_body_end_call; auto.
-        clear. intros. rewrite /Φ. split; last naive_solver.
-        eexists _, _. done.
-      }
+      { apply sim_body_end_call; auto; [naive_solver|].
+        clear -VR. intros. rewrite /Φ. simpl. split; last naive_solver.
+        by eexists _, _. }
 
       have NONE : to_result (EndCall e_tgt0) = None. by done.
       destruct (fill_tstep_inv _ _ _ _ _ _ NONE H) as [et2 [? STEPT2]].

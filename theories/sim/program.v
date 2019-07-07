@@ -36,16 +36,9 @@ Proof.
     have ?: vrel_res (init_res ⋅ r') (#vs) (#vt).
     { do 2 eexists. do 2 (split; [done|]).
       eapply vrel_mono; [done|apply cmra_included_r|done]. }
-    split; last split; [..|done].
-    { exists O. by rewrite -STACKT. }
-    rewrite /end_call_sat -STACKT.
-    intros c Eq. simpl in Eq. simplify_eq.
-    have HL: (init_res ⋅ r').(rcm) !! 0%nat ≡ Some (to_callStateR csPub).
-    { apply cmap_lookup_op_l_equiv_pub; [apply VALID|].
-      by rewrite /= lookup_singleton. }
-    split.
-    { destruct ((init_res ⋅ r').(rcm) !! 0%nat). by eexists. by inversion HL. }
-    intros r_f VALIDf T HL2. exfalso.
-    move : HL2. rewrite lookup_op HL. apply callStateR_exclusive_2.
+    split; [|done].
+    exists O. split; [by rewrite -STACKT|].
+    apply cmap_lookup_op_l_equiv_pub; [apply VALID|].
+    by rewrite /= lookup_singleton.
   - instantiate (1:=ε). rewrite right_id left_id. apply wsat_init_state.
 Qed.

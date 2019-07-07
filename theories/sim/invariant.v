@@ -106,14 +106,9 @@ Definition vrel_res (r: resUR) (e1 e2: result) :=
 
 
 (** Condition for resource before EndCall *)
-(* Any private location w.r.t to the current call id ownership must be related *)
-Definition end_call_sat (r: resUR) (σs σt: state) : Prop :=
-  ∀ c, hd_error σt.(scs) = Some c → is_Some (r.(rcm) !! c) ∧
-  (∀ r_f, ✓ (r_f ⋅ r) →
-  ∀ T, (r_f ⋅ r).(rcm) !! c ≡ Some (Cinl (Excl T)) → ∀ (t: ptr_id), t ∈ T →
-  ∀ h, (r_f ⋅ r).(rtm) !! t ≡  Some (to_tagKindR tkUnique, h) →
-  ∀ l st, l ∈ dom (gset loc) h → σt.(shp) !! l = Some st →
-  ∃ ss, σs.(shp) !! l = Some ss ∧ arel (r_f ⋅ r) ss st).
+(* The call id [c] to be end must not have any privately protected locations. *)
+Definition end_call_sat (r: resUR) (c: call_id) : Prop :=
+  r.(rcm) !! c ≡ Some (to_callStateR csPub).
 
 Definition init_res : resUR := ((ε, {[O := to_callStateR csPub]}), ε).
 Lemma wsat_init_state : wsat init_res init_state init_state.

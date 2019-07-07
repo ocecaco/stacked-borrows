@@ -116,13 +116,12 @@ Qed.
   - We start after the substitution.
   - We assume the arguments are values related by [r]
   - The returned result must also be values and related by [vrel]. *)
-Definition fun_post (esat: A → state → state → Prop) initial_call_id_stack
-  (r: A) (n: nat) rs σs rt σt :=
-  (∃ c, σt.(scs) = c :: initial_call_id_stack) ∧
-  esat r σs σt ∧
+Definition fun_post (esat: A → call_id → Prop) initial_call_id_stack
+  (r: A) (n: nat) rs (σs: state) rt σt :=
+  (∃ c, σt.(scs) = c :: initial_call_id_stack ∧ esat r c) ∧
   (∃ vs vt, rs = ValR vs ∧ rt = ValR vt ∧ vrel r vs vt).
 Definition sim_local_fun
-  (esat: A → state → state → Prop) (fn_src fn_tgt : function) : Prop :=
+  (esat: A → call_id → Prop) (fn_src fn_tgt : function) : Prop :=
   ∀ r es et (vl_src vl_tgt: list value) σs σt
     (VALEQ: Forall2 (vrel r) vl_src vl_tgt)
     (EQS: subst_l fn_src.(fun_b) (Val <$> vl_src) fn_src.(fun_e) = Some es)
@@ -131,7 +130,7 @@ Definition sim_local_fun
                           (InitCall es) σs (InitCall et) σt
                           (fun_post esat σt.(scs)).
 
-Definition sim_local_funs (esat: A → state → state → Prop) : Prop :=
+Definition sim_local_funs (esat: A → call_id → Prop) : Prop :=
   ∀ name fn_src, fns !! name = Some fn_src → ∃ fn_tgt,
     fnt !! name = Some fn_tgt ∧
     length fn_src.(fun_b) = length fn_tgt.(fun_b) ∧

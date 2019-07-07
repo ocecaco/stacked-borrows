@@ -997,17 +997,13 @@ Qed.
 Lemma sim_body_end_call fs ft r n vs vt σs σt Φ :
   (* return values are related *)
   vrel r vs vt →
-  (* and any private location w.r.t to the current call id ownership must be related *)
-  end_call_sat r σs σt →
+  (* The top of the call stack has no privately protected locations left *)
+  (∃ c cids, σt.(scs) = c :: cids ∧ end_call_sat r c) →
   (∀ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 → σt.(scs) = c2 :: cids2 →
       let σs' := mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) in
       let σt' := mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) in
-      let r2' := match (r.(rcm) !! c2) with
-                 | Some (Cinl (Excl T)) => <[c2 := to_callStateR csPub]> r.(rcm)
-                 | _ => r.(rcm)
-                 end in
-      Wf σt → vrel ((r.(rtm), r2'), r.(rlm)) vs vt →
-      Φ ((r.(rtm), r2'), r.(rlm)) n (ValR vs) σs' (ValR vt) σt' : Prop) →
+      Wf σt →
+      Φ r n (ValR vs) σs' (ValR vt) σt' : Prop) →
   r ⊨{n,fs,ft} (EndCall (Val vs), σs) ≥ (EndCall (Val vt), σt) : Φ.
 Proof.
   intros VREL ESAT POST. pfold. intros NT r_f WSAT.
@@ -1020,78 +1016,36 @@ Proof.
     as (vt' & Eqvt & ? & c & cids & Eqc & Eqs).
   subst. simpl in Eqvt. symmetry in Eqvt. simplify_eq.
   rewrite /end_call_sat Eqc in ESAT.
-  destruct (ESAT _ eq_refl) as [[cs Eqcs] ESAT']. clear ESAT.
+  destruct ESAT as [c' [cs [Eqcs ESAT]]]. symmetry in Eqcs. simplify_eq.
   set σs' := (mkState σs.(shp) σs.(sst) cids σs.(snp) σs.(snc)).
   have STEPS: (EndCall #vs, σs) ~{fs}~> ((#vs)%E, σs').
   { destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (? & ? & Eqcs' & ?).
     eapply (head_step_fill_tstep _ []).
     econstructor. by econstructor. econstructor. by rewrite Eqcs'. }
-  exists (Val vs), σs'.
-  set r2' := match (r.(rcm) !! c) with
-             | Some (Cinl (Excl T)) => <[c := to_callStateR csPub]> r.(rcm)
-             | _ => r.(rcm)
-             end.
-  exists ((r.(rtm), r2'), r.(rlm)), (S n).
+  exists (Val vs), σs', r, (S n).
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; last split.
   { left. by constructor 1. }
-  { have VALID': ✓ (r_f ⋅ ((r.(rtm), r2'), r.(rlm))).
-    { apply (local_update_discrete_valid_frame _ _ _ VALID).
-      destruct (r.(rcm) !! c) as [[[T|]| |]|] eqn:Eqr2; rewrite /r2';
-        [|by destruct r_f as [[]], r as [[]]..].
-      destruct r_f as [[r_f1 r_f2] r_f3], r as [[r1 r2] r3]. rewrite 2!pair_op /=.
-      apply prod_local_update_1, prod_local_update_2.
-      rewrite (cmap_insert_op_r r_f2 r2 c T); [|apply VALID|exact Eqr2].
-      apply (insert_local_update _ _ _
-              (to_callStateR (csOwned T)) (to_callStateR (csOwned T)));
-        [|done|by apply exclusive_local_update].
-      apply cmap_lookup_op_r; [apply VALID|exact Eqr2]. }
-    destruct r_f as [[r_f1 r_f2] r_f3].
-    split; last split; last split; last split; last split; last split.
+  { split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
-    - rewrite pair_op. apply PINV.
-    - rewrite pair_op. intros c1 cs1. simpl.
-      case (decide (c1 = c)) => [->|NEqc]; last first.
-      + rewrite (_: (r_f2 ⋅ r2') !! c1 = (r_f2 ⋅ r.(rcm)) !! c1); last first.
-        { rewrite /r2'. destruct (r.(rcm) !! c) as [[[T|]| |]|]; [|done..].
-          by rewrite 2!lookup_op lookup_insert_ne. }
-        intros Eqcs1. move : (CINV _ _ Eqcs1). clear -NEqc Eqc.
-        destruct cs1 as [[T|]| |]; [|done..]. rewrite Eqc.
-        move => [/elem_of_cons IN ?]. split; [|done].
-        destruct IN; [by subst|done].
-      + intros Eqcs1.
-        have VALID1: ✓ cs1. { rewrite -Some_valid -Eqcs1. apply VALID'. }
+    - done.
+    - intros c1 cs1 Eqcs1. simpl.
+      case (decide (c1 = c)) => [?|NEqc].
+      + subst c1.
+        have VALID1: ✓ cs1. { rewrite -Some_valid -Eqcs1. apply VALID. }
         destruct cs1 as [[T|]| |]; [|done| |done]; last first.
         { apply (state_wf_cid_agree _ WFT). rewrite Eqc. by left. }
         (* TODO: move out *)
-        exfalso. move : Eqcs1. rewrite /r2' lookup_op.
-        destruct (r.(rcm) !! c) as [[[T'|]| |]|] eqn:Eqc2;
-          [rewrite lookup_insert|rewrite Eqc2..|done]; clear;
-          (destruct (r_f2 !! c) as [cs|] eqn:Eqrf2; rewrite Eqrf2 ;
-            [rewrite -Some_op /=; intros Eq%Some_equiv_inj
-            |rewrite left_id /=; intros Eq%Some_equiv_inj;
-              by inversion Eq; simplify_eq]);
-          destruct cs as [[]| |]; by inversion Eq; simplify_eq.
+        exfalso. move : Eqcs1. rewrite lookup_op ESAT. apply callStateR_exclusive_2.
+      + move : (CINV _ _ Eqcs1). clear -NEqc Eqc.
+        destruct cs1 as [[T|]| |]; [|done..]. rewrite Eqc.
+        move => [/elem_of_cons IN ?]. split; [|done].
+        destruct IN; [by subst|done].
     - destruct SREL as (Eqst & Eqnp & Eqcs' & Eqnc & Eqhp).
-      do 4 (split; [done|]). rewrite /= /r2'.
-      destruct (r.(rcm) !! c) as [[[T|]| |]|] eqn:Eqc2; [|apply Eqhp..].
-      intros l InD SHR.
-      specialize (Eqhp _ InD SHR) as [PUB|[t PV]]; [by left|].
-      destruct PV as (c' & T' & h & Eqc' & InT' & Eqt & Inh). simpl in *.
-      case (decide (c' = c)) => ?; last first.
-      { right. exists t, c', T', h. repeat split; [|done..].
-        by rewrite /= lookup_op lookup_insert_ne // -lookup_op. }
-      subst c'.
-      have Eq2 := cmap_lookup_op_r r_f2 r.(rcm) _ _ (proj2 (proj1 VALID)) Eqc2.
-      rewrite Eq2 in Eqc'.
-      apply Some_equiv_inj, Cinl_inj, Excl_inj, leibniz_equiv_iff in Eqc'.
-      subst T'. specialize (ESAT' ((r_f1, r_f2), r_f3) VALID T).
-      rewrite /= Eq2 in ESAT'.
-      left. intros st Eqs.
-      destruct (ESAT' (ltac:(done)) _ InT' _ Eqt _ _ Inh Eqs) as [ss [Eqss AR]].
-      by exists ss.
+      do 4 (split; [done|]). simpl.
+      intros l InD SHR. by specialize (Eqhp _ InD SHR).
     - intros ??. rewrite /=. by apply LINV. }
   (* result *)
   left. apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).

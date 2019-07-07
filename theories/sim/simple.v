@@ -9,9 +9,9 @@ want to clean some stuff from your context.
 
 From stbor.sim Require Import body instance refl_step.
 
-Definition fun_post_simple initial_call_id_stack (r: resUR) (n: nat) vs css vt cst :=
-  (∃ c, cst = c::initial_call_id_stack) ∧
-  end_call_sat r (mkState ∅ ∅ css 0 0) (mkState ∅ ∅ cst 0 0) ∧
+Definition fun_post_simple
+  initial_call_id_stack (r: resUR) (n: nat) vs (css: call_id_stack) vt cst :=
+  (∃ c, cst = c::initial_call_id_stack ∧ end_call_sat r c) ∧
   vrel_res r vs vt.
 
 Definition sim_simple fs ft r n es css et cst
@@ -59,12 +59,8 @@ Proof.
   destruct vls as [|vs []]; [done| |done].
   destruct vlt as [|vt []]; [done| |done].
   inversion FREL. intros _ _. simplify_eq.
-  eapply sim_simplify; last by eapply HH.
-  intros ?????? (Hhead & Hend & Hrel). split; first done.
-  split; last done.
-  (* Currently [end_call_sat] still looks at the state, but we should be able to fix that. *)
-  admit.
-Admitted.
+  eapply sim_simplify; last by eapply HH. done.
+Qed.
 
 Lemma sim_simple_bind fs ft
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
