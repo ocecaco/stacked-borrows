@@ -7,10 +7,7 @@ Set Default Proof Using "Type".
 Lemma sim_prog_sim_classical
       prog_src
       prog_tgt
-      `{NSD: ∀ e σ, never_stuck prog_src e σ \/
-                    exists e' σ', (e, σ) ~{prog_src}~>* (e', σ') /\
-                             ~ terminal e' /\
-                             ~ reducible prog_src e' σ'}
+      `{NSD: stuck_decidable prog_src}
       (FUNS: sim_local_funs wsat vrel prog_src prog_tgt end_call_sat)
       (MAINT: ∃ ebs HCs, prog_src !! "main" = Some (@FunV [] ebs HCs))
   : behave_prog prog_tgt <1= behave_prog prog_src.
