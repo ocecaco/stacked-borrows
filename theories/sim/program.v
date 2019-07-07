@@ -15,7 +15,7 @@ Proof.
   rewrite lookup_insert_ne //.
 Qed.
 
-Lemma sim_prog_sim_classical
+Theorem sim_prog_sim_classical
       prog_src
       prog_tgt
       `{NSD: stuck_decidable_1 prog_src}
