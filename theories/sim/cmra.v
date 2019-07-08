@@ -526,7 +526,7 @@ Proof.
   by apply init_local_res_local_update.
 Qed.
 
-Lemma res_mapsto_1_insert_local_update (r: resUR) l v1 v2 t
+Lemma res_mapsto_1_insert_local_update (r: resUR) (l: loc) v1 v2 (t: ptr_id)
   (NONE: r.(rlm) !! l = None):
   (r ⋅ res_mapsto l 1 v1 t, res_mapsto l 1 v1 t) ~l~>
   (r ⋅ res_mapsto l 1 v2 t, res_mapsto l 1 v2 t).
@@ -536,8 +536,8 @@ Proof.
   rewrite cmra_comm (cmra_comm _ (init_local_res l 1 v2 t ∅)).
   rewrite /= /init_local_res /= 2!fmap_insert /= fmap_empty.
   do 2 rewrite -insert_singleton_op //.
-  rewrite -(insert_insert lm l (Cinl (Excl (v2, t))) (Cinl (Excl (v1, t)))).
+  rewrite -(insert_insert lm l (to_locStateR $ lsLocal v2 t) (to_locStateR $ lsLocal v1 t)).
   eapply (singleton_local_update (<[l:=Cinl (Excl (v1, t))]> lm : lmapUR)).
   { by rewrite lookup_insert. }
-  apply exclusive_local_update.
+  Fail apply exclusive_local_update.
 Abort.
