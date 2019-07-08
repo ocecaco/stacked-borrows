@@ -228,17 +228,17 @@ Qed.
 we'd need tactic support for anything better. *)
 Lemma sim_simple_call n' rls rlt rv fs ft r r' n (fi: result) css cst Φ :
   sim_local_funs_lookup fs ft →
-  Forall2 (rrel rv) rls rlt →
   r ≡ r' ⋅ rv →
+  Forall2 (rrel rv) rls rlt →
   (∀ rret vs vt vls vlt fid,
-    fi = ValR [ScFnPtr fid] ∧
+    fi = ValR [ScFnPtr fid] →
     rls = ValR <$> vls → rlt = ValR <$> vlt →
     vrel rret vs vt →
     r' ⋅ rret ⊨ˢ{n',fs,ft} (Val vs, css) ≥ (Val vt, cst) : Φ) →
   r ⊨ˢ{n,fs,ft}
     (Call fi (of_result <$> rls), css) ≥ (Call fi (of_result <$> rlt), cst) : Φ.
 Proof.
-  intros Hfns Hrel Hres HH σs σt <-<-. rewrite Hres.
+  intros Hfns Hres Hrel HH σs σt <-<-. rewrite Hres.
   apply: sim_body_step_over_call.
   - done.
   - done.
@@ -376,14 +376,13 @@ Lemma sim_simple_var fs ft r n css cst var Φ :
   r ⊨ˢ{n,fs,ft} (Var var, css) ≥ (Var var, cst) : Φ.
 Proof. intros σs σt <-<-. apply sim_body_var; eauto. Qed.
 
-Lemma sim_simple_proj fs ft r n (v i: expr) (vr ir: result) css cst Φ :
-  v = of_result vr → i = of_result ir →
+Lemma sim_simple_proj fs ft r n (vr ir: result) css cst Φ :
   (∀ vi vv iv, vr = ValR vv → ir = ValR [ScInt iv] →
     vv !! (Z.to_nat iv) = Some vi → 0 ≤ iv →
     Φ r n (ValR [vi]) css (ValR [vi]) cst) →
-  r ⊨ˢ{n,fs,ft} (Proj v i, css) ≥ (Proj v i, cst) : Φ.
+  r ⊨ˢ{n,fs,ft} (Proj vr ir, css) ≥ (Proj vr ir, cst) : Φ.
 Proof.
-  intros ->-> HH σs σt <-<-. apply sim_body_proj; eauto.
+  intros HH σs σt <-<-. apply sim_body_proj; eauto.
 Qed.
 
 Lemma sim_simple_conc fs ft r n (r1 r2: result) css cst Φ :

@@ -92,6 +92,10 @@ Local Hint Extern 10 (srel _ _) => apply: srel_core_mono; first fast_done : core
 Local Hint Extern 20 (srel _ _) => apply: srel_mono; last fast_done : core.
 Local Hint Extern 10 (rrel _ _ _) => apply: rrel_core_mono; first fast_done : core.
 Local Hint Extern 20 (rrel _ _ _) => apply: rrel_mono; last fast_done : core.
+Local Hint Extern 10 (vrel _ _ _) => apply: vrel_core_mono; first fast_done : core.
+Local Hint Extern 20 (vrel _ _ _) => apply: vrel_mono; last fast_done : core.
+Local Hint Extern 10 (Forall2 (arel _) _ _) => apply: vrel_core_mono; first fast_done : core.
+Local Hint Extern 20 (Forall2 (arel _) _ _) => apply: vrel_mono; last fast_done : core.
 Local Hint Extern 10 (arel _ _ _) => apply: arel_core_mono; first fast_done : core.
 Local Hint Extern 20 (arel _ _ _) => apply: arel_mono; last fast_done : core.
 Local Hint Extern 50 (_ ≼ _) => solve_res : core.
@@ -167,7 +171,7 @@ Qed.
 
 Lemma expr_wf_soundness r e :
   expr_wf e → sem_wf r e e.
-Proof.
+Proof using Type*.
   revert r. induction e using expr_ind; simpl; intros r.
   - (* Value *)
     move=>Hwf _ _ /=.
@@ -187,14 +191,18 @@ Proof.
     move=>[Hwf1 /Forall_id Hwf2] xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel) Hval. simpl.
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval. simpl.
     eapply sim_simple_call_args.
     { induction Hwf2; simpl; first by auto.
       destruct (Forall_cons_1 _ _ _ H) as [IHx IHl]. constructor.
       - eapply IHx; auto. exact: srel_persistent.
       - eapply IHHwf2. done. }
-    intros r'' rs' rt' Hrel'.
-    admit. (* needs call lemma that works with any result. *)
+    intros r'' rs' rt' Hrel'. simplify_eq/=.
+    eapply sim_simple_valid_post.
+    eapply sim_simple_call; [by auto..|].
+    intros rret vs vt vls vlt ? ??? Hrel''. simplify_eq.
+    apply sim_simple_val=>Hval'.
+    do 3 (split; first done). auto.
   - (* InitCall: can't happen *) done.
   - (* EndCall: can't happen *) done.
   - (* Proj *)
@@ -225,9 +233,7 @@ Proof.
     simplify_eq/=. eapply sim_simple_conc; [done..|].
     intros v1 v2 ??. simplify_eq/=.
     do 3 (split; first done). simpl.
-    apply Forall2_app.
-    + eapply vrel_core_mono; first done; auto.
-    + eapply vrel_mono; last done; auto.
+    apply Forall2_app; auto.
   - (* BinOp *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
@@ -316,7 +322,7 @@ Proof.
     eapply (Forall_lookup_1  _ _ _ _ H Hlk).
     + eapply (Forall_lookup_1  _ _ _ _ Hwf2 Hlk).
     + eauto.
-Admitted.
+Qed.
 
 End sem.
 
