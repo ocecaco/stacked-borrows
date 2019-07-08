@@ -187,7 +187,7 @@ Proof.
         intros s t1 Eql. rewrite /= Eq2 Eq3 Eq4 Eq5.
         specialize (HLF _ Lti'). rewrite Z2Nat.id // in HLF.
         move : Eql. rewrite Eql1 lookup_op HLF left_id /=.
-        intros [Eq _]%res_mapsto_lookup_case. simpl in Eq. SearchAbout rtm.
+        intros [Eq _]%res_mapsto_lookup_case. simpl in Eq.
         clear -Eq Eqrtm HNP. simplify_eq. do 4 (split; [done|]).
         exists ∅. rewrite Eqrtm lookup_op HNP left_id lookup_insert fmap_empty //. }
   left.
@@ -655,15 +655,7 @@ Proof.
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - move : VALID. rewrite Eqr cmra_assoc => VALID.
       apply (local_update_discrete_valid_frame _ _ _ VALID).
-      rewrite (cmra_comm (r_f ⋅ r')) (cmra_comm (r_f ⋅ r') (res_mapsto _ _ _ _)).
-      apply prod_local_update_2.
-      rewrite /= /init_local_res /= 2!fmap_insert /= fmap_empty.
-      do 2 rewrite -insert_singleton_op //.
-      rewrite -(insert_insert (r_f.2 ⋅ r'.2) l (Cinl (Excl (s, tg))) (Cinl (Excl (v', tg)))).
-      eapply (singleton_local_update
-          (<[l:=Cinl (Excl (v', tg))]> (r_f.2 ⋅ r'.2))).
-      { by rewrite lookup_insert. }
-      by apply exclusive_local_update.
+      by eapply res_mapsto_1_insert_local_update.
     - intros t k h HL. destruct (PINV t k h) as [? PI].
       { rewrite Eqr. move: HL. by rewrite 4!lookup_op /= 2!right_id. }
       split; [done|]. simpl.
@@ -702,20 +694,20 @@ Proof.
     - move : LINV. rewrite Eqr cmra_assoc.
       (* TODO: general property of lmap_inv w.r.t to separable resource *)
       intros LINV l1 Inl1.
-      have EqD': dom (gset loc) (r_f ⋅ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))).(rlm)
-          ≡ dom (gset loc) (r_f ⋅ r' ⋅ res_mapsto l 1 v' (init_stack (Tagged tg))).(rlm).
+      have EqD': dom (gset loc) (r_f ⋅ r' ⋅ res_mapsto l 1 s tg).(rlm)
+          ≡ dom (gset loc) (r_f ⋅ r' ⋅ res_mapsto l 1 v' tg).(rlm).
       { rewrite dom_op /= (dom_op (r_f.2 ⋅ r'.2)).
-        rewrite (_: dom (gset loc) (init_local_res l 1 s (init_stack (Tagged tg)) ∅)
-                  ≡ dom (gset loc) (init_local_res l 1 v' (init_stack (Tagged tg)) ∅)) //.
+        rewrite (_: dom (gset loc) (init_local_res l 1 s tg ∅)
+                  ≡ dom (gset loc) (init_local_res l 1 v' tg ∅)) //.
         rewrite /init_local_res /= 2!fmap_insert /= fmap_empty 2!insert_empty.
         rewrite 2!dom_singleton //. }
       rewrite -> EqD' in Inl1. specialize (LINV _ Inl1) as [Inh LINV].
       split. { by apply dom_insert_subseteq. }
-      intros s1 stk1. destruct ((r_f ⋅ r').(rlm) !! l1) as [ls1|] eqn:Eqls1.
+      intros s1 t1. destruct ((r_f ⋅ r').(rlm) !! l1) as [ls1|] eqn:Eqls1.
       + have NEQ: l1 ≠ l. { intros ?. subst l1. by rewrite Eqls1 in HLN. }
         intros EQl1.
-        have EQl1' : (r_f ⋅ r' ⋅ res_mapsto l 1 v' (init_stack (Tagged tg))).(rlm) !! l1
-            ≡ Some (to_locStateR (lsLocal s1 stk1)).
+        have EQl1' : (r_f ⋅ r' ⋅ res_mapsto l 1 v' tg).(rlm) !! l1
+            ≡ Some (to_locStateR (lsLocal s1 t1)).
         { move : EQl1. rewrite lookup_op Eqls1 lookup_op Eqls1.
           rewrite /= /init_local_res 2!lookup_fmap /= lookup_insert_ne // lookup_insert_ne //. }
         specialize (LINV _ _ EQl1').
@@ -723,7 +715,9 @@ Proof.
       + rewrite /= lookup_op Eqls1 left_id /init_local_res /= lookup_fmap.
         intros Eq. case (decide (l1 = l)) => ?; [subst l1|].
         * move : Eq. rewrite 3!lookup_insert /=.
-          intros Eq%Some_equiv_inj. by simplify_eq.
+          intros Eq%Some_equiv_inj. simplify_eq. do 4 (split; [done|]).
+          destruct LocUnique as [h1 Eqh1]. exists h1.
+          by rewrite -HTEq -cmra_assoc -Eqr Eqh1.
         * exfalso. move : Eq. rewrite lookup_insert_ne // lookup_empty /=.
           by inversion 1. }
   left.
@@ -1017,8 +1011,8 @@ Proof.
     - intros l'. rewrite -> Eqrlm. setoid_rewrite Eqrlm.
       intros InD. specialize (LINV _ InD) as [? LINV].
       split. { rewrite /= write_mem_dom //. }
-      intros s stk Eq. rewrite /=.
-      specialize (LINV _ _ Eq) as (?&?&?&?).
+      intros s t1 Eq. rewrite /=.
+      specialize (LINV _ _ Eq) as (?&?&?&?& h & Eqh).
       destruct (write_mem_lookup l v σs.(shp)) as [_ HLs].
       destruct (write_mem_lookup l v σt.(shp)) as [_ HLt].
       have NEQ: ∀ i, (i < length v)%nat → l' ≠ l +ₗ i.
@@ -1026,7 +1020,12 @@ Proof.
         subst l'. apply (lmap_lookup_op_r r_f.(rlm)) in SHR; [|apply VALID].
         move : Eq. rewrite SHR. intros Eqv%Some_equiv_inj. inversion Eqv. }
       destruct EQ2 as [_ EQ2].
-      rewrite HLs // HLt // EQ2 //. rewrite -EQL //.
+      rewrite HLs // HLt // EQ2 //; [|rewrite -EQL //].
+      do 4 (split; [done|]). rewrite /r'. destruct k0; simpl; [|by exists h].
+      setoid_rewrite HL.
+      case (decide (t1 = tg)) => ?; [subst t1|].
+      rewrite lookup_insert. by eexists.
+      rewrite lookup_insert_ne //. by eexists.
   }
   left.
   eapply (sim_body_result fs ft r' n (ValR [☠%S]) (ValR [☠%S])).
@@ -1216,7 +1215,9 @@ Proof.
       rewrite /rcm /= (comm _ (r_f.(rcm) ⋅ r.(rcm))) -insert_singleton_op //.
       rewrite lookup_insert_ne // => Eqc. subst c.
       apply (lt_irrefl σt.(snc)), (cinv_lookup_in _ _ _ _ WFT CINV PRI). }
-  { intros ?. rewrite /=. rewrite right_id_L. apply LINV. }
+  { intros ?. rewrite /=. rewrite right_id_L.
+    have Eqrtm: (r_f ⋅ r ⋅ r').(rtm) ≡ (r_f ⋅ r).(rtm) by rewrite /rtm /= right_id.
+    setoid_rewrite Eqrtm. apply LINV. }
 Qed.
 
 (** EndCall *)

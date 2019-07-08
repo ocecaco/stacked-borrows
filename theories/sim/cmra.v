@@ -539,5 +539,7 @@ Proof.
   rewrite -(insert_insert lm l (to_locStateR $ lsLocal v2 t) (to_locStateR $ lsLocal v1 t)).
   eapply (singleton_local_update (<[l:=Cinl (Excl (v1, t))]> lm : lmapUR)).
   { by rewrite lookup_insert. }
-  Fail apply exclusive_local_update.
-Abort.
+  (* FIXME(Coq bug 6294) : we shouldn't need to assert here. *)
+  assert (Exclusive (A:=loc_stateR) (Cinl (Excl (v1, t)))) by exact: Cinl_exclusive.
+  by apply : exclusive_local_update.
+Qed.
