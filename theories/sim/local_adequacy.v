@@ -46,15 +46,15 @@ Inductive sim_local_frames:
              our local resource r and have world satisfaction *)
          (WSAT' : wsat (r_f ⋅ (frame.(rc) ⋅ r')) σ_src' σ_tgt')
          (* and the returned values are related w.r.t. (r ⋅ r' ⋅ r_f) *)
-         (VRET  : rrel r' v_src v_tgt)
+         (VRET  : rrel vrel r' v_src v_tgt)
          (CIDS: σ_tgt'.(scs) = frame.(callids)),
-         ∃ idx', sim_local_body wsat rrel fns fnt
+         ∃ idx', sim_local_body wsat vrel fns fnt
                                 (frame.(rc) ⋅ r') idx'
                                 (fill frame.(K_src) (of_result v_src)) σ_src'
                                 (fill frame.(K_tgt) (of_result v_tgt)) σ_tgt'
                                 (λ r _ vs σs vt σt,
                                   (∃ c, σt.(scs) = c :: cids ∧ end_call_sat r c) ∧
-                                  rrel r vs vt))
+                                  rrel vrel r vs vt))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
       frame.(callids)
@@ -70,17 +70,17 @@ Inductive sim_local_conf:
     rc idx e_src σ_src e_tgt σ_tgt
     Ke_src Ke_tgt
     (FRAMES: sim_local_frames r_f cids K_src K_tgt frames)
-    (LOCAL: sim_local_body wsat rrel fns fnt rc idx e_src σ_src e_tgt σ_tgt
+    (LOCAL: sim_local_body wsat vrel fns fnt rc idx e_src σ_src e_tgt σ_tgt
                            (λ r _ vs σs vt σt,
                               (∃ c, σt.(scs) = c :: cids ∧ end_call_sat r c) ∧
-                              rrel r vs vt))
+                              rrel vrel r vs vt))
     (KE_SRC: Ke_src = fill K_src e_src)
     (KE_TGT: Ke_tgt = fill K_tgt e_tgt)
     (WSAT: wsat (r_f ⋅ rc) σ_src σ_tgt)
   : sim_local_conf idx Ke_src σ_src Ke_tgt σ_tgt.
 
 Lemma sim_local_conf_sim
-      (FUNS: sim_local_funs wsat rrel fns fnt end_call_sat)
+      (FUNS: sim_local_funs wsat vrel fns fnt end_call_sat)
       (idx:nat) (e_src:expr) (σ_src:state) (e_tgt:expr) (σ_tgt:state)
       (SIM: sim_local_conf idx e_src σ_src e_tgt σ_tgt)
   : sim fns fnt idx (e_src, σ_src) (e_tgt, σ_tgt)
@@ -134,7 +134,7 @@ Proof.
       simplify_eq.
 
       set Φ : resUR → nat → result → state → result → state → Prop :=
-        λ r2 _ vs2 σs2 vt2 σt2, rrel r2 vs2 vt2 ∧
+        λ r2 _ vs2 σs2 vt2 σt2, rrel vrel r2 vs2 vt2 ∧
           ∃ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 ∧
             σt.(scs) = c2 :: cids2 ∧
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
@@ -206,12 +206,17 @@ Proof.
       destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ? & ?). subst e2 σ2.
       destruct (FUNS _ _ Eqfs) as ([xlt2 ebt2 HCt2] & Eqft2 & Eql2 & SIMf).
       rewrite Eqft2 in x3. simplify_eq.
+      apply list_Forall_rrel_vrel in VREL as (vs & vt & ? & ? & VREL); [|done..].
+      subst vl_src vl_tgt.
+      rewrite -list_fmap_compose in Eqss.
+      rewrite -list_fmap_compose in x4.
       specialize (SIMf _ _ _ _ _ σ1_src σ_tgt VREL Eqss x4) as [idx2 SIMf].
       esplits.
       * left. eapply tc_rtc_l.
         { apply fill_tstep_rtc. eauto. }
         { econs. rewrite -fill_app. eapply (head_step_fill_tstep).
-          econs. eapply (CallBS _ _ _ _ xls ebs); eauto. }
+          econs. eapply (CallBS _ _ _ _ xls ebs); eauto.
+          rewrite -list_fmap_compose. eauto. }
       * right. apply CIH. econs.
         { econs 2; eauto. i. instantiate (1 := mk_frame _ _ _ _). ss.
           destruct (CONT r' v_src v_tgt σ_src' σ_tgt' VRET WSAT').

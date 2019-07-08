@@ -77,8 +77,8 @@ Proof.
   - induction H; first done. simpl. by f_equal.
 Qed.
 
-Lemma subst_map_subst map x (r: result) (e: expr) :
-  subst_map map (subst x r e) = subst_map (<[x:=r]>map) e.
+Lemma subst_map_subst map x (r: value) (e: expr) :
+  subst_map map (subst x r e) = subst_map (<[x:=ValR r]>map) e.
 Proof.
   revert x r map; induction e using expr_ind; intros xx r map; simpl;
   try (f_equal; eauto).
@@ -97,11 +97,11 @@ Qed.
 (** Turning list-subst into par-subst while preserving a pointwise property.
 FIXME: There probably is a way to do this with a lemma that talks about
 just one list... *)
-Lemma subst_l_map (xbs : list binder) (xes xet : list result)
+Lemma subst_l_map (xbs : list binder) (xes xet : list value)
   (ebs ebt es et : expr) (R : result → result → Prop) :
-  subst_l xbs (of_result <$> xes) ebs = Some es →
-  subst_l xbs (of_result <$> xet) ebt = Some et →
-  Forall2 R xes xet →
+  subst_l xbs (Val <$> xes) ebs = Some es →
+  subst_l xbs (Val <$> xet) ebt = Some et →
+  Forall2 R (ValR <$> xes) (ValR <$> xet) →
   ∃ map : gmap string (result * result),
   es = subst_map (fst <$> map) ebs ∧ et = subst_map (snd <$> map) ebt ∧
   map_Forall (λ _ '(s, t), R s t) map.
@@ -116,7 +116,7 @@ Proof.
     inversion HR. simplify_eq/=. destruct a.
     + eapply IHxbs; eauto.
     + edestruct (IHxbs xes xet) as (map & ? & ? & ?); [done..|].
-      exists (<[s:=(ees, eet)]> map). subst es et.
+      exists (<[s:=(ValR ees, ValR eet)]> map). simplify_eq/=.
       rewrite !subst_map_subst !fmap_insert.
       split; first done. split; first done.
       apply map_Forall_insert_2; done.

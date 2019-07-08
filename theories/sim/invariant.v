@@ -101,16 +101,6 @@ Definition wsat (r: resUR) (σs σt: state) : Prop :=
 (* Values passed among functions are public *)
 Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
 
-Definition rrel (r: resUR) rs rt: Prop :=
-  match rs, rt with
-  | ValR vs, ValR vt => vrel r vs vt
-  | PlaceR ls ts Ts, PlaceR lt t_t Tt =>
-    (* Places are related like pointers, and the types must be equal. *)
-    vrel r [ScPtr ls ts] [ScPtr lt t_t] ∧ Ts = Tt
-  | _, _ => False
-  end.
-
-
 (** Condition for resource before EndCall *)
 (* The call id [c] to be end must not have any privately protected locations. *)
 Definition end_call_sat (r: resUR) (c: call_id) : Prop :=
@@ -148,14 +138,6 @@ Proof.
   f_equal. by apply (arel_eq _ _ _ Eq1). by apply IH.
 Qed.
 
-Lemma rrel_eq r (e1 e2: result) :
-  rrel r e1 e2 → e1 = e2.
-Proof.
-  destruct e1, e2; simpl; [|done..|].
-  - intros ?. f_equal. by eapply vrel_eq.
-  - intros [VREL ?]. subst. apply vrel_eq in VREL. by simplify_eq.
-Qed.
-
 Lemma arel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
 Proof.
@@ -183,14 +165,6 @@ Qed.
 Lemma vrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ v1 v2, vrel r1 v1 v2 → vrel r2 v1 v2.
 Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qed.
-
-Lemma rrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
-  r1 ≼ r2 → ∀ v1 v2, rrel r1 v1 v2 → rrel r2 v1 v2.
-Proof.
-  intros Le v1 v2. destruct v1, v2; simpl; [|done..|].
-  - by apply vrel_mono.
-  - intros [VREL ?]. split; [|done]. move : VREL. by apply vrel_mono.
-Qed.
 
 Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ l t, priv_loc r1 l t → priv_loc r2 l t.

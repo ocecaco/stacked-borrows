@@ -23,10 +23,10 @@ Definition value_wf (v: value) : Prop := Forall scalar_wf v.
 Fixpoint expr_wf (e: expr) : Prop :=
   match e with
   (* Structural cases. *)
+  | Var _ | Alloc _ => True
   | Val v => value_wf v
   | Call f args => expr_wf f ∧ Forall id (map expr_wf args)
   | Case e branches => expr_wf e ∧ Forall id (map expr_wf branches)
-  | Var _ | Alloc _ => True
   | Deref e _ | Ref e  | Copy e | Retag e _ =>
     expr_wf e
   | Proj e1 e2 | Conc e1 e2 | BinOp _ e1 e2 | Let _ e1 e2 | Write e1 e2 =>
@@ -47,12 +47,12 @@ Context (css cst: call_id_stack).
 Definition sem_steps := 10%nat.
 
 Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
-  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel r rs rt.
+  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel vrel r rs rt.
 
 (** We define a "semantic well-formedness", in some context. *)
 Definition sem_wf (r: resUR) es et :=
   ∀ xs : gmap string (result * result),
-    map_Forall (λ _ '(rs, rt), rrel r rs rt) xs →
+    map_Forall (λ _ '(rs, rt), rrel vrel r rs rt) xs →
     r ⊨ˢ{sem_steps,fs,ft}
       (subst_map (fst <$> xs) es, css)
     ≥
@@ -142,7 +142,8 @@ Proof.
       admit. (* end_call_sat *)
     - done.
   }
-  destruct (subst_l_map _ _ _ _ _ _ _ _ Hsubst1 Hsubst2 Hrel) as (map & -> & -> & Hmap).
+  destruct (subst_l_map _ _ _ _ _ _ _ (rrel vrel r) Hsubst1 Hsubst2) as (map & -> & -> & Hmap).
+  { clear -Hrel. induction Hrel; eauto using Forall2. }
   eapply sim_simplify, expr_wf_soundness; [done..|].
   admit. (* resource stuff. *)
 Admitted.

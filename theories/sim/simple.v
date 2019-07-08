@@ -13,7 +13,7 @@ From stbor.sim Require Import refl_step.
 Definition fun_post_simple
   initial_call_id_stack (r: resUR) (n: nat) vs (css: call_id_stack) vt cst :=
   (∃ c, cst = c::initial_call_id_stack ∧ end_call_sat r c) ∧
-  rrel r vs vt.
+  rrel vrel r vs vt.
 
 Definition sim_simple fs ft r n es css et cst
   (Φ : resUR → nat → result → call_id_stack → result → call_id_stack → Prop) : Prop :=
@@ -83,8 +83,8 @@ Proof.
   destruct vls as [|vs []]; [done| |done].
   destruct vlt as [|vt []]; [done| |done].
   inversion FREL as [|???? RREL]. intros _ _. simplify_eq.
-  (* eapply sim_simplify; last by eapply HH. done. *)
-Admitted.
+  eapply sim_simplify; last by eapply HH. done.
+Qed.
 
 Lemma sim_simple_bind fs ft
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
@@ -131,7 +131,7 @@ Lemma sim_simple_call n' vls vlt rv fs ft r r' n fid css cst Φ :
   sim_local_funs_lookup fs ft →
   Forall2 (vrel rv) vls vlt →
   r ≡ r' ⋅ rv →
-  (∀ rret vs vt, rrel rret vs vt →
+  (∀ rret vs vt, rrel vrel rret vs vt →
     r' ⋅ rret ⊨ˢ{n',fs,ft} (of_result vs, css) ≥ (of_result vt, cst) : Φ) →
   r ⊨ˢ{n,fs,ft}
     (Call #[ScFnPtr fid] (Val <$> vls), css) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), cst) : Φ.
