@@ -54,15 +54,15 @@ Inductive _sim_local_body_step (r_f : A) (sim_local_body : SIM)
     (* [rv] justifies the arguments *)
     (VREL: Forall2 (rrel rv) vl_src vl_tgt)
     (* and after the call our context can continue *)
-    (CONT: ∀ r' r_src r_tgt σs' σt'
-             (* For any new resource r' that supports the returned results are
-                related w.r.t. (r ⋅ r' ⋅ r_f) *)
-             (VRET: rrel r' r_src r_tgt)
+    (CONT: ∀ r' v_src v_tgt σs' σt'
+             (* For any new resource r' that supports the returned values are
+                related w.r.t. r' *)
+             (VRET: vrel r' v_src v_tgt)
              (WSAT: wsat (r_f ⋅ (rc ⋅ r')) σs' σt')
              (STACK: σt.(scs) = σt'.(scs)),
         ∃ idx', sim_local_body (rc ⋅ r') idx'
-                               (fill Ks (of_result r_src)) σs'
-                               (fill Kt (of_result r_tgt)) σt' Φ).
+                               (fill Ks (Val v_src)) σs'
+                               (fill Kt (Val v_tgt)) σt' Φ).
 
 Record sim_local_body_base (r_f: A) (sim_local_body : SIM)
   (r: A) (idx: nat) es σs et σt Φ : Prop := {

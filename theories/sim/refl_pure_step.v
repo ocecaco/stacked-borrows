@@ -9,21 +9,27 @@ Set Default Proof Using "Type".
 
 (** Call - step over *)
 Lemma sim_body_step_over_call fs ft
-  rc rv n fid vls vlt σs σt Φ
-  (VREL: Forall2 (vrel rv) vls vlt)
+  rc rv n fid rls rlt σs σt Φ
+  (RREL: Forall2 (rrel vrel rv) rls rlt)
   (FUNS: sim_local_funs_lookup fs ft) :
-  (∀ r' vs vt σs' σt' (VRET: rrel vrel r' vs vt)
+  (∀ r' vls vlt vs vt σs' σt' (VRET: vrel r' vs vt)
     (STACKS: σs.(scs) = σs'.(scs))
-    (STACKT: σt.(scs) = σt'.(scs)), ∃ n',
-    rc ⋅ r' ⊨{n',fs,ft} (of_result vs, σs') ≥ (of_result vt, σt') : Φ) →
+    (STACKT: σt.(scs) = σt'.(scs))
+    (Eqvls: rls = ValR <$> vls)
+    (Eqvlt: rlt = ValR <$> vlt), ∃ n',
+    rc ⋅ r' ⊨{n',fs,ft} (Val vs, σs') ≥ (Val vt, σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
-    (Call #[ScFnPtr fid] (Val <$> vls), σs) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), σt) : Φ.
+    (Call #[ScFnPtr fid] (of_result <$> rls), σs) ≥ (Call #[ScFnPtr fid] (of_result <$> rlt), σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT.
   edestruct NT as [[]|[e2 [σ2 RED]]]; [constructor 1|done|].
-  apply tstep_call_inv in RED; last first.
-  { apply list_Forall_to_value. eauto. }
-  destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ?). subst e2 σ2.
+  apply tstep_call_inv_result in RED; last by apply list_Forall_to_of_result.
+  destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ? & VALs).
+  have VALs' := VALs. apply list_Forall_to_value in VALs' as [vls Eqvls].
+  subst. rewrite Eqvls. rewrite Eqvls in VALs, Eqss.
+  apply list_Forall_result_value in Eqvls. subst rls.
+  destruct (list_Forall_rrel_vrel_3 _ _ _ RREL VALs) as (vlt & ? & VALt & VREL).
+  subst rlt.
   destruct (FUNS _ _ Eqfs) as ([xlt ebt HCt] & Eqft & Eql).
   simpl in Eql.
   destruct (subst_l_is_Some xlt (Val <$> vlt) ebt) as [est Eqst].
@@ -31,15 +37,14 @@ Proof.
             (subst_l_is_Some_length _ _ _ _ Eqss) fmap_length //. }
   split; [|done|].
   { right. exists (EndCall (InitCall est)), σt.
-     eapply (head_step_fill_tstep _ []). econstructor. econstructor; try done.
-     apply list_Forall_to_value. eauto. }
+     eapply (head_step_fill_tstep _ []).
+     econstructor. econstructor; try done; rewrite list_Forall_result_value_2 //. }
   eapply (sim_local_body_step_over_call _ _ _ _ _ _ _ _ _ _ _ _ _
             [] [] fid (ValR <$> vlt) (ValR <$> vls)); eauto.
   { by rewrite of_result_list_expr. }
-  { by rewrite of_result_list_expr. }
-  { eapply Forall2_fmap, Forall2_impl; eauto. }
   intros r' ? ? σs' σt' VR WSAT' STACK.
-  destruct (CONT _ _ _ σs' σt' VR) as [n' ?]; [|done|exists n'; by left].
+  destruct (CONT r' vls vlt v_src v_tgt σs' σt') as [n' ?];
+    [by apply vrel_rrel| |done..|exists n'; by left].
   destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (?&?&?Eqcss&?).
   destruct WSAT' as (?&?&?&?&?&SREL'&?). destruct SREL' as (?&?&?Eqcss'&?).
   by rewrite Eqcss' Eqcss.

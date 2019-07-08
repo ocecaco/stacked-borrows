@@ -93,6 +93,10 @@ Proof.
   - intros [VREL ?]. subst. apply vrel_eq in VREL. by simplify_eq.
 Qed.
 
+Lemma vrel_rrel r (v1 v2 : value) :
+  vrel r v1 v2 → rrel vrel r #v1 #v2.
+Proof. done. Qed.
+
 Lemma rrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ v1 v2, rrel vrel r1 v1 v2 → rrel vrel r2 v1 v2.
 Proof.
@@ -113,6 +117,10 @@ Proof.
   have Eq2 := to_of_result e. rewrite Eq1 /= in Eq2. by simplify_eq.
 Qed.
 
+Lemma list_Forall_result_value_2 (vs: list value) :
+  of_result <$> (ValR <$> vs) = Val <$> vs.
+Proof. by rewrite -list_fmap_compose. Qed.
+
 Lemma list_Forall_rrel_vrel r (es et: list result) :
   Forall2 (rrel vrel r) es et →
   Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> es) →
@@ -128,3 +136,50 @@ Proof.
   by rewrite -> Forall2_fmap in RREL.
 Qed.
 
+Lemma rrel_to_value r (v1: value) e2:
+  rrel vrel r #v1 e2 → ∃ (v2: value), e2 = v2.
+Proof. destruct e2; [|done]. by eexists. Qed.
+
+Lemma list_Forall_rrel_to_value r vs et :
+  Forall2 (rrel vrel r) (ValR <$> vs) et →
+  ∃ vt, et = ValR <$> vt ∧ Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> et).
+Proof.
+  revert vs. induction et as [|e et IH]; intros vs.
+  { intros Eq%Forall2_nil_inv_r.
+    apply fmap_nil_inv in Eq. subst. simpl. by exists []. }
+  destruct vs as [|v vs]; [by intros Eq%Forall2_nil_inv_l|].
+  rewrite !fmap_cons. inversion 1 as [|???? RREL REST]; simplify_eq.
+  apply rrel_to_value in RREL as [vt ?].
+  apply IH in REST as [vts [? ?]]. subst e et. exists (vt :: vts).
+  rewrite fmap_cons. split; [done|]. constructor; [|done]. by eexists.
+Qed.
+
+Lemma list_Forall_rrel_vrel_2 r (es et: list result) :
+  Forall2 (rrel vrel r) es et →
+  Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> es) →
+  ∃ vs vt, es = ValR <$> vs ∧ et = ValR <$> vt ∧
+  Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> et) ∧
+  Forall2 (vrel r) vs vt.
+Proof.
+  intros RREL VRELs.
+  have VRELs' := VRELs. apply list_Forall_to_value in VRELs' as  [vs Eqs].
+  apply list_Forall_result_value in Eqs. subst es.
+  destruct (list_Forall_rrel_to_value _ _ _ RREL) as [vt [? VRELt]]. subst.
+  destruct (list_Forall_rrel_vrel _ _ _ RREL VRELs VRELt) as (vs' & vt' & Eq1 & Eq2 & ?).
+  by exists vs', vt'.
+Qed.
+
+Lemma list_Forall_rrel_vrel_3 r (vs: list value) (et: list result) :
+  Forall2 (rrel vrel r) (ValR <$> vs) et →
+  Forall (λ ei : expr, is_Some (to_value ei)) (Val <$> vs) →
+  ∃ vt, et = ValR <$> vt ∧
+  Forall (λ ei : expr, is_Some (to_value ei)) (Val <$> vt) ∧
+  Forall2 (vrel r) vs vt.
+Proof.
+  rewrite -list_Forall_result_value_2.
+  intros RREL VRELs.
+  destruct (list_Forall_rrel_vrel_2 _ _ _ RREL VRELs) as (vs1 & vt & Eqvs1 & ? & FA & ?).
+  subst. rewrite list_Forall_result_value_2 in FA.
+  exists vt. split; [done|].
+  apply Inj_instance_6 in Eqvs1; [by subst|]. intros ??. by inversion 1.
+Qed.
