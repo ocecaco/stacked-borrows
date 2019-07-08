@@ -43,27 +43,10 @@ Definition prog_wf (prog: fn_env) :=
 Section sem.
 Context (fs ft: fn_env) `{!sim_local_funs_lookup fs ft}.
 Context (css cst: call_id_stack).
-Notation rrel := (rrel vrel).
-
-(** Helper lemmas *)
-Lemma rrel_with_eq r rs rt :
-  rrel r rs rt → rrel r rs rt ∧ rs = rt.
-Proof.
-  intros. split; first done. exact: rrel_eq.
-Qed.
 
 (** Well-formed two-substitutions. *)
 Definition srel (r: resUR) (xs: gmap string (result * result)) : Prop :=
   map_Forall (λ _ '(rs, rt), rrel r rs rt) xs.
-
-Lemma rrel_persistent r rs rt :
-  rrel r rs rt → rrel (core r) rs rt.
-Proof. destruct rs, rt; simpl; naive_solver eauto using vrel_persistent. Qed.
-
-Lemma rrel_mono r1 r2 rs rt :
-  ✓ r2 → r1 ≼ r2 →
-  rrel r1 rs rt → rrel r2 rs rt.
-Proof. destruct rs, rt; simpl; intros; naive_solver eauto using vrel_mono. Qed.
 
 Lemma srel_persistent r xs :
   srel r xs → srel (core r) xs.
@@ -326,7 +309,7 @@ Proof.
       apply: res_end_call_sat; first done. exact: cmra_included_r.
     - eapply rrel_mono; [done| |done]. exact: cmra_included_l.
   }
-  destruct (subst_l_map _ _ _ _ _ _ _ (rrel vrel r) Hsubst1 Hsubst2) as (map & -> & -> & Hmap).
+  destruct (subst_l_map _ _ _ _ _ _ _ (rrel r) Hsubst1 Hsubst2) as (map & -> & -> & Hmap).
   { clear -Hrel. induction Hrel; eauto using Forall2. }
   eapply sim_simplify, expr_wf_soundness; done.
 Qed.

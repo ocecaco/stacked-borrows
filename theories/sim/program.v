@@ -32,7 +32,7 @@ Proof.
     intros. simpl. exists 1%nat.
     apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).
     intros VALID.
-    have ?: rrel vrel (init_res ⋅ r') vs vt.
+    have ?: rrel (init_res ⋅ r') vs vt.
     { eapply rrel_mono; [done|apply cmra_included_r|exact VRET]. }
     split; [|done].
     exists O. split; [by rewrite -STACKT|].

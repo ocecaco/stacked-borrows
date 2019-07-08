@@ -13,7 +13,7 @@ From stbor.sim Require Import refl_step.
 Definition fun_post_simple
   initial_call_id_stack (r: resUR) (n: nat) vs (css: call_id_stack) vt cst :=
   (∃ c, cst = c::initial_call_id_stack ∧ end_call_sat r c) ∧
-  rrel vrel r vs vt.
+  rrel r vs vt.
 
 Definition sim_simple fs ft r n es css et cst
   (Φ : resUR → nat → result → call_id_stack → result → call_id_stack → Prop) : Prop :=
@@ -228,7 +228,7 @@ Qed.
 we'd need tactic support for anything better. *)
 Lemma sim_simple_call n' rls rlt rv fs ft r r' n fid css cst Φ :
   sim_local_funs_lookup fs ft →
-  Forall2 (rrel vrel rv) rls rlt →
+  Forall2 (rrel rv) rls rlt →
   r ≡ r' ⋅ rv →
   (∀ rret vs vt vls vlt,
     rls = ValR <$> vls → rlt = ValR <$> vlt →
@@ -244,7 +244,7 @@ Proof.
   - intros. exists n'. eapply sim_body_res_proper; last apply: HH; try done.
 Qed.
 
-(** * Memory *)
+(** * Memory: local *)
 Lemma sim_simple_alloc_local fs ft r n T css cst Φ :
   (∀ (l: loc) (tg: nat),
     let rt := res_tag tg tkUnique ∅ in
@@ -263,6 +263,26 @@ Lemma sim_simple_write_local fs ft r r' n l tg ty v v' css cst Φ :
     (Place l (Tagged tg) ty <- #v, css) ≥ (Place l (Tagged tg) ty <- #v, cst)
   : Φ.
 Proof. intros Hty Hres HH σs σt <-<-. eapply sim_body_write_local_1; eauto. Qed.
+
+Lemma sim_simple_read_local_l fs ft r r' n l tg ty s et css cst Φ :
+  tsize ty = 1%nat →
+  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  (r ⊨ˢ{n,fs,ft} (#[s], css) ≥ (et, cst) : Φ) →
+  r ⊨ˢ{n,fs,ft}
+    (Copy (Place l (Tagged tg) ty), css) ≥ (et, cst)
+  : Φ.
+Proof.
+Admitted.
+
+Lemma sim_simple_read_local_r fs ft r r' n l tg ty s es css cst Φ :
+  tsize ty = 1%nat →
+  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  (r ⊨ˢ{n,fs,ft} (es, css) ≥ (#[s], cst) : Φ) →
+  r ⊨ˢ{n,fs,ft}
+    (es, css) ≥ (Copy (Place l (Tagged tg) ty), cst)
+  : Φ.
+Proof.
+Admitted.
 
 Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
   r ≡ r' ⋅ res_mapsto l 1 s tg →
@@ -284,6 +304,42 @@ Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
     (Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default, cst)
   : Φ.
 Proof.
+Admitted.
+
+(** * Memory: shared *)
+Lemma sim_simple_alloc_shared fs ft r n T css cst Φ :
+  (∀ (l: loc) (tg: nat),
+    let rt := res_tag tg tkPub ∅ in
+    Φ (r ⋅ rt) n (PlaceR l (Tagged tg) T) css (PlaceR l (Tagged tg) T) cst) →
+  r ⊨ˢ{n,fs,ft} (Alloc T, css) ≥ (Alloc T, cst) : Φ.
+Proof.
+Admitted.
+
+Lemma sim_simple_write_shared fs ft r n (rs1 rs2 rt1 rt2: result) css cst Φ :
+  rrel r rs1 rt1 →
+  rrel r rs2 rt2 →
+  Φ r n (ValR [☠%S]) css (ValR [☠%S]) cst →
+  r ⊨ˢ{n,fs,ft} (rs1 <- rs2, css) ≥ (rt1 <- rt2, cst) : Φ.
+Proof.
+  intros [Hrel1 ?]%rrel_with_eq [Hrel2 ?]%rrel_with_eq. simplify_eq.
+Admitted.
+
+Lemma sim_simple_read_shared fs ft r n (rs rt: result) css cst Φ :
+  rrel r rs rt →
+  (∀ r' (v1 v2: result),
+    rrel r' v1 v2 →
+    Φ (r ⋅ r') n v1 css v2 cst) →
+  r ⊨ˢ{n,fs,ft} (Copy rs, css) ≥ (Copy rt, cst) : Φ.
+Proof.
+  intros [Hrel ?]%rrel_with_eq. simplify_eq.
+Admitted.
+
+Lemma sim_simple_retag_shared fs ft r n (rs rt: result) k css cst Φ :
+  rrel r rs rt →
+  (Φ r n (ValR [☠%S]) css (ValR [☠%S]) cst) →
+  r ⊨ˢ{n,fs,ft} (Retag rs k, css) ≥ (Retag rt k, cst) : Φ.
+Proof.
+  intros [Hrel ?]%rrel_with_eq. simplify_eq.
 Admitted.
 
 (** * Pure *)

@@ -9,6 +9,8 @@ Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
 
 Notation "r |==> r'" := (viewshift wsat r r') (at level 65, format "r  |==>  r'").
 
+Notation rrel := (rrel vrel).
+
 (** "modular" simulation relations dont make assumptions
 about the global fn table.
 This is very weak! A stronger version would, instead of universally quantifying the
@@ -90,7 +92,7 @@ Qed.
 
 (** Result relation properties *)
 Lemma rrel_eq  r (e1 e2: result) :
-  rrel vrel r e1 e2 → e1 = e2.
+  rrel r e1 e2 → e1 = e2.
 Proof.
   destruct e1, e2; simpl; [|done..|].
   - intros ?. f_equal. by eapply vrel_eq.
@@ -98,15 +100,25 @@ Proof.
 Qed.
 
 Lemma vrel_rrel r (v1 v2 : value) :
-  vrel r v1 v2 → rrel vrel r #v1 #v2.
+  vrel r v1 v2 → rrel r #v1 #v2.
 Proof. done. Qed.
 
+Lemma rrel_persistent r rs rt :
+  rrel r rs rt → rrel (core r) rs rt.
+Proof. destruct rs, rt; simpl; naive_solver eauto using vrel_persistent. Qed.
+
 Lemma rrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
-  r1 ≼ r2 → ∀ v1 v2, rrel vrel r1 v1 v2 → rrel vrel r2 v1 v2.
+  r1 ≼ r2 → ∀ v1 v2, rrel r1 v1 v2 → rrel r2 v1 v2.
 Proof.
   intros Le v1 v2. destruct v1, v2; simpl; [|done..|].
   - by apply vrel_mono.
   - intros [VREL ?]. split; [|done]. move : VREL. by apply vrel_mono.
+Qed.
+
+Lemma rrel_with_eq r rs rt :
+  rrel r rs rt → rrel r rs rt ∧ rs = rt.
+Proof.
+  intros. split; first done. exact: rrel_eq.
 Qed.
 
 Lemma list_Forall_result_value (es: list result) (vs: list value) :
@@ -126,7 +138,7 @@ Lemma list_Forall_result_value_2 (vs: list value) :
 Proof. by rewrite -list_fmap_compose. Qed.
 
 Lemma list_Forall_rrel_vrel r (es et: list result) :
-  Forall2 (rrel vrel r) es et →
+  Forall2 (rrel r) es et →
   Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> es) →
   Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> et) →
   ∃ vs vt,  es = ValR <$> vs ∧ et = ValR <$> vt ∧
@@ -141,11 +153,11 @@ Proof.
 Qed.
 
 Lemma rrel_to_value r (v1: value) e2:
-  rrel vrel r #v1 e2 → ∃ (v2: value), e2 = v2.
+  rrel r #v1 e2 → ∃ (v2: value), e2 = v2.
 Proof. destruct e2; [|done]. by eexists. Qed.
 
 Lemma list_Forall_rrel_to_value r vs et :
-  Forall2 (rrel vrel r) (ValR <$> vs) et →
+  Forall2 (rrel r) (ValR <$> vs) et →
   ∃ vt, et = ValR <$> vt ∧ Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> et).
 Proof.
   revert vs. induction et as [|e et IH]; intros vs.
@@ -159,7 +171,7 @@ Proof.
 Qed.
 
 Lemma list_Forall_rrel_vrel_2 r (es et: list result) :
-  Forall2 (rrel vrel r) es et →
+  Forall2 (rrel r) es et →
   Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> es) →
   ∃ vs vt, es = ValR <$> vs ∧ et = ValR <$> vt ∧
   Forall (λ ei : expr, is_Some (to_value ei)) (of_result <$> et) ∧
@@ -174,7 +186,7 @@ Proof.
 Qed.
 
 Lemma list_Forall_rrel_vrel_3 r (vs: list value) (et: list result) :
-  Forall2 (rrel vrel r) (ValR <$> vs) et →
+  Forall2 (rrel r) (ValR <$> vs) et →
   Forall (λ ei : expr, is_Some (to_value ei)) (Val <$> vs) →
   ∃ vt, et = ValR <$> vt ∧
   Forall (λ ei : expr, is_Some (to_value ei)) (Val <$> vt) ∧

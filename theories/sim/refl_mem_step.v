@@ -1222,7 +1222,7 @@ Qed.
 
 (** EndCall *)
 Lemma end_call_tstep_src_tgt fs ft r_f r σs σt (rs rt: result) es' σs' :
-  rrel vrel r rs rt →
+  rrel r rs rt →
   wsat (r_f ⋅ r) σs σt →
   (EndCall rs, σs) ~{fs}~> (es', σs') →
   ∃ vs vt : value, rs = ValR vs ∧ rt = ValR vt ∧ reducible ft (EndCall rt) σt.
@@ -1242,7 +1242,7 @@ Qed.
 
 Lemma sim_body_end_call fs ft r n rs rt σs σt Φ :
   (* return values are related *)
-  rrel vrel r rs rt →
+  rrel r rs rt →
   (* The top of the call stack has no privately protected locations left *)
   (∃ c cids, σt.(scs) = c :: cids ∧ end_call_sat r c) →
   (∀ c1 c2 cids1 cids2 vs vt,

@@ -54,7 +54,7 @@ Inductive sim_local_frames:
                                 (fill frame.(K_tgt) (Val v_tgt)) σ_tgt'
                                 (λ r _ vs σs vt σt,
                                   (∃ c, σt.(scs) = c :: cids ∧ end_call_sat r c) ∧
-                                  rrel vrel r vs vt))
+                                  rrel r vs vt))
   : sim_local_frames
       (r_f ⋅ frame.(rc))
       frame.(callids)
@@ -73,7 +73,7 @@ Inductive sim_local_conf:
     (LOCAL: sim_local_body wsat vrel fns fnt rc idx e_src σ_src e_tgt σ_tgt
                            (λ r _ vs σs vt σt,
                               (∃ c, σt.(scs) = c :: cids ∧ end_call_sat r c) ∧
-                              rrel vrel r vs vt))
+                              rrel r vs vt))
     (KE_SRC: Ke_src = fill K_src e_src)
     (KE_TGT: Ke_tgt = fill K_tgt e_tgt)
     (WSAT: wsat (r_f ⋅ rc) σ_src σ_tgt)
@@ -134,7 +134,7 @@ Proof.
       simplify_eq.
 
       set Φ : resUR → nat → result → state → result → state → Prop :=
-        λ r2 _ vs2 σs2 vt2 σt2, rrel vrel r2 vs2 vt2 ∧
+        λ r2 _ vs2 σs2 vt2 σt2, rrel r2 vs2 vt2 ∧
           ∃ c1 c2 cids1 cids2, σs.(scs) = c1 :: cids1 ∧
             σt.(scs) = c2 :: cids2 ∧
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧

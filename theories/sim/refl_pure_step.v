@@ -10,7 +10,7 @@ Set Default Proof Using "Type".
 (** Call - step over *)
 Lemma sim_body_step_over_call fs ft
   rc rv n fid rls rlt σs σt Φ
-  (RREL: Forall2 (rrel vrel rv) rls rlt)
+  (RREL: Forall2 (rrel rv) rls rlt)
   (FUNS: sim_local_funs_lookup fs ft) :
   (∀ r' vls vlt vs vt σs' σt' (VRET: vrel r' vs vt)
     (STACKS: σs.(scs) = σs'.(scs))
