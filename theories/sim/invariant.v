@@ -68,10 +68,12 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
 
 Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
   ∀ (l: loc), l ∈ dom (gset loc) r.(rlm) → l ∈ dom (gset loc) σt.(shp) ∧
-    ∀ s stk,
-    r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s stk)) →
+    ∀ s t,
+    r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s t)) →
     σs.(shp) !! l = Some s ∧ σt.(shp) !! l = Some s ∧
-    σs.(sst) !! l = Some stk ∧ σt.(sst) !! l = Some stk.
+    σs.(sst) !! l = Some (init_stack (Tagged t)) ∧
+    σt.(sst) !! l = Some (init_stack (Tagged t)) ∧
+    ∃ h, r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h).
 
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
