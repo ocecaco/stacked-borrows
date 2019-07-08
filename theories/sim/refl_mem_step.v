@@ -8,6 +8,17 @@ Set Default Proof Using "Type".
 
 (** MEM STEP -----------------------------------------------------------------*)
 
+Lemma wsat_tmap_nxtp r σs σt :
+  wsat r σs σt → r.(rtm) !! σt.(snp) = None.
+Proof.
+  intros (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
+  destruct (r.(rtm) !! σt.(snp)) as [[k h]|] eqn:Eqr; [|done].
+  exfalso.
+  move : (proj1 (proj1 VALID) σt.(snp)). rewrite Eqr.
+  intros [[k' Eqk']%tagKindR_valid VALh]. simpl in Eqk', VALh. subst k.
+  destruct (PINV σt.(snp) k' h) as [Lt _]; [by rewrite Eqr|]. lia.
+Qed.
+
 Lemma sim_body_alloc_local fs ft r n T σs σt Φ :
   let l := (fresh_block σt.(shp), 0) in
   let t := (Tagged σt.(snp)) in
@@ -17,14 +28,16 @@ Lemma sim_body_alloc_local fs ft r n T σs σt Φ :
   let σt' := mkState (init_mem l (tsize T) σt.(shp))
                      (init_stacks σt.(sst) l (tsize T) t) σt.(scs)
                      (S σt.(snp)) σt.(snc) in
-  let r' : resUR := res_mapsto l (tsize T) ☠ (init_stack t) in
-  Φ (r ⋅ r') n (PlaceR l t T) σs' (PlaceR l t T) σt' : Prop →
+  let rt : resUR := res_tag σt.(snp) tkUnique ∅ in
+  let r' : resUR := res_mapsto l (tsize T) ☠ σt.(snp) in
+  Φ (r ⋅ rt ⋅ r') n (PlaceR l t T) σs' (PlaceR l t T) σt' : Prop →
   r ⊨{n,fs,ft} (Alloc T, σs) ≥ (Alloc T, σt) : Φ.
 Proof.
-  intros l t σs' σt' r' POST.
+  intros l t σs' σt' rt r' POST.
   pfold. intros NT. intros.
   have EqDOM := wsat_heap_dom _ _ _ WSAT.
   have EqFRESH := fresh_block_equiv _ _ EqDOM.
+  have HNP := wsat_tmap_nxtp _ _ _ WSAT.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&REL).
   have Eqlst: l = (fresh_block σs.(shp), 0). { by rewrite /l EqFRESH. }
@@ -36,21 +49,29 @@ Proof.
   have STEPS: (Alloc T, σs) ~{fs}~> (Place l t T, σs').
   { subst l σs' t. rewrite Eqlst -Eqnp.
     eapply (head_step_fill_tstep _ []),  alloc_head_step. }
-  eexists _, σs', (r ⋅ r'), n. split; last split.
+  eexists _, σs', (r ⋅ rt ⋅ r'), n. split; last split.
   { left. by apply tc_once. }
-  { have HLF : ∀ i, (i < tsize T)%nat → (r_f ⋅ r).(rlm) !! (l +ₗ i) = None.
+  { have Eqrcm: (r_f ⋅ r ⋅ rt ⋅ r').(rcm) ≡ (r_f ⋅ r).(rcm)
+      by rewrite /rcm /= 2!right_id.
+    have Eqrlm: (r_f ⋅ r ⋅ rt).(rlm) ≡ (r_f ⋅ r).(rlm)
+      by rewrite /rlm /= right_id.
+    have Eqrtm: (r_f ⋅ r ⋅ rt ⋅ r').(rtm) ≡ (r_f ⋅ r ⋅ rt).(rtm)
+      by rewrite /rtm /= right_id.
+    have HLF : ∀ i, (i < tsize T)%nat → (r_f ⋅ r ⋅ rt).(rlm) !! (l +ₗ i) = None.
     { intros i Lti.
+      rewrite lookup_op lookup_empty right_id_L.
       destruct ((r_f ⋅ r).(rlm) !! (l +ₗ i)) as [ls|] eqn:Eql; [|done].
       exfalso.
       destruct (LINV _ (elem_of_dom_2 _ _ _ Eql)) as [EqD _].
       by apply (is_fresh_block σt.(shp) i). }
-    have VALID': ✓ (r_f ⋅ r ⋅ r').
+    have VALIDt: ✓ (r_f ⋅ r ⋅ rt).
+    { apply (local_update_discrete_valid_frame _ ε rt); [by rewrite right_id|].
+      rewrite right_id. by apply res_tag_alloc_local_update. }
+    have VALID': ✓ (r_f ⋅ r ⋅ rt ⋅ r').
     { apply (local_update_discrete_valid_frame _ ε r'); [by rewrite right_id|].
-      apply prod_local_update_2. rewrite /= right_id.
-      by apply init_local_res_local_update. }
-    have Eqrtm: (r_f ⋅ r ⋅ r').(rtm) ≡ (r_f ⋅ r).(rtm) by rewrite /rtm /= right_id.
-    have Eqrcm: (r_f ⋅ r ⋅ r').(rcm) ≡ (r_f ⋅ r).(rcm) by rewrite /rcm /= right_id.
-    rewrite cmra_assoc.
+      rewrite /= right_id -cmra_assoc cmra_assoc.
+      rewrite /r'. by apply res_mapsto_local_alloc_local_update. }
+    rewrite 2!cmra_assoc.
     destruct (init_mem_lookup l (tsize T) σt.(shp)) as [HLmt1 HLmt2].
     destruct (init_mem_lookup l (tsize T) σs.(shp)) as [HLms1 HLms2].
     destruct (init_stacks_lookup σt.(sst) l (tsize T) t) as [HLst1 HLst2].
@@ -59,10 +80,19 @@ Proof.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
-    - intros t1 k1 h1. rewrite Eqrtm. intros Eqh1.
+    - intros t1 k1 h1. rewrite Eqrtm.
+      case (decide (t1 = σt.(snp))) => ?; [subst t1|].
+      { intros Eqh1. split; [simpl; lia|].
+        move : Eqh1. rewrite lookup_op lookup_insert.
+        intros [Eqh1 ?]%tagKindR_exclusive_heaplet'. subst k1.
+        intros l1 s1. rewrite -Eqh1 fmap_empty lookup_empty. by inversion 1. }
+      intros Eqh'.
+      have Eqh1: (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tagKindR k1, h1).
+      { move : Eqh'. rewrite lookup_op lookup_insert_ne // lookup_empty right_id //. }
       specialize (PINV _ _ _ Eqh1) as [? PINV]. split; [simpl; lia|].
       intros l1 s1 Eqs1. specialize (PINV _ _ Eqs1) as [Eql PINV].
-      split. { apply lmap_lookup_op_l; [apply VALID'|done]. }
+      split. { apply lmap_lookup_op_l; [apply VALID'|].
+               apply lmap_lookup_op_l; [apply VALIDt|done]. }
       have InD : l1 ∈ dom (gset loc) (r_f ⋅ r).(rlm).
       { rewrite elem_of_dom. move : Eql. clear.
         destruct ((r_f ⋅ r).(rlm) !! l1) eqn:Eql1; rewrite Eql1; [by eexists|].
@@ -77,7 +107,17 @@ Proof.
       specialize (CINV _ _ Eqc). destruct cs as [[Tc|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
       intros t1 [Ltc Ht]%CINV. split; [lia|].
-      intros k h. rewrite Eqrtm. intros Eqt1 l1 Inl1.
+      intros k h. rewrite Eqrtm.
+      case (decide (t1 = σt.(snp))) => ?; [subst t1|].
+      { intros Eqh1. move : (proj1 (proj1 VALIDt) σt.(snp)). rewrite Eqh1.
+        intros [[k' Eqk']%tagKindR_valid Eq2]. simpl in Eqk', Eq2. subst k.
+        move : Eqh1. rewrite lookup_op lookup_insert.
+        intros [Eqh1 ?]%tagKindR_exclusive_heaplet'.
+        intros l1. rewrite -Eqh1 fmap_empty dom_empty. by inversion 1. }
+      intros Eqt1'.
+      have Eqt1: (r_f ⋅ r).(rtm) !! t1 ≡ Some (k, h).
+      { move : Eqt1'. rewrite lookup_op lookup_insert_ne // lookup_empty right_id //. }
+      intros l1 Inl1.
       specialize (Ht _ _ Eqt1 _ Inl1).
       rewrite HLst2 //. intros i Lti Eqi.
       move : (proj1 (proj1 VALID) t1). rewrite Eqt1.
@@ -102,26 +142,37 @@ Proof.
       specialize (HLmt2 _ NEQ).
       have InD1': l1 ∈ dom (gset loc) σt.(shp)
         by rewrite elem_of_dom -HLmt2 -(elem_of_dom (D:=gset loc)).
+      rewrite -> Eqrlm in HL1'.
       specialize (REL _ InD1' HL1') as [PB|[t' PV]].
       + left. subst σt'. rewrite /pub_loc /=. rewrite HLmt2 HLms2 //.
         intros st Eqs. specialize (PB _ Eqs) as [ss [Eqss AREL]].
         exists ss. split; [done|]. move : AREL.
-        apply arel_mono; [done|apply cmra_included_l].
-      + right. exists t'. rewrite /priv_loc.
-        setoid_rewrite Eqrcm. by setoid_rewrite Eqrtm.
+        apply arel_mono; [done|].
+        etrans. apply cmra_included_l. apply cmra_included_l.
+      + right. exists t'. destruct PV as (c' & T' & h' & Eqc' & InT & Eqt' & Inl).
+        exists c', T', h'. rewrite Eqrcm Eqrtm. do 2 (split; [done|]).
+        split; [|done]. move : (proj1 (proj1 VALIDt) t').
+        rewrite lookup_op Eqt'.
+        intros EqN%exclusive_Some_l; [|apply _]. by rewrite EqN right_id.
     - intros l1. rewrite dom_op elem_of_union. intros [InO|InN].
-      + specialize (LINV _ InO) as [InD LINV].
+      + move : InO. rewrite {1}/rlm in Eqrlm. rewrite -> Eqrlm. intros InO.
+        specialize (LINV _ InO) as [InD LINV].
         have NEQ: ∀ i, (i < tsize T)%nat → l1 ≠ l +ₗ i.
         { intros i Lt Eqi. rewrite Eqi in InD.
           by apply (is_fresh_block σt.(shp) i). }
         split.
         { subst σt'. by rewrite /= elem_of_dom (HLmt2 _ NEQ)
                                 -(elem_of_dom (D:=gset loc)). }
-        intros s stk.
-        destruct (res_mapsto_lookup l (tsize T) ☠ (init_stack t)) as [EQ1 EQ2].
-        rewrite lookup_op (EQ2 _ NEQ) right_id.
+        intros s t1.
+        destruct (res_mapsto_lookup l (tsize T) ☠ σt.(snp)) as [EQ1 EQ2].
+        rewrite lookup_op (EQ2 _ NEQ) right_id Eqrlm.
         intros Eql1. specialize (LINV _ _ Eql1). subst σt'.
-        rewrite /= (HLmt2 _ NEQ) (HLms2 _ NEQ) (HLst2 _ NEQ) (HLss2 _ NEQ) //.
+        rewrite /= (HLmt2 _ NEQ) (HLms2 _ NEQ) (HLst2 _ NEQ) (HLss2 _ NEQ).
+        destruct LINV as (?&?&?&?& h1 & Eqt1).
+        do 4 (split; [done|]). exists h1. rewrite Eqrtm.
+        move : (proj1 (proj1 VALIDt) t1).
+        rewrite lookup_op Eqt1.
+        intros EqN%exclusive_Some_l; [|apply _]. by rewrite EqN right_id.
       + move: InN. rewrite elem_of_dom. intros [ls Eqls].
         have Eqls' : r'.(rlm) !! l1 ≡ Some ls by rewrite Eqls.
         destruct (res_mapsto_lookup_case l _ _ _ _ _ Eqls') as [Eq1 IN].
@@ -133,11 +184,12 @@ Proof.
         have Eq5 := HLss1 _ Lti'. rewrite Z2Nat.id // -Eql1 in Eq5.
         split.
         { subst σt'. rewrite /= elem_of_dom Eq2. by eexists. }
-        intros s stk Eql. rewrite /= Eq2 Eq3 Eq4 Eq5.
+        intros s t1 Eql. rewrite /= Eq2 Eq3 Eq4 Eq5.
         specialize (HLF _ Lti'). rewrite Z2Nat.id // in HLF.
         move : Eql. rewrite Eql1 lookup_op HLF left_id /=.
-        intros [Eq _]%res_mapsto_lookup_case. simpl in Eq.
-        clear -Eq. by simplify_eq. }
+        intros [Eq _]%res_mapsto_lookup_case. simpl in Eq. SearchAbout rtm.
+        clear -Eq Eqrtm HNP. simplify_eq. do 4 (split; [done|]).
+        exists ∅. rewrite Eqrtm lookup_op HNP left_id lookup_insert fmap_empty //. }
   left.
   apply (sim_body_result _ _ _ _ (PlaceR _ _ T) (PlaceR _ _ T)). intros.
   apply POST; eauto.
@@ -276,6 +328,19 @@ Proof.
 Qed. *)
 
 (** Copy *)
+
+Lemma public_access_not_local r_f r l t n kind σs σt:
+  let access :=
+    for_each σt.(sst) l n false (λ stk, nstk' ← access1 stk kind (Tagged t) σt.(scs); Some nstk'.2) in
+  wsat (r_f ⋅ r) σs σt →
+  is_Some access →
+  (∃ (h: heapletR), r.(rtm) !! t ≡ Some (to_tagKindR tkPub, h)) →
+  ∀ i, (i < n)%nat → r.(rlm) !! (l +ₗ i) ≡ Some $ to_locStateR lsShared.
+Proof.
+  intros access WSAT [α' IS] [h Eqt] i Lt.
+
+Abort.
+
 Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ
   (EQS: tsize Ts = tsize Tt)
   (PUBLIC: ∃ (h: heapletR), r.(rtm) !! t ≡ Some (to_tagKindR tkPub, h))
@@ -412,7 +477,7 @@ Proof.
         move : Eqs. rewrite lookup_op (SHR _ Lti). apply lmap_exclusive_r. }
       destruct (for_each_lookup _ _ _ _ _ Eqα') as [_ [_ EQt]].
       rewrite (EQt _ HLF).
-      by specialize (LINV _ _ Eqs) as (?&?&Eqa1&Eqas). }
+      by specialize (LINV _ _ Eqs) as (?&?&Eqa1&Eqas&?). }
   left.
   apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)). intros.
   have VREL2: vrel (r ⋅ (core (r_f ⋅ r))) vs vt.
@@ -493,13 +558,28 @@ Proof.
       apply Lt. by lia.
 Qed.
 
+Lemma res_mapsto_1_insert_local_update (r: resUR) l v1 v2 t
+  (NONE: r.(rlm) !! l = None):
+  (r ⋅ res_mapsto l 1 v1 t, res_mapsto l 1 v1 t) ~l~>
+  (r ⋅ res_mapsto l 1 v2 t, res_mapsto l 1 v2 t).
+Proof.
+  intros. destruct r as [[tm cm] lm]. rewrite 4!pair_op 2!right_id.
+  apply prod_local_update_2.
+  rewrite cmra_comm (cmra_comm _ (init_local_res l 1 v2 t ∅)).
+  rewrite /= /init_local_res /= 2!fmap_insert /= fmap_empty.
+  do 2 rewrite -insert_singleton_op //.
+  rewrite -(insert_insert lm l (Cinl (Excl (v2, t))) (Cinl (Excl (v1, t)))).
+  eapply (singleton_local_update (<[l:=Cinl (Excl (v1, t))]> lm : lmapUR)).
+  { by rewrite lookup_insert. }
+Abort.
+
 Lemma sim_body_write_local_1 fs ft r r' n l tg T v v' σs σt Φ :
   tsize T = 1%nat →
-  r ≡ r' ⋅ res_mapsto l 1 v' (init_stack (Tagged tg)) →
+  r ≡ r' ⋅ res_mapsto l 1 v' tg →
   (∀ s, v = [s] →
     let σs' := mkState (<[l := s]> σs.(shp)) σs.(sst) σs.(scs) σs.(snp) σs.(snc) in
     let σt' := mkState (<[l := s]> σt.(shp)) σt.(sst) σt.(scs) σt.(snp) σt.(snc) in
-    Φ (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))) n
+    Φ (r' ⋅ res_mapsto l 1 s tg) n
       (ValR [☠%S]) σs' (ValR [☠%S]) σt' : Prop) →
   r ⊨{n,fs,ft}
     (Place l (Tagged tg) T <- #v, σs) ≥ (Place l (Tagged tg) T <- #v, σt) : Φ.
@@ -528,14 +608,14 @@ Proof.
     exists s. destruct v; [done|simpl in EQL; lia]. } subst v.
 
   have VALIDr:= cmra_valid_op_r _ _ VALID.
-  have HLlr: r.(rlm) !! l ≡ Some (to_locStateR (lsLocal v' (init_stack (Tagged tg)))).
+  have HLlr: r.(rlm) !! l ≡ Some (to_locStateR (lsLocal v' tg)).
   { rewrite Eqr. apply lmap_lookup_op_r.
     - rewrite ->Eqr in VALIDr. apply VALIDr.
     - by rewrite /= /init_local_res lookup_fmap /= lookup_insert /=. }
   destruct (LINV l) as [Inl Eql].
   { rewrite dom_op elem_of_union. right. rewrite elem_of_dom.
     destruct (r.(rlm) !! l) eqn:Eql2; rewrite Eql2; [by eexists|inversion HLlr]. }
-  destruct (Eql v' (init_stack (Tagged tg))) as (Eql1 & Eql2 & Eqsl1 & Eqsl2).
+  destruct (Eql v' tg) as (Eql1 & Eql2 & Eqsl1 & Eqsl2 & LocUnique).
   { apply lmap_lookup_op_r; [apply VALID|done]. } clear Eql.
   have ?: α' = σt.(sst).
   { move : Eqα'. rewrite LenT /= /memory_written /= shift_loc_0_nat.
@@ -552,10 +632,10 @@ Proof.
     rewrite EQL in EqD. rewrite -Eqnp in IN.
     eapply (head_step_fill_tstep _ []), write_head_step'; eauto. }
 
-  exists (#[☠])%V, σs', (r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))), n.
+  exists (#[☠])%V, σs', (r' ⋅ res_mapsto l 1 s tg), n.
   split; last split.
   { left. by constructor 1. }
-  { have HLlrf: (r_f ⋅ r) .(rlm) !! l ≡ Some (to_locStateR (lsLocal v' (init_stack (Tagged tg)))).
+  { have HLlrf: (r_f ⋅ r) .(rlm) !! l ≡ Some (to_locStateR (lsLocal v' tg)).
     { apply lmap_lookup_op_r; [apply VALID|done]. }
     have HLN: (r_f ⋅ r').(rlm) !! l = None.
     { destruct ((r_f ⋅ r').(rlm) !! l) as [ls|] eqn:Eqls; [|done].
@@ -563,27 +643,25 @@ Proof.
       rewrite Eqr cmra_assoc lookup_op Eqls /=
               /init_local_res lookup_fmap /= lookup_insert.
       apply lmap_exclusive_2. }
-    have HTEq: (r_f ⋅ r' ⋅ res_mapsto l 1 v' (init_stack (Tagged tg))).(rtm) ≡
-               (r_f ⋅ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))).(rtm).
+    have HTEq: (r_f ⋅ r' ⋅ res_mapsto l 1 v' tg).(rtm) ≡
+               (r_f ⋅ r' ⋅ res_mapsto l 1 s tg).(rtm).
     { rewrite /rtm /= right_id //. }
-    have HCEq: (r_f ⋅ r' ⋅ res_mapsto l 1 v' (init_stack (Tagged tg))).(rcm) ≡
-               (r_f ⋅ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))).(rcm).
+    have HCEq: (r_f ⋅ r' ⋅ res_mapsto l 1 v' tg).(rcm) ≡
+               (r_f ⋅ r' ⋅ res_mapsto l 1 s tg).(rcm).
     { rewrite /rcm /= right_id //. }
     rewrite cmra_assoc.
     split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
-    - move : VALID. rewrite Eqr cmra_assoc => VALID. 
+    - move : VALID. rewrite Eqr cmra_assoc => VALID.
       apply (local_update_discrete_valid_frame _ _ _ VALID).
       rewrite (cmra_comm (r_f ⋅ r')) (cmra_comm (r_f ⋅ r') (res_mapsto _ _ _ _)).
       apply prod_local_update_2.
       rewrite /= /init_local_res /= 2!fmap_insert /= fmap_empty.
       do 2 rewrite -insert_singleton_op //.
-      rewrite -(insert_insert (r_f.2 ⋅ r'.2) l
-                  (Cinl (Excl (s, init_stack (Tagged tg))))
-                  (Cinl (Excl (v', init_stack (Tagged tg))))).
+      rewrite -(insert_insert (r_f.2 ⋅ r'.2) l (Cinl (Excl (s, tg))) (Cinl (Excl (v', tg)))).
       eapply (singleton_local_update
-          (<[l:=Cinl (Excl (v', init_stack (Tagged tg)))]> (r_f.2 ⋅ r'.2))).
+          (<[l:=Cinl (Excl (v', tg))]> (r_f.2 ⋅ r'.2))).
       { by rewrite lookup_insert. }
       by apply exclusive_local_update.
     - intros t k h HL. destruct (PINV t k h) as [? PI].
