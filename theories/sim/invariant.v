@@ -138,6 +138,14 @@ Proof.
   - intros ? HL. exfalso. move : HL. by rewrite /= dom_empty elem_of_empty.
 Qed.
 
+Lemma arel_ptr l tg :
+  arel (res_tag tg tkPub ∅) (ScPtr l (Tagged tg)) (ScPtr l (Tagged tg)).
+Proof.
+  simpl. do 2 (split; first done).
+  exists ∅. rewrite /res_tag /rtm /=.
+  rewrite lookup_insert fmap_empty. done.
+Qed.
+
 Lemma arel_eq (r: resUR) (s1 s2: scalar) :
   arel r s1 s2 → s1 = s2.
 Proof. destruct s1 as [| |? []|], s2 as [| |? []|]; simpl; try done; naive_solver. Qed.

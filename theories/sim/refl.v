@@ -262,7 +262,7 @@ Proof.
     eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
     eapply sim_simple_valid_post.
-    eapply sim_simple_copy_shared; [done..|].
+    eapply sim_simple_copy_shared; [by auto..|].
     intros r'' v1 v2 Hrel'' Hval. simplify_eq/=.
     do 3 (split; first done). auto.
   - (* Write *)
@@ -276,9 +276,20 @@ Proof.
     intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
     simplify_eq/=. eapply sim_simple_write_shared; [auto..|].
     do 3 (split; first done). constructor; done.
-  - (* Alloc *) admit.
+  - (* Alloc *)
+    move=>Hwf xs Hxswf /=.
+    eapply sim_simple_valid_post.
+    eapply sim_simple_alloc_shared=>l tg /= Hval.
+    do 3 (split; first done).
+    simpl. split; last done. constructor; last done.
+    eapply arel_mono, arel_ptr; auto.
   - (* Free: can't happen *) done.
-  - (* Retag *) admit.
+  - (* Retag *)
+    move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+    eapply sim_simple_retag_shared; [by auto..|].
+    do 3 (split; first done). constructor; done.
   - (* Let *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
