@@ -264,7 +264,7 @@ Lemma sim_simple_write_local fs ft r r' n l tg ty v v' css cst Φ :
   : Φ.
 Proof. intros Hty Hres HH σs σt <-<-. eapply sim_body_write_local_1; eauto. Qed.
 
-Lemma sim_simple_read_local_l fs ft r r' n l tg ty s et css cst Φ :
+Lemma sim_simple_copy_local_l fs ft r r' n l tg ty s et css cst Φ :
   tsize ty = 1%nat →
   r ≡ r' ⋅ res_mapsto l 1 s tg →
   (r ⊨ˢ{n,fs,ft} (#[s], css) ≥ (et, cst) : Φ) →
@@ -274,7 +274,7 @@ Lemma sim_simple_read_local_l fs ft r r' n l tg ty s et css cst Φ :
 Proof.
 Admitted.
 
-Lemma sim_simple_read_local_r fs ft r r' n l tg ty s es css cst Φ :
+Lemma sim_simple_copy_local_r fs ft r r' n l tg ty s es css cst Φ :
   tsize ty = 1%nat →
   r ≡ r' ⋅ res_mapsto l 1 s tg →
   (r ⊨ˢ{n,fs,ft} (es, css) ≥ (#[s], cst) : Φ) →
@@ -324,7 +324,7 @@ Proof.
   intros [Hrel1 ?]%rrel_with_eq [Hrel2 ?]%rrel_with_eq. simplify_eq.
 Admitted.
 
-Lemma sim_simple_read_shared fs ft r n (rs rt: result) css cst Φ :
+Lemma sim_simple_copy_shared fs ft r n (rs rt: result) css cst Φ :
   rrel r rs rt →
   (∀ r' (v1 v2: result),
     rrel r' v1 v2 →

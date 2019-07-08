@@ -89,8 +89,11 @@ Qed.
 
 (** Hints. *)
 Local Hint Extern 10 (srel _ _) => apply: srel_core_mono; first fast_done : core.
+Local Hint Extern 20 (srel _ _) => apply: srel_mono; last fast_done : core.
 Local Hint Extern 10 (rrel _ _ _) => apply: rrel_core_mono; first fast_done : core.
+Local Hint Extern 20 (rrel _ _ _) => apply: rrel_mono; last fast_done : core.
 Local Hint Extern 10 (arel _ _ _) => apply: arel_core_mono; first fast_done : core.
+Local Hint Extern 20 (arel _ _ _) => apply: arel_mono; last fast_done : core.
 Local Hint Extern 50 (_ ≼ _) => solve_res : core.
 
 (** We define a "semantic well-formedness", in some context. *)
@@ -254,8 +257,25 @@ Proof.
     intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
     simplify_eq/=. eapply sim_simple_ref=>l t ??. simplify_eq/=.
     do 3 (split; first done). apply Hrel.
-  - (* Copy *) admit.
-  - (* Write *) admit.
+  - (* Copy *)
+    move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+    eapply sim_simple_valid_post.
+    eapply sim_simple_copy_shared; [done..|].
+    intros r'' v1 v2 Hrel'' Hval. simplify_eq/=.
+    do 3 (split; first done). auto.
+  - (* Write *)
+    move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
+    eapply sim_simple_frame_core.
+    eapply sim_simple_post_mono, IHe1; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
+    eapply sim_simple_frame_more_core.
+    eapply sim_simple_post_mono, IHe2; [|by auto..].
+    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    simplify_eq/=. eapply sim_simple_write_shared; [auto..|].
+    do 3 (split; first done). constructor; done.
   - (* Alloc *) admit.
   - (* Free: can't happen *) done.
   - (* Retag *) admit.
@@ -270,9 +290,8 @@ Proof.
     rewrite !binder_insert_map.
     eapply IHe2; [by auto..|].
     destruct b; first by auto. simpl.
-    apply map_Forall_insert_2.
-    + eapply rrel_mono; last done; auto.
-    + eapply srel_core_mono; eauto.
+    apply map_Forall_insert_2; first by auto.
+    eapply srel_core_mono; eauto.
   - (* Case *)
     move=>[Hwf1 /Forall_id Hwf2] xs Hxs /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_frame_core.
