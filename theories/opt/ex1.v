@@ -35,26 +35,26 @@ Proof.
   apply sim_simple_init_call=> c /= {css}.
   (* Alloc *)
   sim_apply sim_simple_alloc_local=> l t /=.
-  sim_apply sim_simple_let_place=>/=.
+  sim_apply sim_simple_let=>/=.
   (* Write *)
   rewrite (vrel_eq _ _ _ AREL).
-  sim_apply sim_simple_write_local; [done|solve_res|].
+  sim_apply sim_simple_write_local; [solve_sim..|].
   intros arg ->. simpl.
-  sim_apply sim_simple_let_val=>/=.
-  apply sim_simple_place.
+  sim_apply sim_simple_let=>/=.
+  apply: sim_simple_result.
   (* Retag. *)
-  sim_apply sim_simple_let_place=>/=.
+  sim_apply sim_simple_let=>/=.
   destruct args as [|args args']; first by inversion AREL.
   apply Forall2_cons_inv in AREL as [AREL ATAIL].
   destruct args' as [|]; last by inversion ATAIL. clear ATAIL.
-  sim_apply sim_simple_retag_local; [solve_res|done|solve_res|].
+  sim_apply sim_simple_retag_local; [solve_sim..|].
   move=>l_i tg_i hplt /= Hl_i.
   (* Call *)
-  sim_apply sim_simple_let_val=>/=.
-  sim_apply (sim_simple_call 10 [] [] ε); [done|done|solve_res|].
-  intros rf frs frt _ _ _ _ FREL.
-  apply sim_simple_val. simpl.
-  sim_apply sim_simple_let_val=>/=.
+  sim_apply sim_simple_let=>/=.
+  sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
+  intros rf frs frt ??? ? _ _ FREL. simplify_eq/=.
+  apply: sim_simple_result. simpl.
+  sim_apply sim_simple_let=>/=.
   (* Deref *)
 
 Admitted.

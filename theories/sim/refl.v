@@ -175,7 +175,7 @@ Proof using Type*.
   revert r. induction e using expr_ind; simpl; intros r.
   - (* Value *)
     move=>Hwf _ _ /=.
-    apply sim_simple_val.
+    apply: sim_simple_result.
     do 3 (split; first done).
     apply value_wf_soundness. done.
   - (* Variable *)
@@ -183,7 +183,7 @@ Proof using Type*.
     rewrite !lookup_fmap. specialize (Hxswf x).
     destruct (xs !! x); simplify_eq/=.
     + destruct p as [rs rt].
-      intros σs σt ??. eapply sim_body_result=>_.
+      intros σs σt ??. apply: sim_body_result.
       do 3 (split; first done).
       eapply (Hxswf (rs, rt)). done.
     + simpl. apply sim_simple_var.
@@ -201,7 +201,7 @@ Proof using Type*.
     eapply sim_simple_valid_post.
     eapply sim_simple_call; [by auto..|].
     intros rret vs vt vls vlt ? ??? Hrel''. simplify_eq.
-    apply sim_simple_val=>Hval'.
+    apply: sim_simple_result=>Hval'.
     do 3 (split; first done). auto.
   - (* InitCall: can't happen *) done.
   - (* EndCall: can't happen *) done.

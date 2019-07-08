@@ -153,15 +153,16 @@ Proof.
   simpl. apply HH.
 Qed.
 
-Lemma sim_body_result fs ft r n es et σs σt Φ :
-  (✓ r → Φ r n es σs et σt : Prop) →
-  r ⊨{n,fs,ft} (of_result es, σs) ≥ (of_result et, σt) : Φ.
+Lemma sim_body_result fs ft r n es rs et rt σs σt Φ :
+  IntoResult es rs → IntoResult et rt →
+  (✓ r → Φ r n rs σs rt σt : Prop) →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
 Proof.
-  intros POST. pfold.  split; last first.
+  intros <- <- POST. pfold.  split; last first.
   { constructor 1. intros vt' ? STEPT'. exfalso.
     apply result_tstep_stuck in STEPT'. by rewrite to_of_result in STEPT'. }
   { move => ? /= Eqvt'. symmetry in Eqvt'. simplify_eq.
-    exists es, σs, r. split; last split.
+    exists rs, σs, r. split; last split.
     - constructor 1.
     - eauto.
     - rewrite to_of_result in Eqvt'. simplify_eq.

@@ -81,7 +81,7 @@ Proof.
   exists (#[vi])%E, σs, r, n. split; last split; [|done|].
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
-  left. apply (sim_body_result _ _ _ _ (ValR _) (ValR _)). intros.
+  left. apply: sim_body_result. intros.
   eapply POST; eauto.
 Qed.
 
@@ -102,7 +102,7 @@ Proof.
   exists (#(v1 ++ v2))%E, σs, r, n. split; last split; [|done|].
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
-  left. apply (sim_body_result _ _ _ _ (ValR _) (ValR _)). intros.
+  left. apply: sim_body_result. intros.
   eapply POST; eauto.
 Qed.
 
@@ -127,7 +127,7 @@ Proof.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     econstructor; econstructor; eauto.
     eapply bin_op_eval_dom; [|eauto]. by rewrite (wsat_heap_dom _ _ _ WSAT). }
-  left. apply (sim_body_result _ _ _ _ (ValR _) (ValR _)). intros.
+  left. apply: sim_body_result. intros.
   eapply POST; eauto.
 Qed.
 
@@ -160,12 +160,12 @@ Proof.
 Qed.
 
 (** Let *)
-Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
-  terminal es1 → terminal et1 →
+Lemma sim_body_let fs ft r n x es1 es2 et1 et2 vt1 vs1 σs σt Φ :
+  IntoResult es1 vs1 → IntoResult et1 vt1 →
   r ⊨{n,fs,ft} (subst' x es1 es2, σs) ≥ (subst' x et1 et2, σt) : Φ →
   r ⊨{n,fs,ft} (let: x := es1 in es2, σs) ≥ (let: x := et1 in et2, σt) : Φ.
 Proof.
-  intros TS TT SIM. pfold.
+  intros TS%into_result_terminal TT%into_result_terminal SIM. pfold.
   intros NT r_f WSAT. split; [|done|].
   { right. do 2 eexists. eapply (head_step_fill_tstep _ []).
     econstructor 1. eapply LetBS; eauto. }
@@ -176,16 +176,6 @@ Proof.
     by econstructor; econstructor. }
   split; [done|]. by left.
 Qed.
-
-Lemma sim_body_let_val fs ft r n b (vs1 vt1: value) es2 et2 σs σt Φ :
-  r ⊨{n,fs,ft} (subst' b vs1 es2, σs) ≥ (subst' b vt1 et2, σt) : Φ →
-  r ⊨{n,fs,ft} (let: b := vs1 in es2, σs) ≥ (let: b := vt1 in et2, σt) : Φ.
-Proof. apply sim_body_let; eauto. Qed.
-
-Lemma sim_body_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 σs σt Φ :
-  r ⊨{n,fs,ft} (subst' x (Place ls ts tys) es2, σs) ≥ (subst' x (Place lt tt tyt) et2, σt) : Φ →
-  r ⊨{n,fs,ft} (let: x := Place ls ts tys in es2, σs) ≥ ((let: x := Place lt tt tyt in et2), σt) : Φ.
-Proof. apply sim_body_let; eauto. Qed.
 
 (** Ref *)
 Lemma sim_body_ref fs ft r n (pl: result) σs σt Φ :
@@ -214,7 +204,7 @@ Proof.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
   split; [done|]. left.
-  apply (sim_body_result _ _ _ _ (ValR _) (ValR _)).
+  apply: sim_body_result.
   intros. by eapply POST.
 Qed.
 
@@ -243,6 +233,6 @@ Proof.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
   split; [done|].
-  left. apply (sim_body_result _ _ _ _ (PlaceR _ _ _) (PlaceR _ _ _)).
+  left. apply: sim_body_result.
   intros. by eapply POST.
 Qed.

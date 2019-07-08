@@ -191,7 +191,7 @@ Proof.
         clear -Eq Eqrtm HNP. simplify_eq. do 4 (split; [done|]).
         exists ∅. rewrite Eqrtm lookup_op HNP left_id lookup_insert fmap_empty //. }
   left.
-  apply (sim_body_result _ _ _ _ (PlaceR _ _ T) (PlaceR _ _ T)). intros.
+  apply: sim_body_result. intros.
   apply POST; eauto.
 Qed.
 
@@ -323,7 +323,7 @@ Proof.
         exists s. rewrite (_ : (fresh_block σt.(shp), Z.of_nat i) = l) //. }
       rewrite HLt2 // HLs2 // Eqlst //. }
   left.
-  apply (sim_body_result _ _ _ _ (PlaceR _ _ T) (PlaceR _ _ T)). intros.
+  apply: sim_body_result. intros.
   apply POST; eauto. by rewrite /ts Eqnp.
 Qed. *)
 
@@ -479,7 +479,7 @@ Proof.
       rewrite (EQt _ HLF).
       by specialize (LINV _ _ Eqs) as (?&?&Eqa1&Eqas&?). }
   left.
-  apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)). intros.
+  apply: sim_body_result. intros.
   have VREL2: vrel (r ⋅ (core (r_f ⋅ r))) vs vt.
   { eapply vrel_mono; [done| |exact VREL']. apply cmra_included_r. }
   apply POST; eauto.
@@ -721,7 +721,7 @@ Proof.
         * exfalso. move : Eq. rewrite lookup_insert_ne // lookup_empty /=.
           by inversion 1. }
   left.
-  eapply (sim_body_result _ _ _ _ (ValR [☠%S]) (ValR [☠%S])).
+  apply: sim_body_result.
   intros. simpl. by apply POST.
 Qed.
 
@@ -1028,7 +1028,7 @@ Proof.
       rewrite lookup_insert_ne //. by eexists.
   }
   left.
-  eapply (sim_body_result fs ft r' n (ValR [☠%S]) (ValR [☠%S])).
+  apply: sim_body_result.
   intros. simpl. by apply POST.
 Qed.
 
@@ -1298,7 +1298,7 @@ Proof.
       intros l InD SHR. by specialize (Eqhp _ InD SHR).
     - intros ??. rewrite /=. by apply LINV. }
   (* result *)
-  left. apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt')).
+  left. apply: sim_body_result.
   intros VALID'.
   eapply POST; eauto. destruct SREL as (?&?&Eqs&?). by rewrite Eqs.
 Qed.

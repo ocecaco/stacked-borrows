@@ -86,14 +86,14 @@ Tactic Notation "sim_apply" open_constr(lem) :=
     reshape_expr es ltac:(fun Ks es =>
       reshape_expr et ltac:(fun Kt et =>
         sim_body_bind_core Ks Kt es et;
-        eapply lem
+        apply: lem
       )
     )
   | |- _ ⊨ˢ{_,_,_} (?es, _) ≥ (?et, _) : _ =>
     reshape_expr es ltac:(fun Ks es =>
       reshape_expr et ltac:(fun Kt et =>
         sim_simple_bind_core Ks Kt es et;
-        eapply lem
+        apply: lem
       )
     )
   end.
@@ -141,3 +141,6 @@ Ltac solve_res :=
     simple eapply res_search_from_incl;
     solve_res
 end.
+
+(** For example proofs. *)
+Ltac solve_sim := solve [ fast_done | solve_res | done ].

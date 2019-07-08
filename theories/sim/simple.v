@@ -199,18 +199,12 @@ Proof.
   clear. simpl. intros r n vs σs vt σt HH. exact: HH.
 Qed.
 
-Lemma sim_simple_val fs ft r n (vs vt: value) css cst Φ :
+Lemma sim_simple_result fs ft r n (vs vt: result) es et css cst Φ :
+  IntoResult es vs → IntoResult et vt →
   Φ r n vs css vt cst →
-  r ⊨ˢ{n,fs,ft} (vs, css) ≥ (vt, cst) : Φ.
+  r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst) : Φ.
 Proof.
-  intros HH σs σt <-<-. eapply (sim_body_result _ _ _ _ vs vt). done.
-Qed.
-
-Lemma sim_simple_place fs ft r n ls lt ts tt tys tyt css cst Φ :
-  Φ r n (PlaceR ls ts tys) css (PlaceR lt tt tyt) cst →
-  r ⊨ˢ{n,fs,ft} (Place ls ts tys, css) ≥ (Place lt tt tyt, cst) : Φ.
-Proof.
-  intros HH σs σt <-<-. eapply (sim_body_result _ _ _ _ (PlaceR _ _ _) (PlaceR _ _ _)). done.
+  intros ?? HH σs σt <-<-. eapply sim_body_result; done.
 Qed.
 
 (** * Administrative *)
@@ -226,7 +220,8 @@ Qed.
 
 (* [Val <$> _] in the goal makes this not work with [apply], but
 we'd need tactic support for anything better. *)
-Lemma sim_simple_call n' rls rlt rv fs ft r r' n (fi: result) css cst Φ :
+Lemma sim_simple_call n' rls rlt rv fs ft r r' n fe (fi: result) css cst Φ :
+  IntoResult fe fi →
   sim_local_funs_lookup fs ft →
   r ≡ r' ⋅ rv →
   Forall2 (rrel rv) rls rlt →
@@ -236,9 +231,9 @@ Lemma sim_simple_call n' rls rlt rv fs ft r r' n (fi: result) css cst Φ :
     vrel rret vs vt →
     r' ⋅ rret ⊨ˢ{n',fs,ft} (Val vs, css) ≥ (Val vt, cst) : Φ) →
   r ⊨ˢ{n,fs,ft}
-    (Call fi (of_result <$> rls), css) ≥ (Call fi (of_result <$> rlt), cst) : Φ.
+    (Call fe (of_result <$> rls), css) ≥ (Call fe (of_result <$> rlt), cst) : Φ.
 Proof.
-  intros Hfns Hres Hrel HH σs σt <-<-. rewrite Hres.
+  intros <- Hfns Hres Hrel HH σs σt <-<-. rewrite Hres.
   apply: sim_body_step_over_call.
   - done.
   - done.
@@ -344,21 +339,11 @@ Proof.
 Admitted.
 
 (** * Pure *)
-Lemma sim_simple_let fs ft r n x (vs1 vt1: expr) es2 et2 css cst Φ :
-  terminal vs1 → terminal vt1 →
-  r ⊨ˢ{n,fs,ft} (subst' x vs1 es2, css) ≥ (subst' x vt1 et2, cst) : Φ →
-  r ⊨ˢ{n,fs,ft} (let: x := vs1 in es2, css) ≥ ((let: x := vt1 in et2), cst) : Φ.
-Proof. intros ?? HH σs σt <-<-. apply sim_body_let; eauto. Qed.
-
-Lemma sim_simple_let_val fs ft r n x (vs1 vt1: value) es2 et2 css cst Φ :
-  r ⊨ˢ{n,fs,ft} (subst' x vs1 es2, css) ≥ (subst' x vt1 et2, cst) : Φ →
-  r ⊨ˢ{n,fs,ft} (let: x := vs1 in es2, css) ≥ ((let: x := vt1 in et2), cst) : Φ.
-Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
-
-Lemma sim_simple_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 css cst Φ :
-  r ⊨ˢ{n,fs,ft} (subst' x (Place ls ts tys) es2, css) ≥ (subst' x (Place lt tt tyt) et2, cst) : Φ →
-  r ⊨ˢ{n,fs,ft} (let: x := Place ls ts tys in es2, css) ≥ ((let: x := Place lt tt tyt in et2), cst) : Φ.
-Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
+Lemma sim_simple_let fs ft r n x (vs1 vt1: result) es1 et1 es2 et2 css cst Φ :
+  IntoResult es1 vs1 → IntoResult et1 vt1 →
+  r ⊨ˢ{n,fs,ft} (subst' x es1 es2, css) ≥ (subst' x et1 et2, cst) : Φ →
+  r ⊨ˢ{n,fs,ft} (let: x := es1 in es2, css) ≥ ((let: x := et1 in et2), cst) : Φ.
+Proof. intros ?? HH σs σt <-<-. apply: sim_body_let. eauto. Qed.
 
 Lemma sim_simple_ref fs ft r n (pl: result) css cst Φ :
   (∀ l t T, pl = PlaceR l t T →
@@ -376,13 +361,14 @@ Lemma sim_simple_var fs ft r n css cst var Φ :
   r ⊨ˢ{n,fs,ft} (Var var, css) ≥ (Var var, cst) : Φ.
 Proof. intros σs σt <-<-. apply sim_body_var; eauto. Qed.
 
-Lemma sim_simple_proj fs ft r n (vr ir: result) css cst Φ :
+Lemma sim_simple_proj fs ft r n (v i: expr) (vr ir: result) css cst Φ :
+  IntoResult v vr → IntoResult i ir →
   (∀ vi vv iv, vr = ValR vv → ir = ValR [ScInt iv] →
     vv !! (Z.to_nat iv) = Some vi → 0 ≤ iv →
     Φ r n (ValR [vi]) css (ValR [vi]) cst) →
   r ⊨ˢ{n,fs,ft} (Proj vr ir, css) ≥ (Proj vr ir, cst) : Φ.
 Proof.
-  intros HH σs σt <-<-. apply sim_body_proj; eauto.
+  intros ?? HH σs σt <-<-. apply sim_body_proj; eauto.
 Qed.
 
 Lemma sim_simple_conc fs ft r n (r1 r2: result) css cst Φ :

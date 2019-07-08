@@ -71,6 +71,20 @@ Proof.
   - intros Eq1 [? Eq2]. by rewrite Eq1 in Eq2.
 Qed.
 
+
+(** IntoResult is like IntoVal but works with our parameterized semantics. *)
+Class IntoResult (e: expr) (r: result) := into_result : of_result r = e.
+Global Instance val_into_result (v: value) : IntoResult v v.
+Proof. done. Qed.
+Global Instance place_into_result l tg ty : IntoResult (Place l tg ty) (PlaceR l tg ty).
+Proof. done. Qed.
+Global Instance result_into_result r : IntoResult (of_result r) r.
+Proof. done. Qed.
+
+Lemma into_result_terminal e r :
+  IntoResult e r → terminal e.
+Proof. intros <-. destruct r; eauto. Qed.
+
 (** Thread steps *)
 Inductive tstep (fns: fn_env) (eσ1 eσ2 : expr * state) : Prop :=
 | ThreadStep ev efs
