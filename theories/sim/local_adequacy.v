@@ -46,12 +46,12 @@ Inductive sim_local_frames:
              our local resource r and have world satisfaction *)
          (WSAT' : wsat (r_f ⋅ (frame.(rc) ⋅ r')) σ_src' σ_tgt')
          (* and the returned values are related w.r.t. (r ⋅ r' ⋅ r_f) *)
-         (VRET  : rrel vrel r' v_src v_tgt)
+         (VRET  : vrel r' v_src v_tgt)
          (CIDS: σ_tgt'.(scs) = frame.(callids)),
          ∃ idx', sim_local_body wsat vrel fns fnt
                                 (frame.(rc) ⋅ r') idx'
-                                (fill frame.(K_src) (of_result v_src)) σ_src'
-                                (fill frame.(K_tgt) (of_result v_tgt)) σ_tgt'
+                                (fill frame.(K_src) (Val v_src)) σ_src'
+                                (fill frame.(K_tgt) (Val v_tgt)) σ_tgt'
                                 (λ r _ vs σs vt σt,
                                   (∃ c, σt.(scs) = c :: cids ∧ end_call_sat r c) ∧
                                   rrel vrel r vs vt))
