@@ -43,16 +43,24 @@ Definition prog_wf (prog: fn_env) :=
 Section sem.
 Context (fs ft: fn_env) `{!sim_local_funs_lookup fs ft}.
 Context (css cst: call_id_stack).
+Notation rrel := (rrel vrel).
 
+(** Helper lemmas *)
+Lemma rrel_with_eq r rs rt :
+  rrel r rs rt → rrel r rs rt ∧ rs = rt.
+Proof.
+  intros. split; first done. exact: rrel_eq.
+Qed.
+
+(** We define a "semantic well-formedness", in some context. *)
 Definition sem_steps := 10%nat.
 
 Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
-  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel vrel r rs rt.
+  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel r rs rt.
 
-(** We define a "semantic well-formedness", in some context. *)
 Definition sem_wf (r: resUR) es et :=
   ∀ xs : gmap string (result * result),
-    map_Forall (λ _ '(rs, rt), rrel vrel r rs rt) xs →
+    map_Forall (λ _ '(rs, rt), rrel r rs rt) xs →
     r ⊨ˢ{sem_steps,fs,ft}
       (subst_map (fst <$> xs) es, css)
     ≥
@@ -101,16 +109,15 @@ Proof.
   - (* Deref *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
-    have ?:= (rrel_eq _  _ _ Hrel). subst rt.
-    eapply sim_simple_deref. intros. by subst.
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+    simplify_eq/=. eapply sim_simple_deref=>l t ?. simplify_eq/=.
+    do 3 (split; first done). done.
   - (* Ref *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
-    have ?:= (rrel_eq _  _ _ Hrel). subst rt.
-    eapply sim_simple_ref. intros. subst.
-    admit.
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+    simplify_eq/=. eapply sim_simple_ref=>l t ??. simplify_eq/=.
+    do 3 (split; first done). apply Hrel.
   - (* Copy *) admit.
   - (* Write *) admit.
   - (* Alloc *) admit.
