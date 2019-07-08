@@ -14,8 +14,10 @@ Lemma sim_body_copy_left_1
 Proof.
   intros COND. pfold. intros NT r_f WSAT.
   edestruct NT as [[]|[es1 [σs1 STEP1]]]; [constructor 1|done|].
-  destruct (tstep_copy_inv _ _ _ _ _ _ _ STEP1) as (vs & α' & ? & Eqvs & READ & ?).
-  subst es1 σs1. rewrite /= read_mem_equation_1 /= in Eqvs.
+  destruct (tstep_copy_inv _ (PlaceR l (Tagged t) int) _ _ _ STEP1)
+    as (l' & t' & T' & vs & α' & EqH & ? & Eqvs & READ & ?).
+  symmetry in EqH. simplify_eq.
+  rewrite /= read_mem_equation_1 /= in Eqvs.
   destruct (σs.(shp) !! l) as [s|] eqn:Eqs; [|done]. simpl in Eqvs. simplify_eq.
   specialize (COND _ eq_refl).
 

@@ -296,8 +296,8 @@ Proof.
   { right.
     destruct (NT (Copy (Place l (Tagged t) Ts)) σs) as [[]|[es' [σs' STEPS]]];
       [done..|].
-    destruct (tstep_copy_inv _ _ _ _ _ _ _ STEPS)
-      as (vs & α' & ? & Eqvs & Eqα' & ?). subst es'.
+    destruct (tstep_copy_inv _ (PlaceR l (Tagged t) Ts) _ _ _ STEPS)
+      as (?&?&?& vs & α' & EqH & ? & Eqvs & Eqα' & ?). symmetry in EqH. simplify_eq.
     destruct (read_mem_is_Some l (tsize Tt) σt.(shp)) as [vt Eqvt].
     { intros m. rewrite (srel_heap_dom _ _ _ WFS WFT SREL) -EQS.
       apply (read_mem_is_Some' l (tsize Ts) σs.(shp)). by eexists. }
@@ -306,8 +306,8 @@ Proof.
     exists (#vt)%E, (mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc)).
     by eapply (head_step_fill_tstep _ []), copy_head_step'. }
   constructor 1. intros.
-  destruct (tstep_copy_inv _ _ _ _ _ _ _ STEPT) as (vt & α' & ? & Eqvt & Eqα' & ?).
-  subst et'.
+  destruct (tstep_copy_inv _ (PlaceR l (Tagged t) Tt) _ _ _ STEPT)
+    as (?&?&?& vt & α' & EqH & ? & Eqvt & Eqα' & ?). symmetry in EqH. simplify_eq.
   destruct (read_mem_is_Some l (tsize Ts) σs.(shp)) as [vs Eqvs].
   { intros m. rewrite -(srel_heap_dom _ _ _ WFS WFT SREL) EQS.
     apply (read_mem_is_Some' l (tsize Tt) σt.(shp)). by eexists. }
@@ -374,7 +374,7 @@ Proof.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
-    - intros t1 k h Eqt. specialize (PINV t1 k h Eqt) as [Lt PI]. subst σt'. simpl.
+    - intros t1 k h Eqt. specialize (PINV t1 k h Eqt) as [Lt PI]. simpl.
       split; [done|]. intros l' s' Eqk'.
       specialize (PI _ _ Eqk') as [? PI]. split; [done|].
       intros stk' Eqstk'.
@@ -394,7 +394,7 @@ Proof.
       destruct k.
       + eapply access1_head_preserving; eauto.
       + eapply access1_active_SRO_preserving; eauto.
-    - intros c cs Eqc. specialize (CINV _ _ Eqc). subst σt'. simpl.
+    - intros c cs Eqc. specialize (CINV _ _ Eqc). simpl.
       clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
       intros t1 InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
@@ -403,8 +403,8 @@ Proof.
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
       exists stk, pm'. split; last split; [done| |done]. by apply AS.
-    - subst σt'. rewrite /srel /=. by destruct SREL as (?&?&?&?&?).
-    - subst σs' σt'. intros l1. simpl. intros Inl1.
+    - rewrite /srel /=. by destruct SREL as (?&?&?&?&?).
+    - intros l1. simpl. intros Inl1.
       specialize (LINV _ Inl1) as [InD1 LINV]. split; [done|].
       intros s stk Eqs.
       have HLF : ∀ i, (i < tsize Tt)%nat → l1 ≠ (l +ₗ i).
@@ -417,7 +417,7 @@ Proof.
   apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)). intros.
   have VREL2: vrel (r ⋅ (core (r_f ⋅ r))) vs vt.
   { eapply vrel_mono; [done| |exact VREL']. apply cmra_included_r. }
-  subst σt'. apply POST; eauto.
+  apply POST; eauto.
 Admitted.
 
 (** Write *)
@@ -510,17 +510,19 @@ Proof.
   split; [|done|].
   { right.
     edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
-    destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPS)
-      as (α' & ? & Eqα' & EqD & IN & EQL & ?).
-    subst es'. setoid_rewrite <-(srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
+    destruct (tstep_write_inv _ (PlaceR _ _ _) (ValR _) _ _ _ STEPS)
+      as (?&?&?&?& α' & EqH & EqH' & ? & Eqα' & EqD & IN & EQL & ?).
+    symmetry in EqH, EqH'. simplify_eq.
+    setoid_rewrite <-(srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
     destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
     rewrite Eqst Eqcs in Eqα'. rewrite Eqnp in IN. rewrite EQL in EqD.
     exists (#[☠])%V,
            (mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc)).
     eapply (head_step_fill_tstep _ []), write_head_step'; eauto. }
   constructor 1. intros.
-  destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPT)
-    as (α' & ? & Eqα' & EqD & IN & EQL & ?). subst et'.
+  destruct (tstep_write_inv _ (PlaceR _ _ _) (ValR _) _ _ _ STEPT)
+      as (?&?&?&?& α' & EqH & EqH' & ? & Eqα' & EqD & IN & EQL & ?).
+  symmetry in EqH, EqH'. simplify_eq.
   assert (∃ s, v = [s]) as [s ?].
   { rewrite LenT in EQL. destruct v as [|s v]; [simpl in EQL; done|].
     exists s. destruct v; [done|simpl in EQL; lia]. } subst v.
@@ -584,7 +586,7 @@ Proof.
           (<[l:=Cinl (Excl (v', init_stack (Tagged tg)))]> (r_f.2 ⋅ r'.2))).
       { by rewrite lookup_insert. }
       by apply exclusive_local_update.
-    - subst σt'. intros t k h HL. destruct (PINV t k h) as [? PI].
+    - intros t k h HL. destruct (PINV t k h) as [? PI].
       { rewrite Eqr. move: HL. by rewrite 4!lookup_op /= 2!right_id. }
       split; [done|]. simpl.
       intros l1 s1 Eqs1. specialize (PI l1 s1 Eqs1) as [HLs1 PI].
@@ -595,11 +597,11 @@ Proof.
         rewrite lookup_op (lookup_op (r_f.2 ⋅ r'.2)) /init_local_res /= 2!lookup_fmap.
         do 2 rewrite lookup_insert_ne //. }
       by setoid_rewrite lookup_insert_ne.
-    - subst σt'. intros c cs. simpl. rewrite -HCEq. intros Eqcm.
+    - intros c cs. simpl. rewrite -HCEq. intros Eqcm.
       move : CINV. rewrite Eqr cmra_assoc => CINV.
       specialize (CINV _ _ Eqcm). destruct cs as [[]| |]; [|done..].
       destruct CINV as [? CINV]. split; [done|]. by setoid_rewrite <- HTEq.
-    - subst σt'. destruct SREL as (?&?&?&?& REL). do 4 (split; [done|]).
+    - destruct SREL as (?&?&?&?& REL). do 4 (split; [done|]).
       simpl. intros l1 Inl1 Eq1.
       have NEql1: l1 ≠ l.
       { intros ?. subst l1. move : Eq1. rewrite lookup_op HLN left_id.
@@ -619,7 +621,7 @@ Proof.
         setoid_rewrite Eqr. setoid_rewrite cmra_assoc. by setoid_rewrite <- HTEq.
       + right. move : REL. setoid_rewrite Eqr. setoid_rewrite cmra_assoc.
         rewrite /priv_loc. by setoid_rewrite <- HTEq.
-    - subst σt'. move : LINV. rewrite Eqr cmra_assoc.
+    - move : LINV. rewrite Eqr cmra_assoc.
       (* TODO: general property of lmap_inv w.r.t to separable resource *)
       intros LINV l1 Inl1.
       have EqD': dom (gset loc) (r_f ⋅ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg))).(rlm)
@@ -648,7 +650,7 @@ Proof.
           by inversion 1. }
   left.
   eapply (sim_body_result _ _ _ _ (ValR [☠%S]) (ValR [☠%S])).
-  intros. simpl. subst σt'. by apply POST.
+  intros. simpl. by apply POST.
 Qed.
 
 Lemma sim_body_write_related_values
@@ -675,9 +677,10 @@ Proof.
   split; [|done|].
   { right.
     edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
-    destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPS)
-      as (α' & ? & Eqα' & EqD & IN & EQL & ?).
-    subst es'. setoid_rewrite <-(srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
+    destruct (tstep_write_inv _ (PlaceR _ _ _) (ValR _) _ _ _ STEPS)
+      as (?&?&?&?& α' & EqH & EqH' & ? & Eqα' & EqD & IN & EQL & ?).
+    symmetry in EqH, EqH'. simplify_eq.
+    setoid_rewrite <-(srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
     destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
     rewrite Eqst Eqcs EQS in Eqα'. rewrite -EQL in EQS.
     rewrite EQS in EqD. rewrite Eqnp in IN.
@@ -685,8 +688,9 @@ Proof.
            (mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc)).
     by eapply (head_step_fill_tstep _ []), write_head_step'. }
   constructor 1. intros.
-  destruct (tstep_write_inv _ _ _ _ _ _ _ _ STEPT)
-    as (α' & ? & Eqα' & EqD & IN & EQL & ?). subst et'.
+  destruct (tstep_write_inv _ (PlaceR _ _ _) (ValR _) _ _ _ STEPT)
+      as (?&?&?&?& α' & EqH & EqH' & ? & Eqα' & EqD & IN & EQL & ?).
+  symmetry in EqH, EqH'. simplify_eq.
   set σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc).
   have STEPS: ((Place l (Tagged tg) Ts <- v)%E, σs) ~{fs}~> ((#[☠])%V, σs').
   { setoid_rewrite (srel_heap_dom _ _ _ WFS WFT SREL) in EqD.
@@ -734,7 +738,7 @@ Proof.
             move : Eqt. rewrite lookup_op Eqtg. by move => /tagKindR_exclusive_2.
           + right. naive_solver. }
       split.
-      { subst σt'. simpl. destruct CASEt as [(?&?&?&?Eqh)|[Eqh NEQ]].
+      { simpl. destruct CASEt as [(?&?&?&?Eqh)|[Eqh NEQ]].
         - subst t k k0. apply (PINV tg tkUnique h0). by rewrite HL2.
         - move : Eqh. apply PINV. }
       intros l' s' Eqk'. split.
@@ -752,7 +756,7 @@ Proof.
           destruct (PI l' ss0) as [? _]; [|done]. by rewrite Eqs0 Eqss0.
         - specialize (PINV _ _ _ Eqh) as [? PINV].
           specialize (PINV _ _ Eqk') as [EQ _]. rewrite /r' /=. by destruct k0. }
-      intros stk'. subst σt'. simpl.
+      intros stk'. simpl.
       destruct (write_mem_lookup_case l v σt.(shp) l')
           as [[i [Lti [Eqi Eqmi]]]|[NEql Eql]]; last first.
       { (* l' is NOT written to *)
@@ -829,7 +833,7 @@ Proof.
       intros c cs Eqc'.
       have Eqc: (r_f ⋅ r).(rcm) !! c ≡ Some cs.
       { move  : Eqc'. rewrite /r'. by destruct k0. }
-      specialize (CINV _ _ Eqc). subst σt'. simpl.
+      specialize (CINV _ _ Eqc). simpl.
       clear -Eqα' CINV Eqtg VALID HL HL2. destruct cs as [[T|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
       intros t InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
@@ -860,7 +864,7 @@ Proof.
           as [stk [Eqstk AS]].
         exists stk, pm'. split; last split; [done|by apply AS|done].
     - (* srel *)
-      subst σt'. rewrite /srel /=. destruct SREL as (?&?&?&?&Eq).
+      rewrite /srel /=. destruct SREL as (?&?&?&?&Eq).
       repeat split; [done..|].
       intros l1 InD1 Eq1.
       destruct (write_mem_lookup l v σs.(shp)) as [EqN EqO]. rewrite /r'.
@@ -934,8 +938,8 @@ Proof.
           { exists h. rewrite /rtm /= HL lookup_insert_ne //. }
     - intros l'. rewrite -> Eqrlm. setoid_rewrite Eqrlm.
       intros InD. specialize (LINV _ InD) as [? LINV].
-      split. { subst σt'. rewrite /= write_mem_dom //. }
-      intros s stk Eq. subst σt'. rewrite /=.
+      split. { rewrite /= write_mem_dom //. }
+      intros s stk Eq. rewrite /=.
       specialize (LINV _ _ Eq) as (?&?&?&?).
       destruct (write_mem_lookup l v σs.(shp)) as [_ HLs].
       destruct (write_mem_lookup l v σt.(shp)) as [_ HLt].
@@ -948,7 +952,7 @@ Proof.
   }
   left.
   eapply (sim_body_result fs ft r' n (ValR [☠%S]) (ValR [☠%S])).
-  intros. simpl. subst σt'. by apply POST.
+  intros. simpl. by apply POST.
 Qed.
 
 (** Retag *)

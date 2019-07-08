@@ -210,16 +210,17 @@ Lemma sim_simple_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 css cst Φ :
   r ⊨ˢ{n,fs,ft} (let: x := Place ls ts tys in es2, css) ≥ ((let: x := Place lt tt tyt in et2), cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
 
-Lemma sim_simple_ref fs ft r n l tgs tgt Ts Tt css cst Φ :
-  Φ r n (ValR [ScPtr l tgs]) css (ValR [ScPtr l tgt]) cst →
-  r ⊨ˢ{n,fs,ft} ((& (Place l tgs Ts))%E, css) ≥ ((& (Place l tgt Tt))%E, cst) : Φ.
+Lemma sim_simple_ref fs ft r n (pl: result) css cst Φ :
+  (∀ l t T, pl = PlaceR l t T →
+    Φ r n (ValR [ScPtr l t]) css (ValR [ScPtr l t]) cst) →
+  r ⊨ˢ{n,fs,ft} ((& pl)%E, css) ≥ ((& pl)%E, cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_ref; eauto. Qed.
 
-Lemma sim_simple_deref fs ft r n l tgs tgt Ts Tt css cst Φ :
-  tsize Ts = tsize Tt →
-  Φ r n (PlaceR l tgs Ts) css (PlaceR l tgt Tt) cst →
-  r ⊨ˢ{n,fs,ft} (Deref #[ScPtr l tgs] Ts, css) ≥ (Deref #[ScPtr l tgt] Tt, cst) : Φ.
-Proof. intros ? HH σs σt <-<-. apply sim_body_deref; eauto. Qed.
+Lemma sim_simple_deref fs ft r n (rf: result) T css cst Φ :
+  (∀ l t, rf = ValR [ScPtr l t] →
+    Φ r n (PlaceR l t T) css (PlaceR l t T) cst) →
+  r ⊨ˢ{n,fs,ft} (Deref rf T, css) ≥ (Deref rf T, cst) : Φ.
+Proof. intros HH σs σt <-<-. apply sim_body_deref; eauto. Qed.
 
 Lemma sim_simple_var fs ft r n css cst var Φ :
   r ⊨ˢ{n,fs,ft} (Var var, css) ≥ (Var var, cst) : Φ.

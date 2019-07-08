@@ -474,16 +474,18 @@ Proof.
   - by exists (Ki :: K').
 Qed.
 
-Lemma tstep_ref_inv l tg T e' σ σ'
-  (STEP: ((& (Place l tg T))%E, σ) ~{fns}~> (e', σ')) :
-  e' = #[ScPtr l tg]%E ∧ σ' = σ ∧ is_Some (σ.(shp) !! l).
+Lemma tstep_ref_inv (pl: result)  e' σ σ'
+  (STEP: ((& pl)%E, σ) ~{fns}~> (e', σ')) :
+  ∃ l tg T, pl = PlaceR l tg T ∧ e' = #[ScPtr l tg]%E ∧ σ' = σ ∧ is_Some (σ.(shp) !! l).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_ref_decompose _ _ _ Eq)
     as [[]|[K' [? Eq']]]; subst.
-  - clear Eq. simpl in HS. by inv_head_step.
+  - clear Eq. simpl in HS. inv_head_step.
+    have Eq1 := to_of_result pl. rewrite -H /to_result in Eq1. simplify_eq.
+    naive_solver.
   - apply result_head_stuck, (fill_not_result _ K') in HS.
-    by rewrite Eq' in HS.
+    by rewrite Eq' to_of_result in HS.
 Qed.
 
 (** Deref *)
@@ -498,17 +500,19 @@ Proof.
   - by exists (Ki :: K').
 Qed.
 
-Lemma tstep_deref_inv l tg T e' σ σ'
-  (STEP: ((Deref #[ScPtr l tg] T)%E, σ) ~{fns}~> (e', σ')) :
-  e' = Place l tg T ∧ σ' = σ ∧
+Lemma tstep_deref_inv (rf: result) T e' σ σ'
+  (STEP: ((Deref rf T)%E, σ) ~{fns}~> (e', σ')) :
+  ∃ l tg, rf = (ValR [ScPtr l tg])%R ∧ e' = Place l tg T ∧ σ' = σ ∧
   (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σ.(shp)).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_deref_decompose _ _ _ _ Eq)
     as [[]|[K' [? Eq']]]; subst.
-  - clear Eq. simpl in HS. by inv_head_step.
+  - clear Eq. simpl in HS. inv_head_step.
+    have Eq1 := to_of_result rf. rewrite -H0 /to_result in Eq1. simplify_eq.
+    naive_solver.
   - apply result_head_stuck, (fill_not_result _ K') in HS.
-    by rewrite Eq' in HS.
+    by rewrite Eq' to_of_result in HS.
 Qed.
 
 (** Call *)
@@ -728,17 +732,21 @@ Proof.
   - subst K. by exists (Ki :: K0).
 Qed.
 
-Lemma tstep_copy_inv l tg T e' σ σ'
-  (STEP: (Copy (Place l tg T), σ) ~{fns}~> (e', σ')) :
-  ∃ v α', e' = Val v ∧ read_mem l (tsize T) σ.(shp) = Some v ∧
+Lemma tstep_copy_inv (pl: result) e' σ σ'
+  (STEP: (Copy pl, σ) ~{fns}~> (e', σ')) :
+  ∃ l tg T v α',
+    pl = PlaceR l tg T ∧
+    e' = Val v ∧ read_mem l (tsize T) σ.(shp) = Some v ∧
     memory_read σ.(sst) σ.(scs) l tg (tsize T) = Some α' ∧
     σ' = mkState σ.(shp) α' σ.(scs) σ.(snp) σ.(snc).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_copy_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
-  - clear Eq. simpl in HS. inv_head_step. naive_solver.
+  - clear Eq. simpl in HS. inv_head_step.
+    have Eq1 := to_of_result pl. rewrite -H0 /to_result in Eq1. simplify_eq.
+    naive_solver.
   - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
-    + rewrite /= Eq'. by eexists.
+    + rewrite /= Eq' to_of_result. by eexists.
     + by rewrite Eq1' in HS.
 Qed.
 
@@ -776,9 +784,12 @@ Proof.
   - subst K. right. by exists r1, (Ki :: K').
 Qed.
 
-Lemma tstep_write_inv l tg T v e' σ σ'
-  (STEP: ((Place l tg T <- #v)%E, σ) ~{fns}~> (e', σ')) :
-  ∃ α', e' = (#[☠]%V) ∧
+Lemma tstep_write_inv (pl r: result) e' σ σ'
+  (STEP: ((pl <- r)%E, σ) ~{fns}~> (e', σ')) :
+  ∃ l tg T v α',
+    pl = PlaceR l tg T ∧
+    r = ValR v ∧
+    e' = (#[☠]%V) ∧
     memory_written σ.(sst) σ.(scs) l tg (tsize T) = Some α' ∧
     (∀ (i: nat), (i < length v)%nat → l +ₗ i ∈ dom (gset loc) σ.(shp)) ∧
     (v <<t σ.(snp)) ∧ (length v = tsize T) ∧
@@ -787,12 +798,15 @@ Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_write_decompose _ _ _ _ Eq)
     as [[]|[[K' [? Eq']]|[? [K' [? [Eq' ?]]]]]]; subst.
-  - clear Eq. simpl in HS. inv_head_step. naive_solver.
+  - clear Eq. simpl in HS. inv_head_step.
+    have Eq1 := to_of_result pl. rewrite -H0 /to_result in Eq1.
+    have Eq2 := to_of_result r. rewrite -H1 /to_result in Eq2. simplify_eq.
+    naive_solver.
   - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
-    + rewrite /= Eq'. by eexists.
+    + rewrite /= Eq' to_of_result. by eexists.
     + by rewrite Eq1' in HS.
   - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
-    + rewrite /= Eq'. by eexists.
+    + rewrite /= Eq' to_of_result. by eexists.
     + by rewrite Eq1' in HS.
 Qed.
 

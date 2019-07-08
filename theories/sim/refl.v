@@ -102,13 +102,14 @@ Proof.
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
-    Fail eapply sim_simple_deref.
-    admit.
+    have ?:= (rrel_eq _  _ _ Hrel). subst rt.
+    eapply sim_simple_deref. intros. by subst.
   - (* Ref *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
-    Fail eapply sim_simple_ref.
+    have ?:= (rrel_eq _  _ _ Hrel). subst rt.
+    eapply sim_simple_ref. intros. subst.
     admit.
   - (* Copy *) admit.
   - (* Write *) admit.

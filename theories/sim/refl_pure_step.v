@@ -186,54 +186,61 @@ Lemma sim_body_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 σs σt Φ :
 Proof. apply sim_body_let; eauto. Qed.
 
 (** Ref *)
-Lemma sim_body_ref fs ft r n l tgs tgt Ts Tt σs σt Φ :
-  Φ r n (ValR [ScPtr l tgs]) σs (ValR [ScPtr l tgt]) σt : Prop →
-  r ⊨{n,fs,ft} ((& (Place l tgs Ts))%E, σs) ≥ ((& (Place l tgt Tt))%E, σt) : Φ.
+Lemma sim_body_ref fs ft r n (pl: result) σs σt Φ :
+  (∀ l t T, pl = PlaceR l t T →
+    Φ r n (ValR [ScPtr l t]) σs (ValR [ScPtr l t]) σt : Prop) →
+  r ⊨{n,fs,ft} ((& pl)%E, σs) ≥ ((& pl)%E, σt) : Φ.
 Proof.
-  intros SIM. pfold.
+  intros POST. pfold.
   intros NT r_f WSAT. split; [|done|].
   { right.
-    destruct (NT (& (Place l tgs Ts))%E σs) as [[]|[es' [σs' STEPS]]]; [done..|].
-    destruct (tstep_ref_inv _ _ _ _ _ _ _ STEPS) as [? [? IS]]. subst es' σs'.
+    destruct (NT (& pl)%E σs) as [[]|[es' [σs' STEPS]]]; [done..|].
+    destruct (tstep_ref_inv _ _ _ _ _ STEPS) as (l & tg & T & ? & ? & ? & IS).
+    simplify_eq.
     have ?: is_Some (σt.(shp) !! l).
     { clear -WSAT IS. move : IS.
       by rewrite -2!(elem_of_dom (D:=gset loc)) -wsat_heap_dom. }
-    exists #[ScPtr l tgt]%E, σt.
+    exists #[ScPtr l tg]%E, σt.
     eapply (head_step_fill_tstep _ []). by econstructor; econstructor. }
   constructor 1. intros.
-  destruct (tstep_ref_inv _ _ _ _ _ _ _ STEPT) as [? [? IS]]. subst et' σt'.
+  destruct (tstep_ref_inv _ _ _ _ _ STEPT) as (l & tg & T & ? & ? & ? & IS).
+  simplify_eq.
   have ?: is_Some (σs.(shp) !! l).
   { clear -WSAT IS. move : IS.
     by rewrite -2!(elem_of_dom (D:=gset loc)) wsat_heap_dom. }
-  exists #[ScPtr l tgs]%E, σs, r, n. split.
+  exists #[ScPtr l tg]%E, σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
   split; [done|]. left.
-  by apply (sim_body_result _ _ _ _ (ValR _) (ValR _)).
+  apply (sim_body_result _ _ _ _ (ValR _) (ValR _)).
+  intros. by eapply POST.
 Qed.
 
 (** Deref *)
-Lemma sim_body_deref fs ft r n l tgs tgt Ts Tt σs σt Φ
-  (EQS: tsize Ts = tsize Tt) :
-  Φ r n (PlaceR l tgs Ts) σs (PlaceR l tgt Tt) σt : Prop →
-  r ⊨{n,fs,ft} (Deref #[ScPtr l tgs] Ts, σs) ≥ (Deref #[ScPtr l tgt] Tt, σt) : Φ.
+Lemma sim_body_deref fs ft r n (rf: result) T σs σt Φ :
+  (∀ l t, rf = ValR [ScPtr l t] →
+    Φ r n (PlaceR l t T) σs (PlaceR l t T) σt : Prop ) →
+  r ⊨{n,fs,ft} (Deref rf T, σs) ≥ (Deref rf T, σt) : Φ.
 Proof.
-  intros SIM. pfold.
+  intros POST. pfold.
   intros NT r_f WSAT. split; [|done|].
   { right.
-    destruct (NT (Deref #[ScPtr l tgs] Ts) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
-    destruct (tstep_deref_inv _ _ _ _ _ _ _ STEPS) as [? [? IS]]. subst es' σs'.
-    have ?: (∀ (i: nat), (i < tsize Tt)%nat → l +ₗ i ∈ dom (gset loc) σt.(shp)).
-    { clear -WSAT IS EQS. rewrite -EQS. move => i /IS. by rewrite -wsat_heap_dom. }
-    exists (Place l tgt Tt), σt.
+    destruct (NT (Deref rf T) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
+    destruct (tstep_deref_inv _ _ _ _ _ _ STEPS) as (l & t & ? & ? & ? & IS).
+    subst.
+    have ?: (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σt.(shp)).
+    { clear -WSAT IS. by setoid_rewrite wsat_heap_dom. }
+    exists (Place l t T), σt.
     eapply (head_step_fill_tstep _ []). by econstructor; econstructor. }
   constructor 1. intros.
-  destruct (tstep_deref_inv _ _ _ _ _ _ _ STEPT) as [? [? IS]]. subst et' σt'.
-  have ?: (∀ (i: nat), (i < tsize Ts)%nat → l +ₗ i ∈ dom (gset loc) σs.(shp)).
-  { clear -WSAT IS EQS. rewrite EQS. move => i /IS. by rewrite wsat_heap_dom. }
-  exists (Place l tgs Ts), σs, r, n. split.
+  destruct (tstep_deref_inv _ _ _ _ _ _ STEPT) as (l & t & ? & ? & ? & IS).
+  subst.
+  have ?: (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σs.(shp)).
+  { clear -WSAT IS. by setoid_rewrite <- wsat_heap_dom. }
+  exists (Place l t T), σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
   split; [done|].
-  left. by apply (sim_body_result _ _ _ _ (PlaceR _ _ _) (PlaceR _ _ _)).
+  left. apply (sim_body_result _ _ _ _ (PlaceR _ _ _) (PlaceR _ _ _)).
+  intros. by eapply POST.
 Qed.
