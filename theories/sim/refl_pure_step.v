@@ -5,6 +5,10 @@ From stbor.sim Require Export instance body.
 
 Set Default Proof Using "Type".
 
+Section pure.
+Implicit Types Φ: resUR → nat → result → state → result → state → Prop.
+
+
 (** PURE STEP ----------------------------------------------------------------*)
 
 (** Call - step over *)
@@ -88,7 +92,7 @@ Qed.
 (** Conc *)
 Lemma sim_body_conc fs ft r n (r1 r2: result) σs σt Φ :
   (∀ v1 v2, r1 = ValR v1 → r2 = ValR v2 →
-    Φ r n (ValR (v1 ++ v2)) σs (ValR (v1 ++ v2)) σt : Prop) →
+    Φ r n (ValR (v1 ++ v2)) σs (ValR (v1 ++ v2)) σt) →
   r ⊨{n,fs,ft} (Conc r1 r2, σs) ≥ (Conc r1 r2, σt) : Φ.
 Proof.
   intros POST. pfold. intros NT r_f WSAT. split; [|done|].
@@ -110,7 +114,7 @@ Qed.
 Lemma sim_body_bin_op fs ft r n op (r1 r2: result) σs σt Φ :
   (∀ s1 s2 s, r1 = ValR [s1] → r2 = ValR [s2] →
     bin_op_eval σt.(shp) op s1 s2 s →
-    Φ r n (ValR [s]) σs (ValR [s]) σt : Prop) →
+    Φ r n (ValR [s]) σs (ValR [s]) σt) →
   r ⊨{n,fs,ft} (BinOp op r1 r2, σs) ≥ (BinOp op r1 r2, σt) : Φ.
 Proof.
   intros POST. pfold. intros NT r_f WSAT. split; [|done|].
@@ -180,7 +184,7 @@ Qed.
 (** Ref *)
 Lemma sim_body_ref fs ft r n (pl: result) σs σt Φ :
   (∀ l t T, pl = PlaceR l t T →
-    Φ r n (ValR [ScPtr l t]) σs (ValR [ScPtr l t]) σt : Prop) →
+    Φ r n (ValR [ScPtr l t]) σs (ValR [ScPtr l t]) σt) →
   r ⊨{n,fs,ft} ((& pl)%E, σs) ≥ ((& pl)%E, σt) : Φ.
 Proof.
   intros POST. pfold.
@@ -211,7 +215,7 @@ Qed.
 (** Deref *)
 Lemma sim_body_deref fs ft r n (rf: result) T σs σt Φ :
   (∀ l t, rf = ValR [ScPtr l t] →
-    Φ r n (PlaceR l t T) σs (PlaceR l t T) σt : Prop ) →
+    Φ r n (PlaceR l t T) σs (PlaceR l t T) σt) →
   r ⊨{n,fs,ft} (Deref rf T, σs) ≥ (Deref rf T, σt) : Φ.
 Proof.
   intros POST. pfold.
@@ -236,3 +240,5 @@ Proof.
   left. apply: sim_body_result.
   intros. by eapply POST.
 Qed.
+
+End pure.

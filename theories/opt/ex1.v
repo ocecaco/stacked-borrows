@@ -1,4 +1,4 @@
-From stbor.sim Require Import local invariant refl tactics simple program.
+From stbor.sim Require Import local invariant refl tactics simple program refl_step right_step left_step.
 
 Set Default Proof Using "Type".
 
@@ -33,16 +33,16 @@ Proof.
   simplify_eq/=.
   (* InitCall *)
   apply sim_simple_init_call=> c /= {css}.
-  (* Alloc *)
+  (* Alloc local *)
   sim_apply sim_simple_alloc_local=> l t /=.
   sim_apply sim_simple_let=>/=.
-  (* Write *)
+  (* Write local *)
   rewrite (vrel_eq _ _ _ AREL).
   sim_apply sim_simple_write_local; [solve_sim..|].
   intros arg ->. simpl.
   sim_apply sim_simple_let=>/=.
   apply: sim_simple_result.
-  (* Retag. *)
+  (* Retag local *)
   sim_apply sim_simple_let=>/=.
   destruct args as [|args args']; first by inversion AREL.
   apply Forall2_cons_inv in AREL as [AREL ATAIL].
@@ -55,8 +55,45 @@ Proof.
   intros rf frs frt ??? ? _ _ FREL. simplify_eq/=.
   apply: sim_simple_result. simpl.
   sim_apply sim_simple_let=>/=.
-  (* Deref *)
-
+  (* Copy local *)
+  sim_apply sim_simple_copy_local; [solve_sim..|].
+  apply: sim_simple_result. simpl.
+  sim_apply sim_simple_deref=>l' t' ?. simplify_eq/=.
+  (* Write unique. We need to drop to complex mode, to preserve some local state info. *)
+  intros σs σt Hσs Hσt. 
+  sim_apply sim_body_write_owned; [solve_sim..|].
+  intros ???? Htop. simplify_eq/=.
+  sim_apply sim_body_let. simplify_eq/=.
+  (* Copy local (right) *)
+  sim_apply_r sim_body_copy_local_r; [solve_sim..|].
+  apply: sim_body_result=>_. simpl.
+  (* Copy unique (right) *)
+  sim_apply_r sim_body_deref_r. simpl.
+  sim_apply_r sim_body_copy_unique_r; [try solve_sim..|].
+  { subst σt'. admit. (* show that tag_op_top is preserved. *) }
+  { rewrite lookup_insert. done. }
+  apply: sim_body_result=>_. simpl.
+  apply: sim_body_let_r. simpl. (* FIXME: figure out why [sim_apply_r] does the wrong thing here *)
+  (* We can go back to simple mode! *)
+  eapply sim_simplify. { intros ?????? HH. exact HH. }
+  simplify_eq/=. rewrite Hσs Hσt. clear- AREL FREL LOOK.
+  (* Call *)
+  sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
+  intros rf' frs' frt' ??? ? _ _ FREL'. simplify_eq/=.
+  apply: sim_simple_result. simpl.
+  sim_apply sim_simple_let=>/=.
+  (* Copy local (left). We drop to complex just because simple does not support this yet. *)
+  intros σs σt Hσs Hσt.
+  sim_apply_l sim_body_copy_local_l; [solve_sim..|].
+  apply: sim_body_result=>_. simpl.
+  (* Copy unique (left) *)
+  sim_apply_l sim_body_deref_l. simpl.
+  sim_apply_l sim_body_copy_unique_l; [try solve_sim..|].
+  { rewrite lookup_insert. done. }
+  apply: sim_body_result=>_. simpl.
+  apply: sim_body_result=>Hval. split.
+  - eexists. split; first done. admit. (* end_call_sat *)
+  - constructor; simpl; auto.
 Admitted.
 
 (** Top-level theorem: Two programs that only differ in the

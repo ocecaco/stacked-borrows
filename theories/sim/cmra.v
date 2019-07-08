@@ -26,6 +26,7 @@ Definition cmapUR := gmapUR call_id callStateR.
 Definition to_cmapUR (cm: cmap) : cmapUR := fmap to_callStateR cm.
 
 Definition tmap := gmap ptr_id (tag_kind * mem).
+Definition heaplet := gmap loc scalar.
 Definition heapletR := gmapR loc (agreeR scalarC).
 (* ptr_id ⇀ TagKid x (loc ⇀ Ag(Scalar)) *)
 Definition tmapUR := gmapUR ptr_id (prodR tagKindR heapletR).
@@ -352,7 +353,7 @@ Proof. intros Eq. rewrite lookup_core Eq /core /= core_id //. Qed.
 
 (** Resources that we own. *)
 
-Definition res_tag tg tk h : resUR :=
+Definition res_tag tg tk (h: heaplet) : resUR :=
   ({[tg := (to_tagKindR tk, to_agree <$> h)]}, ε, ε).
 
 Definition res_callState (c: call_id) (cs: call_state) : resUR :=

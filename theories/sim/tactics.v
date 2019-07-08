@@ -41,23 +41,23 @@ Ltac reshape_expr e tac :=
 
 (** bind if K is not empty. Otherwise do nothing.
 Binds cost us steps, so don't waste them! *)
-Ltac sim_body_bind_core Ks Kt es et :=
+Ltac sim_body_bind_core Ks es Kt et :=
   (* Ltac is SUCH a bad language... *)
   match Ks with
   | [] => match Kt with
           | [] => idtac
-          | _ => eapply (sim_body_bind _ _ _ _ Ks Kt es et)
+          | _ => eapply (sim_body_bind _ _ Ks es Kt et)
           end
-  | _ => eapply (sim_body_bind _ _ _ _ Ks Kt es et)
+  | _ => eapply (sim_body_bind _ _ Ks es Kt et)
   end.
-Ltac sim_simple_bind_core Ks Kt es et :=
+Ltac sim_simple_bind_core Ks es Kt et :=
   (* Ltac is SUCH a bad language... *)
   match Ks with
   | [] => match Kt with
           | [] => idtac
-          | _ => eapply (sim_simple_bind _ _ Ks Kt es et)
+          | _ => eapply (sim_simple_bind _ _ Ks es Kt et)
           end
-  | _ => eapply (sim_simple_bind _ _ Ks Kt es et)
+  | _ => eapply (sim_simple_bind _ _ Ks es Kt et)
   end.
 
 Tactic Notation "sim_bind" open_constr(efocs) open_constr(efoct) :=
@@ -67,7 +67,7 @@ Tactic Notation "sim_bind" open_constr(efocs) open_constr(efoct) :=
       unify es efocs;
       reshape_expr et ltac:(fun Kt et =>
         unify et efoct;
-        sim_body_bind_core Ks Kt es et
+        sim_body_bind_core Ks es Kt et
       )
     )
   | |- _ ⊨ˢ{_,_,_} (?es, _) ≥ (?et, _) : _ =>
@@ -75,7 +75,7 @@ Tactic Notation "sim_bind" open_constr(efocs) open_constr(efoct) :=
       unify es efocs;
       reshape_expr et ltac:(fun Kt et =>
         unify et efoct;
-        sim_simple_bind_core Ks Kt es et
+        sim_simple_bind_core Ks es Kt et
       )
     )
   end.
@@ -85,16 +85,52 @@ Tactic Notation "sim_apply" open_constr(lem) :=
   | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
     reshape_expr es ltac:(fun Ks es =>
       reshape_expr et ltac:(fun Kt et =>
-        sim_body_bind_core Ks Kt es et;
+        sim_body_bind_core Ks es Kt et;
         apply: lem
       )
     )
   | |- _ ⊨ˢ{_,_,_} (?es, _) ≥ (?et, _) : _ =>
     reshape_expr es ltac:(fun Ks es =>
       reshape_expr et ltac:(fun Kt et =>
-        sim_simple_bind_core Ks Kt es et;
+        sim_simple_bind_core Ks es Kt et;
         apply: lem
       )
+    )
+  end.
+
+Tactic Notation "sim_bind_r" open_constr(efoc) :=
+  match goal with 
+  | |- _ ⊨{_,_,_} (_, _) ≥ (?et, _) : _ =>
+    reshape_expr et ltac:(fun Kt et =>
+      unify et efoc;
+      eapply (sim_body_bind_r _ _ Kt et)
+    )
+  end.
+
+Tactic Notation "sim_apply_r" open_constr(lem) :=
+  match goal with
+  | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+    reshape_expr et ltac:(fun Kt et =>
+      eapply (sim_body_bind_r _ _ Kt et);
+      apply: lem
+    )
+  end.
+
+Tactic Notation "sim_bind_l" open_constr(efoc) :=
+  match goal with 
+  | |- _ ⊨{_,_,_} (?es, _) ≥ (_, _) : _ =>
+    reshape_expr es ltac:(fun Ks es =>
+      unify es efoc;
+      eapply (sim_body_bind_l _ _ Ks es)
+    )
+  end.
+
+Tactic Notation "sim_apply_l" open_constr(lem) :=
+  match goal with
+  | |- _ ⊨{_,_,_} (?es, _) ≥ (_, _) : _ =>
+    reshape_expr es ltac:(fun Ks es =>
+      eapply (sim_body_bind_l _ _ Ks es);
+      apply: lem
     )
   end.
 

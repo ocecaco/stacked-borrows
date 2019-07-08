@@ -5,6 +5,43 @@ From stbor.sim Require Export instance.
 
 Set Default Proof Using "Type".
 
+Section left.
+Implicit Types Φ: resUR → nat → result → state → result → state → Prop.
+
+Lemma sim_body_let_l fs ft r n x et es1 es2 vs1 σs σt Φ :
+  IntoResult es1 vs1 →
+  r ⊨{n,fs,ft} (subst' x es1 es2, σs) ≥ (et, σt) : Φ →
+  r ⊨{n,fs,ft} (let: x := es1 in es2, σs) ≥ (et, σt) : Φ.
+Proof.
+Admitted.
+
+Lemma sim_body_deref_l fs ft r n et (rt: result) l t T σs σt Φ :
+  IntoResult et rt →
+  (Φ r n (PlaceR l t T) σs rt σt) →
+  r ⊨{n,fs,ft} (Deref #[ScPtr l t] T, σs) ≥ (et, σt) : Φ.
+Proof.
+Admitted.
+
+Lemma sim_body_copy_local_l fs ft r r' n l tg ty s et σs σt Φ :
+  tsize ty = 1%nat →
+  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  (r ⊨{n,fs,ft} (#[s], σs) ≥ (et, σt) : Φ) →
+  r ⊨{n,fs,ft}
+    (Copy (Place l (Tagged tg) ty), σs) ≥ (et, σt)
+  : Φ.
+Proof.
+Admitted.
+
+Lemma sim_body_copy_unique_l
+  fs ft (r r': resUR) (h: heaplet) n (l: loc) tg T (s: scalar) et σs σt Φ :
+  tsize T = 1%nat →
+  r ≡ r' ⋅ res_tag tg tkUnique h →
+  h !! l = Some s →
+  (r ⊨{n,fs,ft} (#[s], σs) ≥ (et, σt) : Φ : Prop) →
+  r ⊨{n,fs,ft} (Copy (Place l (Tagged tg) T), σs) ≥ (et, σt) : Φ.
+Proof.
+Admitted.
+
 Lemma sim_body_copy_left_1
   fs ft (r: resUR) k (h: heapletR) n l t et σs σt Φ
   (UNIQUE: r.(rtm) !! t ≡ Some (k, h))
@@ -33,3 +70,5 @@ Proof.
   { (* follows COND *) admit. }
   { (* follows COND *) admit. }
 Abort.
+
+End left.

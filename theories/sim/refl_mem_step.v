@@ -5,6 +5,8 @@ From stbor.sim Require Export instance body.
 
 Set Default Proof Using "Type".
 
+Section mem.
+Implicit Types Φ: resUR → nat → result → state → result → state → Prop.
 
 (** MEM STEP -----------------------------------------------------------------*)
 
@@ -30,7 +32,7 @@ Lemma sim_body_alloc_local fs ft r n T σs σt Φ :
                      (S σt.(snp)) σt.(snc) in
   let rt : resUR := res_tag σt.(snp) tkUnique ∅ in
   let r' : resUR := res_mapsto l (tsize T) ☠ σt.(snp) in
-  Φ (r ⋅ rt ⋅ r') n (PlaceR l t T) σs' (PlaceR l t T) σt' : Prop →
+  Φ (r ⋅ rt ⋅ r') n (PlaceR l t T) σs' (PlaceR l t T) σt' →
   r ⊨{n,fs,ft} (Alloc T, σs) ≥ (Alloc T, σt) : Φ.
 Proof.
   intros l t σs' σt' rt r' POST.
@@ -351,7 +353,7 @@ Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ
     ∀ α', memory_read σt.(sst) σt.(scs) l (Tagged t) (tsize Tt) = Some α' →
       let σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc) in
       let σt' := mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc) in
-      vrel (r ⋅ r') vs vt → Φ (r ⋅ r') n (ValR vs) σs' (ValR vt) σt' : Prop) →
+      vrel (r ⋅ r') vs vt → Φ (r ⋅ r') n (ValR vs) σs' (ValR vt) σt') →
   r ⊨{n,fs,ft} (Copy (Place l (Tagged t) Ts), σs) ≥ (Copy (Place l (Tagged t) Tt), σt) : Φ.
 Proof.
   intros POST. pfold.
@@ -580,7 +582,7 @@ Lemma sim_body_write_local_1 fs ft r r' n l tg T v v' σs σt Φ :
     let σs' := mkState (<[l := s]> σs.(shp)) σs.(sst) σs.(scs) σs.(snp) σs.(snc) in
     let σt' := mkState (<[l := s]> σt.(shp)) σt.(sst) σt.(scs) σt.(snp) σt.(snc) in
     Φ (r' ⋅ res_mapsto l 1 s tg) n
-      (ValR [☠%S]) σs' (ValR [☠%S]) σt' : Prop) →
+      (ValR [☠%S]) σs' (ValR [☠%S]) σt') →
   r ⊨{n,fs,ft}
     (Place l (Tagged tg) T <- #v, σs) ≥ (Place l (Tagged tg) T <- #v, σt) : Φ.
 Proof.
@@ -739,7 +741,7 @@ Lemma sim_body_write_related_values
   (∀ α', memory_written σt.(sst) σt.(scs) l (Tagged tg) (tsize Tt) = Some α' →
     let σs' := mkState (write_mem l v σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
     let σt' := mkState (write_mem l v σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
-    Φ r' n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
+    Φ r' n (ValR [☠]%S) σs' (ValR [☠]%S) σt' : Prop) →
   r ⊨{n,fs,ft}
     (Place l (Tagged tg) Ts <- #v, σs) ≥ (Place l (Tagged tg) Tt <- #v, σt) : Φ.
 Proof.
@@ -1032,6 +1034,23 @@ Proof.
   intros. simpl. by apply POST.
 Qed.
 
+(** can probably be derived from [write_related_values]? *)
+Lemma sim_body_write_owned
+  fs ft (r r' r'' rs: resUR) h n l tg T s σs σt Φ:
+  tsize T = 1%nat →
+  r ≡ r' ⋅ res_tag tg tkUnique h →
+  arel rs s s → (* assuming to-write values are related *)
+  r' ≡ r'' ⋅ rs →
+  (∀ α', memory_written σt.(sst) σt.(scs) l (Tagged tg) (tsize T) = Some α' →
+    let σs' := mkState (write_mem l [s] σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
+    let σt' := mkState (write_mem l [s] σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
+    tag_on_top σt l tg →
+    Φ (r' ⋅ res_tag tg tkUnique (<[l:=s]> h)) n (ValR [☠]%S) σs' (ValR [☠]%S) σt') →
+  r ⊨{n,fs,ft}
+    (Place l (Tagged tg) T <- #[s], σs) ≥ (Place l (Tagged tg) T <- #[s], σt) : Φ.
+Proof.
+Admitted.
+
 (** Retag *)
 
 Lemma retag_ref_change_1 h α cids c nxtp x rk mut T h' α' nxtp'
@@ -1108,7 +1127,7 @@ Lemma sim_body_retag_default fs ft r n x xtag mut T σs σt Φ
       = Some (hs', αs', nps') →
     let σs' := mkState hs' αs' σs.(scs) nps' σs.(snc) in
     let σt' := mkState ht' αt' σt.(scs) npt' σt.(snc) in
-      Φ r n ((#[☠])%V) σs' ((#[☠]%V)) σt' : Prop) →
+      Φ r n (ValR [☠]%S) σs' (ValR [☠]%S) σt' : Prop) →
   r ⊨{n,fs,ft}
     (Retag (Place x xtag Tr) Default, σs) ≥
     (Retag (Place x xtag Tr) Default, σt) : Φ.
@@ -1353,3 +1372,5 @@ Proof.
         simplify_eq. split; [done|]. eexists. split; [|done]. by apply tc_once. }
   subst. simpl. by exists vs, vt.
 Qed.
+
+End mem.

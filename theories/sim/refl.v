@@ -255,7 +255,7 @@ Proof using Type*.
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
-    simplify_eq/=. eapply sim_simple_deref=>l t ?. simplify_eq/=.
+    simplify_eq/=. apply: sim_simple_deref=>l t ?. simplify_eq/=.
     do 3 (split; first done). done.
   - (* Ref *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).

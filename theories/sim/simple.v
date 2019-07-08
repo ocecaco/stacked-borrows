@@ -8,7 +8,7 @@ want to clean some stuff from your context.
 *)
 
 From stbor.sim Require Export body instance.
-From stbor.sim Require Import refl_step.
+From stbor.sim Require Import refl_step right_step left_step.
 
 Definition fun_post_simple
   initial_call_id_stack (r: resUR) (n: nat) vs (css: call_id_stack) vt cst :=
@@ -167,9 +167,9 @@ Proof.
 Qed.
 
 Lemma sim_simple_bind fs ft
-  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
-  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft)))
-  es et r n css cst Φ :
+  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs))) es
+  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft))) et
+  r n css cst Φ :
   r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst)
     : (λ r' n' es' css' et' cst',
         r' ⊨ˢ{n',fs,ft} (fill Ks es', css') ≥ (fill Kt et', cst') : Φ) →
@@ -268,17 +268,34 @@ Lemma sim_simple_copy_local_l fs ft r r' n l tg ty s et css cst Φ :
     (Copy (Place l (Tagged tg) ty), css) ≥ (et, cst)
   : Φ.
 Proof.
-Admitted.
+  intros ?? Hold σs σt <- <-.
+  eapply sim_body_copy_local_l; eauto.
+Qed.
 
 Lemma sim_simple_copy_local_r fs ft r r' n l tg ty s es css cst Φ :
   tsize ty = 1%nat →
   r ≡ r' ⋅ res_mapsto l 1 s tg →
   (r ⊨ˢ{n,fs,ft} (es, css) ≥ (#[s], cst) : Φ) →
-  r ⊨ˢ{n,fs,ft}
+  r ⊨ˢ{S n,fs,ft}
     (es, css) ≥ (Copy (Place l (Tagged tg) ty), cst)
   : Φ.
 Proof.
-Admitted.
+  intros ?? Hold σs σt <- <-.
+  eapply sim_body_copy_local_r; eauto.
+Qed.
+
+Lemma sim_simple_copy_local fs ft r r' n l tg ty s css cst Φ :
+  tsize ty = 1%nat →
+  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  (r ⊨ˢ{n,fs,ft} (#[s], css) ≥ (#[s], cst) : Φ) →
+  r ⊨ˢ{S n,fs,ft}
+    (Copy (Place l (Tagged tg) ty), css) ≥ (Copy (Place l (Tagged tg) ty), cst)
+  : Φ.
+Proof.
+  intros ?? Hcont.
+  eapply sim_simple_copy_local_l; [done..|].
+  eapply sim_simple_copy_local_r; done.
+Qed.
 
 Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
   r ≡ r' ⋅ res_mapsto l 1 s tg →
@@ -351,11 +368,12 @@ Lemma sim_simple_ref fs ft r n (pl: result) css cst Φ :
   r ⊨ˢ{n,fs,ft} ((& pl)%E, css) ≥ ((& pl)%E, cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_ref; eauto. Qed.
 
-Lemma sim_simple_deref fs ft r n (rf: result) T css cst Φ :
+Lemma sim_simple_deref fs ft r n ef (rf: result) T css cst Φ :
+  IntoResult ef rf →
   (∀ l t, rf = ValR [ScPtr l t] →
     Φ r n (PlaceR l t T) css (PlaceR l t T) cst) →
-  r ⊨ˢ{n,fs,ft} (Deref rf T, css) ≥ (Deref rf T, cst) : Φ.
-Proof. intros HH σs σt <-<-. apply sim_body_deref; eauto. Qed.
+  r ⊨ˢ{n,fs,ft} (Deref ef T, css) ≥ (Deref ef T, cst) : Φ.
+Proof. intros <- HH σs σt <-<-. apply sim_body_deref; eauto. Qed.
 
 Lemma sim_simple_var fs ft r n css cst var Φ :
   r ⊨ˢ{n,fs,ft} (Var var, css) ≥ (Var var, cst) : Φ.

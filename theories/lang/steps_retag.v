@@ -6,6 +6,8 @@ Definition tag_in t (stk: stack) :=
   ∃ pm opro, pm ≠ Disabled ∧ mkItem pm (Tagged t) opro ∈ stk.
 Definition tag_in_stack σ l t :=
   ∃ stk, σ.(sst) !! l = Some stk ∧ tag_in t stk.
+Definition tag_on_top σt l tag : Prop :=
+  tg <$> (σt.(sst) !! l) ≫= head = Some (Tagged tag).
 
 (** Active protector preserving *)
 Definition active_preserving (cids: call_id_stack) (stk stk': stack) :=
