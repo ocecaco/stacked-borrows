@@ -54,6 +54,15 @@ Proof.
   intros HΦ <-<-. eapply sim_simplify. done.
 Qed.
 
+Lemma sim_simple_frame_core Φ r n fs ft es css et cst :
+  r ⊨ˢ{ n , fs , ft }
+    (es, css) ≥ (et, cst)
+  : (λ r' n' es' css' et' cst', Φ (core r ⋅ r') n' es' css' et' cst') →
+  r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ.
+Proof.
+  intros Hold σs σt <-<-. eapply sim_body_frame_core. auto.
+Qed.
+
 Lemma sim_simple_post_mono Φ1 Φ2 r n fs ft es css et cst :
   Φ1 <6= Φ2 →
   r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ1 →
@@ -136,9 +145,8 @@ Lemma sim_simple_call n' vls vlt rv fs ft r r' n fid css cst Φ :
   r ⊨ˢ{n,fs,ft}
     (Call #[ScFnPtr fid] (Val <$> vls), css) ≥ (Call #[ScFnPtr fid] (Val <$> vlt), cst) : Φ.
 Proof.
-  intros Hfns Hrel Hres HH σs σt <-<-.
-  eapply sim_body_res_proper; last apply: sim_body_step_over_call.
-  - symmetry. exact: Hres.
+  intros Hfns Hrel Hres HH σs σt <-<-. rewrite Hres.
+  apply: sim_body_step_over_call.
   - done.
   - done.
   - intros. exists n'. eapply sim_body_res_proper; last apply: HH; try done.

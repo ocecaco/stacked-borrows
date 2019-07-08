@@ -70,30 +70,26 @@ Proof.
 Qed.
 
 Lemma expr_wf_soundness r e :
-  expr_wf e → sem_wf r e e.
+  ✓ r → expr_wf e → sem_wf r e e.
 Proof.
-  revert r. induction e using expr_ind; simpl; intros r Hwf.
+  revert r. induction e using expr_ind; simpl; intros r Hvalid.
   - (* Value *)
-    move=>_ _ /=.
+    move=>Hwf _ _ /=.
     apply sim_simple_val.
-    split; first done.
-    split; first done. split; first done.
+    do 3 (split; first done).
     apply value_wf_soundness. done.
   - (* Variable *)
-    move=>{Hwf} xs Hxswf /=.
+    move=>_ xs Hxswf /=.
     rewrite !lookup_fmap. specialize (Hxswf x).
     destruct (xs !! x); simplify_eq/=.
     + destruct p as [rs rt].
       intros σs σt ??. eapply sim_body_result=>_.
-      split; first done.
-      split; first done. split; first done.
+      do 3 (split; first done).
       eapply (Hxswf (rs, rt)). done.
-    + simpl.
-      (* FIXME: need lemma for when both sides are stuck on an unbound var. *)
-      admit.
+    + simpl. apply sim_simple_var.
   - (* Call *)
-    move=>xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
-    eapply sim_simple_post_mono, IHe; [|by apply Hwf|done].
+    move=>[Hwf1 Hwf2] xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
     admit.
   - (* InitCall *) done.
@@ -101,25 +97,36 @@ Proof.
   - (* Proj *) admit.
   - (* Conc *) admit.
   - (* BinOp *) admit.
-  - (* Place *) admit.
-  - (* Deref *) admit.
-  - (* Ref *) admit.
+  - (* Place *) done.
+  - (* Deref *)
+    move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
+    Fail eapply sim_simple_deref.
+    admit.
+  - (* Ref *)
+    move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
+    Fail eapply sim_simple_ref.
+    admit.
   - (* Copy *) admit.
   - (* Write *) admit.
   - (* Alloc *) admit.
   - (* Free *) done.
   - (* Retag *) admit.
   - (* Let *)
-    move=>xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
-    eapply sim_simple_post_mono, IHe1; [|by apply Hwf|done].
+    move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
+    eapply sim_simple_frame_core.
+    eapply sim_simple_post_mono, IHe1; [|by auto..].
     intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
-    intros σs σt ??. eapply sim_body_let.
-    { destruct rs; eauto. } { destruct rt; eauto. }
+    eapply sim_simple_let; [destruct rs, rt; by eauto..|].
     rewrite !subst'_subst_map.
     change rs with (fst (rs, rt)). change rt with (snd (rs, rt)) at 2.
     rewrite !binder_insert_map.
-    eapply sim_simplify', IHe2; [done..|by apply Hwf|].
-    admit. (* resources dont match?? *)
+    (* FIXME: we need validity. *)
+    Fail eapply IHe2; [|by auto..].
+    admit.
   - (* Case *) admit.
 Admitted.
 
@@ -144,7 +151,7 @@ Proof.
   }
   destruct (subst_l_map _ _ _ _ _ _ _ (rrel vrel r) Hsubst1 Hsubst2) as (map & -> & -> & Hmap).
   { clear -Hrel. induction Hrel; eauto using Forall2. }
-  eapply sim_simplify, expr_wf_soundness; [done..|].
+  Fail eapply sim_simplify, expr_wf_soundness; [done..|].
   admit. (* resource stuff. *)
 Admitted.
 

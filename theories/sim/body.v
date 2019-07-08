@@ -109,7 +109,7 @@ Proof.
   { left. rewrite to_of_result. by eexists. }
 Qed.
 
-Lemma sim_body_res_proper fs ft n es σs et σt Φ r1 r2:
+Lemma sim_body_res_ext fs ft n es σs et σt Φ r1 r2:
   r1 ≡ r2 →
   r1 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
   r2 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
@@ -135,11 +135,21 @@ Proof.
     right. eapply CIH; eauto.
 Qed.
 
+(* TODO: also allow rewriting the postcondition. *)
+Global Instance sim_body_res_proper fs ft :
+  Proper ((≡) ==> (=) ==> (=) ==> (=) ==> (=) ==> (=) ==> (=) ==> (↔))
+    (sim_local_body wsat vrel fs ft).
+Proof.
+  intros r1 r2 EQr n ? <- es ? <- σs ? <- et ? <- σt ? <- Φ ? <-.
+  split; eapply sim_body_res_ext; done.
+Qed.
+Global Instance: Params (@sim_local_body) 5.
+
 Lemma sim_body_frame' fs ft n (rf r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
   ∀ (r': resUR), r' ≡ rf ⋅ r →
     r' ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
-    (λ r' n' es' σs' et' σt', ∃ r0, r' ≡ rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
+    (λ r' n' es' σs' et' σt', ∃ r0, r' = rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
 Proof.
   revert n rf r es σs et σt Φ. pcofix CIH.
   intros n rf r0 es σs et σt Φ SIM r' EQ'.
@@ -167,8 +177,19 @@ Qed.
 Lemma sim_body_frame fs ft n (rf r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
   rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
-    (λ r' n' es' σs' et' σt', ∃ r0, r' ≡ rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
+    (λ r' n' es' σs' et' σt', ∃ r0, r' = rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
 Proof. intros. eapply sim_body_frame'; eauto. Qed.
+
+Lemma sim_body_frame_core fs ft n (r: resUR) es σs et σt Φ :
+  r ⊨{n,fs,ft}
+    (es, σs) ≥ (et, σt)
+  : (λ r' n' es' σs' et' σt', Φ (core r ⋅ r') n' es' σs' et' σt') →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
+Proof.
+  intros HH. rewrite -(cmra_core_l r).
+  eapply sim_local_body_post_mono, sim_body_frame, HH.
+  intros r' n' rs' σs' rt' σt' [r'' [-> HΦ]]. done.
+Qed.
 
 Lemma sim_body_val_elim fs ft r n vs σs vt σt Φ :
   r ⊨{n,fs,ft} ((Val vs), σs) ≥ ((Val vt), σt) : Φ →
