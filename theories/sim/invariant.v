@@ -106,6 +106,18 @@ Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
 Definition end_call_sat (r: resUR) (c: call_id) : Prop :=
   r.(rcm) !! c ≡ Some (to_callStateR csPub).
 
+Lemma res_end_call_sat r c :
+  ✓ r → res_callState c csPub ≼ r → end_call_sat r c.
+Proof.
+  intros Hval [r' EQ]. rewrite /end_call_sat EQ.
+  destruct r' as [[tmap' cmap'] lmap'].
+  rewrite /res_callState. rewrite !pair_op /= /rcm /=.
+  apply cmap_lookup_op_l_equiv_pub; last by rewrite lookup_insert.
+  destruct r as [[tmap cmap] lmap].
+  destruct EQ as [[EQt EQc] EQl]. simplify_eq/=.
+  apply Hval.
+Qed.
+
 Definition init_res : resUR := ((ε, {[O := to_callStateR csPub]}), ε).
 Lemma wsat_init_state : wsat init_res init_state init_state.
 Proof.

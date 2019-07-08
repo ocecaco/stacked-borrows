@@ -117,9 +117,9 @@ Proof.
 Qed.
 
 Lemma expr_wf_soundness r e :
-  ✓ r → expr_wf e → sem_wf r e e.
+  expr_wf e → sem_wf r e e.
 Proof.
-  revert r. induction e using expr_ind; simpl; intros r Hvalid.
+  revert r. induction e using expr_ind; simpl; intros r.
   - (* Value *)
     move=>Hwf _ _ /=.
     apply sim_simple_val.
@@ -166,12 +166,11 @@ Proof.
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe1; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
+    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel) Hval. simpl.
     eapply sim_simple_let; [destruct rs, rt; by eauto..|].
     rewrite !subst'_subst_map.
     change rs with (fst (rs, rt)). change rt with (snd (rs, rt)) at 2.
     rewrite !binder_insert_map.
-    eapply sim_simple_valid_pre=>Hval.
     eapply IHe2; [by auto..|].
     destruct b; first exact: srel_frame_core. simpl.
     apply map_Forall_insert_2.
@@ -190,21 +189,21 @@ Proof.
   intros vs vt σs σt Hrel Hsubst1 Hsubst2. exists sem_steps.
   apply sim_body_init_call=>/=.
   set css := snc σs :: scs σs. set cst := snc σt :: scs σt. move=>Hstacks.
-  eapply (sim_body_viewshift (r ⋅ res_callState _ csPub)).
-  { eapply vs_call_empty_public. }
+  eapply sim_body_viewshift.
+  { eapply viewshift_frame_l. eapply vs_call_empty_public. }
+  eapply sim_body_frame_r.
   eapply sim_local_body_post_mono with
     (Φ:=(λ r n vs' σs' vt' σt', sem_post css cst r n vs' σs'.(scs) vt' σt'.(scs))).
-  { intros r' n' rs css' rt cst' (-> & Hcss & Hcst & Hrrel). simplify_eq.
+  { intros r' n' rs css' rt cst' (-> & Hcss & Hcst & Hrrel) Hval. simplify_eq.
     split.
     - eexists. split; first by rewrite Hcst.
-      admit. (* end_call_sat *)
-    - done.
+      apply: res_end_call_sat; first done. exact: cmra_included_r.
+    - eapply rrel_mono; [done| |done]. exact: cmra_included_l.
   }
   destruct (subst_l_map _ _ _ _ _ _ _ (rrel vrel r) Hsubst1 Hsubst2) as (map & -> & -> & Hmap).
   { clear -Hrel. induction Hrel; eauto using Forall2. }
-  Fail eapply sim_simplify, expr_wf_soundness; [done..|].
-  admit. (* resource stuff. *)
-Admitted.
+  eapply sim_simplify, expr_wf_soundness; done.
+Qed.
 
 Lemma sim_mod_funs_refl prog :
   prog_wf prog →

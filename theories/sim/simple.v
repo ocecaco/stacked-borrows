@@ -57,7 +57,7 @@ Qed.
 Lemma sim_simple_frame_core Φ r n fs ft es css et cst :
   r ⊨ˢ{ n , fs , ft }
     (es, css) ≥ (et, cst)
-  : (λ r' n' es' css' et' cst', Φ (core r ⋅ r') n' es' css' et' cst') →
+  : (λ r' n' es' css' et' cst', ✓ (core r ⋅ r') → Φ (core r ⋅ r') n' es' css' et' cst') →
   r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ.
 Proof.
   intros Hold σs σt <-<-. eapply sim_body_frame_core. auto.

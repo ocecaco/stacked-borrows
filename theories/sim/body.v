@@ -3,10 +3,13 @@ From stbor.sim Require Export instance.
 
 Set Default Proof Using "Type".
 
+Section body.
+Implicit Types Φ: resUR → nat → result → state → result → state → Prop.
+
 Lemma sim_body_valid fs ft r n es σs et σt Φ :
   (valid r →
     r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
-                  (λ r' n' es' σs' et' σt', valid r' → Φ r' n' es' σs' et' σt' : Prop)) →
+                  (λ r' n' es' σs' et' σt', valid r' → Φ r' n' es' σs' et' σt')) →
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
 Proof.
   revert r n es σs et σt Φ. pcofix CIH.
@@ -29,6 +32,16 @@ Proof.
   - econstructor 2; eauto. intros r' vs vt σs' σt' VRET WSAT' STACK.
     destruct (CONT _ _ _ σs' σt' VRET WSAT' STACK) as [idx' SIM'].
     exists idx'. pclearbot. right. by eapply CIH; eauto.
+Qed.
+
+Lemma sim_body_post_mono_valid fs ft r n es σs et σt Φ Φ' :
+  (∀ r, ✓ r → Φ r <5= Φ' r) →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ'.
+Proof.
+  intros HΦ HH. eapply sim_body_valid=>Hval.
+  eapply sim_local_body_post_mono, HH.
+  intros. eapply HΦ; done.
 Qed.
 
 Lemma sim_body_bind fs ft r n
@@ -173,7 +186,7 @@ Qed.
 Global Instance: Params (@sim_local_body) 5.
 
 Lemma sim_body_frame_r' fs ft n (rf r: resUR) es σs et σt Φ :
-  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
   ∀ (r': resUR), r' ≡ rf ⋅ r →
     r' ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
     (λ r' n' es' σs' et' σt', ∃ r0, r' = r0 ⋅ rf ∧ Φ r0 n' es' σs' et' σt').
@@ -205,7 +218,7 @@ Qed.
 (* So ugly. We just copy the above proof to get the version with the frame added
 on the other side.  There *probably* is a better way... *)
 Lemma sim_body_frame_l' fs ft n (rf r: resUR) es σs et σt Φ :
-  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
   ∀ (r': resUR), r' ≡ rf ⋅ r →
     r' ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
     (λ r' n' es' σs' et' σt', ∃ r0, r' = rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
@@ -237,27 +250,29 @@ Qed.
 Lemma sim_body_frame_r fs ft n (rf r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft}
     (es, σs) ≥ (et, σt)
-  : (λ r' n' es' σs' et' σt', Φ (r' ⋅ rf) n' es' σs' et' σt') →
+  : (λ r' n' es' σs' et' σt', ✓ (r' ⋅ rf) → Φ (r' ⋅ rf) n' es' σs' et' σt') →
   r ⋅ rf ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
 Proof.
-  intros HH. eapply sim_local_body_post_mono, sim_body_frame_r'; [|done|by rewrite comm].
+  intros HH. eapply sim_body_valid=>_.
+  eapply sim_local_body_post_mono, sim_body_frame_r'; [|done|by rewrite comm].
   simpl. intros r' n' es' σs' et' σt' (rf' & -> & ?). done.
 Qed.
 
 Lemma sim_body_frame_l fs ft n (rf r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft}
     (es, σs) ≥ (et, σt)
-  : (λ r' n' es' σs' et' σt', Φ (rf ⋅ r') n' es' σs' et' σt') →
+  : (λ r' n' es' σs' et' σt', ✓ (rf ⋅ r') → Φ (rf ⋅ r') n' es' σs' et' σt') →
   rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
 Proof.
-  intros HH. eapply sim_local_body_post_mono, sim_body_frame_l'; [|done..].
+  intros HH. eapply sim_body_valid=>_.
+  eapply sim_local_body_post_mono, sim_body_frame_l'; [|done..].
   simpl. intros r' n' es' σs' et' σt' (rf' & -> & ?). done.
 Qed.
 
 Lemma sim_body_frame_core fs ft n (r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft}
     (es, σs) ≥ (et, σt)
-  : (λ r' n' es' σs' et' σt', Φ (core r ⋅ r') n' es' σs' et' σt') →
+  : (λ r' n' es' σs' et' σt', ✓ (core r ⋅ r') → Φ (core r ⋅ r') n' es' σs' et' σt') →
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
 Proof.
   intros HH. rewrite -(cmra_core_l r).
@@ -286,3 +301,5 @@ Lemma sim_body_viewshift r2 r1 fs ft n es σs et σt Φ :
   r2 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
   r1 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
 Proof. by eapply viewshift_sim_local_body. Qed.
+
+End body.
