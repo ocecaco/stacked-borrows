@@ -226,16 +226,17 @@ Qed.
 
 (* [Val <$> _] in the goal makes this not work with [apply], but
 we'd need tactic support for anything better. *)
-Lemma sim_simple_call n' rls rlt rv fs ft r r' n fid css cst Φ :
+Lemma sim_simple_call n' rls rlt rv fs ft r r' n (fi: result) css cst Φ :
   sim_local_funs_lookup fs ft →
   Forall2 (rrel rv) rls rlt →
   r ≡ r' ⋅ rv →
-  (∀ rret vs vt vls vlt,
+  (∀ rret vs vt vls vlt fid,
+    fi = ValR [ScFnPtr fid] ∧
     rls = ValR <$> vls → rlt = ValR <$> vlt →
     vrel rret vs vt →
     r' ⋅ rret ⊨ˢ{n',fs,ft} (Val vs, css) ≥ (Val vt, cst) : Φ) →
   r ⊨ˢ{n,fs,ft}
-    (Call #[ScFnPtr fid] (of_result <$> rls), css) ≥ (Call #[ScFnPtr fid] (of_result <$> rlt), cst) : Φ.
+    (Call fi (of_result <$> rls), css) ≥ (Call fi (of_result <$> rlt), cst) : Φ.
 Proof.
   intros Hfns Hrel Hres HH σs σt <-<-. rewrite Hres.
   apply: sim_body_step_over_call.

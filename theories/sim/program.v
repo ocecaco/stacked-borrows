@@ -27,7 +27,7 @@ Proof.
   - econs 1.
   - ss.
   - ss.
-  - eapply (sim_body_step_over_call _ _ init_res ε _ _ [] []); [done|..].
+  - eapply (sim_body_step_over_call _ _ init_res ε _ (ValR _) [] []); [done|..].
     { intros fid fn_src. specialize (FUNS fid fn_src). naive_solver. }
     intros. simpl. exists 1%nat.
     apply (sim_body_result _ _ _ _ (ValR vs) (ValR vt)).

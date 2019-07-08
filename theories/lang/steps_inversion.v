@@ -535,19 +535,24 @@ Proof.
   - subst K. right. exists (Ki :: K'). naive_solver.
 Qed.
 
-Lemma tstep_call_inv (fid: fn_id) el e' σ σ'
+Lemma tstep_call_inv (fi: result) el e' σ σ'
   (TERM: Forall (λ ei, is_Some (to_value ei)) el)
-  (STEP: (Call #[fid] el, σ) ~{fns}~> (e', σ')) :
-  ∃ xl e HC es, fns !! fid = Some (@FunV xl e HC) ∧
-    subst_l xl el e = Some es ∧ e' = (EndCall (InitCall es)) ∧ σ' = σ.
+  (STEP: (Call fi el, σ) ~{fns}~> (e', σ')) :
+  ∃ fid xl e HC es,
+    fns !! fid = Some (@FunV xl e HC) ∧
+    subst_l xl el e = Some es ∧
+    fi = ValR [ScFnPtr fid] ∧
+    e' = (EndCall (InitCall es)) ∧ σ' = σ.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_call_decompose _ _ _ _ Eq)
     as [[]|[[K' [? Eq']]|[K' [v1 [vl [e2 [el2 [? Eq']]]]]]]]; subst.
-  - simpl in *. inv_head_step. naive_solver.
+  - simpl in *. inv_head_step; simplify_eq.
+    have Eq1 := to_of_result fi. rewrite -H /to_result in Eq1.
+    naive_solver.
   - exfalso. simpl in *. apply result_head_stuck in HS.
     destruct (fill_val (Λ:=bor_ectx_lang fns) K' e1') as [? Eqv].
-    + rewrite /= Eq'. by eexists.
+    + rewrite /= Eq' to_of_result. by eexists.
     + by rewrite /= HS in Eqv.
   - exfalso. simpl in *. destruct Eq' as [Eq1 Eq2].
     apply result_head_stuck in HS.
@@ -558,20 +563,24 @@ Proof.
     + by rewrite /= HS in Eqv.
 Qed.
 
-Lemma tstep_call_inv_result (fid: fn_id) el e' σ σ'
+Lemma tstep_call_inv_result (fi: result) el e' σ σ'
   (TERM: Forall (λ ei, is_Some (to_result ei)) el)
-  (STEP: (Call #[fid] el, σ) ~{fns}~> (e', σ')) :
-  ∃ xl e HC es, fns !! fid = Some (@FunV xl e HC) ∧
-    subst_l xl el e = Some es ∧ e' = (EndCall (InitCall es)) ∧ σ' = σ ∧
+  (STEP: (Call fi el, σ) ~{fns}~> (e', σ')) :
+  ∃ fid xl e HC es, fns !! fid = Some (@FunV xl e HC) ∧
+    subst_l xl el e = Some es ∧
+    fi = ValR [ScFnPtr fid] ∧
+    e' = (EndCall (InitCall es)) ∧ σ' = σ ∧
     Forall (λ ei, is_Some (to_value ei)) el.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_call_decompose _ _ _ _ Eq)
     as [[]|[[K' [? Eq']]|[K' [v1 [vl [e2 [el2 [? Eq']]]]]]]]; subst.
-  - simpl in *. inv_head_step. naive_solver.
+  - simpl in *. inv_head_step; simplify_eq.
+    have Eq1 := to_of_result fi. rewrite -H /to_result in Eq1.
+    naive_solver.
   - exfalso. simpl in *. apply result_head_stuck in HS.
     destruct (fill_val (Λ:=bor_ectx_lang fns) K' e1') as [? Eqv].
-    + rewrite /= Eq'. by eexists.
+    + rewrite /= Eq' to_of_result. by eexists.
     + by rewrite /= HS in Eqv.
   - exfalso. simpl in *. destruct Eq' as [Eq1 Eq2].
     apply result_head_stuck in HS.

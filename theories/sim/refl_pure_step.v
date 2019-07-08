@@ -9,23 +9,25 @@ Set Default Proof Using "Type".
 
 (** Call - step over *)
 Lemma sim_body_step_over_call fs ft
-  rc rv n fid rls rlt σs σt Φ
+  rc rv n (fi: result) rls rlt σs σt Φ
   (RREL: Forall2 (rrel rv) rls rlt)
   (FUNS: sim_local_funs_lookup fs ft) :
-  (∀ r' vls vlt vs vt σs' σt' (VRET: vrel r' vs vt)
+  (∀ r' fid vls vlt vs vt σs' σt' (VRET: vrel r' vs vt)
     (STACKS: σs.(scs) = σs'.(scs))
     (STACKT: σt.(scs) = σt'.(scs))
+    (Eqfid: fi = ValR [ScFnPtr fid])
     (Eqvls: rls = ValR <$> vls)
     (Eqvlt: rlt = ValR <$> vlt), ∃ n',
     rc ⋅ r' ⊨{n',fs,ft} (Val vs, σs') ≥ (Val vt, σt') : Φ) →
   rc ⋅ rv ⊨{n,fs,ft}
-    (Call #[ScFnPtr fid] (of_result <$> rls), σs) ≥ (Call #[ScFnPtr fid] (of_result <$> rlt), σt) : Φ.
+    (Call fi (of_result <$> rls), σs) ≥ (Call fi (of_result <$> rlt), σt) : Φ.
 Proof.
   intros CONT. pfold. intros NT r_f WSAT.
   edestruct NT as [[]|[e2 [σ2 RED]]]; [constructor 1|done|].
   apply tstep_call_inv_result in RED; last by apply list_Forall_to_of_result.
-  destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ? & VALs).
-  have VALs' := VALs. apply list_Forall_to_value in VALs' as [vls Eqvls].
+  destruct RED as (fid & xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ? & ? & VALs).
+  have VALs' := VALs.
+  apply list_Forall_to_value in VALs' as [vls Eqvls].
   subst. rewrite Eqvls. rewrite Eqvls in VALs, Eqss.
   apply list_Forall_result_value in Eqvls. subst rls.
   destruct (list_Forall_rrel_vrel_3 _ _ _ RREL VALs) as (vlt & ? & VALt & VREL).
@@ -43,7 +45,7 @@ Proof.
             [] [] fid (ValR <$> vlt) (ValR <$> vls)); eauto.
   { by rewrite of_result_list_expr. }
   intros r' ? ? σs' σt' VR WSAT' STACK.
-  destruct (CONT r' vls vlt v_src v_tgt σs' σt') as [n' ?];
+  destruct (CONT r' fid vls vlt v_src v_tgt σs' σt') as [n' ?];
     [by apply vrel_rrel| |done..|exists n'; by left].
   destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (?&?&?Eqcss&?).
   destruct WSAT' as (?&?&?&?&?&SREL'&?). destruct SREL' as (?&?&?Eqcss'&?).

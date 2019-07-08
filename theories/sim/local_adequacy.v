@@ -190,8 +190,8 @@ Proof.
         { inv STEP'0. ss. }
       * right. apply CIH. econs; eauto.
     + (* call *)
-      exploit fill_step_inv_2; eauto. i. des; ss.
-      exploit tstep_call_inv_result.
+      exploit fill_step_inv_2; eauto. i. des; ss. subst.
+      exploit (tstep_call_inv_result fnt (ValR [ScFnPtr fid])).
       { instantiate (1:= (of_result <$> vl_tgt)).
         by apply list_Forall_to_of_result. }
       { exact x2. }
@@ -201,16 +201,17 @@ Proof.
         eapply never_stuck_tstep_rtc; eauto.
         by apply (never_stuck_fill_inv _ K_src0). }
       edestruct NT as [[]|[e2 [σ2 RED]]]; [constructor 1|done|].
-      apply tstep_call_inv_result in RED; last first.
+      apply (tstep_call_inv_result fns (ValR [ScFnPtr fid])) in RED; last first.
       { by apply list_Forall_to_of_result. }
-      destruct RED as (xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ? & ?). subst e2 σ2.
+      destruct RED as (fid' & xls & ebs & HCs & ebss & Eqfs & Eqss & ? & ? & ? & ?).
+      subst. simplify_eq.
       destruct (FUNS _ _ Eqfs) as ([xlt2 ebt2 HCt2] & Eqft2 & Eql2 & SIMf).
-      rewrite Eqft2 in x3. simplify_eq.
+      rewrite Eqft2 in x0. simplify_eq.
       apply list_Forall_rrel_vrel in VREL as (vs & vt & ? & ? & VREL); [|done..].
       subst vl_src vl_tgt.
       rewrite -list_fmap_compose in Eqss.
-      rewrite -list_fmap_compose in x4.
-      specialize (SIMf _ _ _ _ _ σ1_src σ_tgt VREL Eqss x4) as [idx2 SIMf].
+      rewrite -list_fmap_compose in x3.
+      specialize (SIMf _ _ _ _ _ σ1_src σ_tgt VREL Eqss x3) as [idx2 SIMf].
       esplits.
       * left. eapply tc_rtc_l.
         { apply fill_tstep_rtc. eauto. }
