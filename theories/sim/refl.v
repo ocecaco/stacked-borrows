@@ -5,7 +5,7 @@ Set Default Proof Using "Type".
 
 (** Enable use of [Forall] in recursion. *)
 Lemma Forall_id {A: Type} (P: A → Prop) (l: list A) :
-  Forall P l ↔ Forall id (map P l).
+  Forall id (fmap P l) ↔ Forall P l.
 Proof.
   induction l; simpl; first by eauto using Forall_nil.
   split; intros [??]%Forall_cons_1; apply Forall_cons; simpl; tauto.
@@ -25,8 +25,8 @@ Fixpoint expr_wf (e: expr) : Prop :=
   (* Structural cases. *)
   | Var _ | Alloc _ => True
   | Val v => value_wf v
-  | Call f args => expr_wf f ∧ Forall id (map expr_wf args)
-  | Case e branches => expr_wf e ∧ Forall id (map expr_wf branches)
+  | Call f args => expr_wf f ∧ Forall id (fmap expr_wf args)
+  | Case e branches => expr_wf e ∧ Forall id (fmap expr_wf branches)
   | Deref e _ | Ref e  | Copy e | Retag e _ =>
     expr_wf e
   | Proj e1 e2 | Conc e1 e2 | BinOp _ e1 e2 | Let _ e1 e2 | Write e1 e2 =>
@@ -80,16 +80,29 @@ Proof.
   eapply (Hrel _ _ Hlk).
 Qed.
 
-Lemma srel_frame_core r rf xs :
-  ✓ (core r ⋅ rf) → srel r xs → srel (core r ⋅ rf) xs.
+Lemma srel_core_mono r rf xs:
+  srel r xs → ✓ rf → core r ≼ rf → srel rf xs.
 Proof.
-  move=>Hval /srel_persistent. apply: srel_mono; first done.
-  eexists. eauto.
+  intros Hrel%srel_persistent ??. eapply srel_mono; done.
+Qed.
+
+Lemma rrel_core_mono r rf r1 r2 :
+  rrel r r1 r2 → ✓ rf → core r ≼ rf → rrel rf r1 r2.
+Proof.
+  intros Hrel%rrel_persistent ??. eapply rrel_mono; done.
+Qed.
+
+Lemma arel_core_mono r rf a1 a2 :
+  arel r a1 a2 → ✓ rf → core r ≼ rf → arel rf a1 a2.
+Proof.
+  intros Hrel%arel_persistent ??. eapply arel_mono; done.
 Qed.
 
 (** Hints. *)
-Local Hint Extern 0 (_ ≼ _) => exact: cmra_included_r : core. (* needs to be written like this to trump the reflexivity Hint. *)
-Local Hint Resolve srel_frame_core.
+Local Hint Extern 10 (srel _ _) => apply: srel_core_mono; first fast_done : core.
+Local Hint Extern 10 (rrel _ _ _) => apply: rrel_core_mono; first fast_done : core.
+Local Hint Extern 10 (arel _ _ _) => apply: arel_core_mono; first fast_done : core.
+Local Hint Extern 50 (_ ≼ _) => solve_res : core.
 
 (** We define a "semantic well-formedness", in some context. *)
 Definition sem_steps := 10%nat.
@@ -141,7 +154,22 @@ Proof.
     admit.
   - (* InitCall *) done.
   - (* EndCall *) done.
-  - (* Proj *) admit.
+  - (* Proj *)
+    move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
+    eapply sim_simple_frame_core.
+    eapply sim_simple_post_mono, IHe1; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
+    eapply sim_simple_frame_more_core.
+    eapply sim_simple_post_mono, IHe2; [|by auto..].
+    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    simplify_eq/=. eapply sim_simple_proj; [done..|].
+    intros vi vv idx ?? Hidx ?. simplify_eq.
+    do 3 (split; first done).
+    move:Hrel=>/= /Forall2_lookup=>Hrel.
+    specialize (Hrel (Z.to_nat idx)).
+    rewrite Hidx in Hrel. inversion Hrel. simplify_eq/=.
+    constructor; last done. auto.
   - (* Conc *) admit.
   - (* BinOp *) admit.
   - (* Place *) done.
@@ -172,11 +200,23 @@ Proof.
     change rs with (fst (rs, rt)). change rt with (snd (rs, rt)) at 2.
     rewrite !binder_insert_map.
     eapply IHe2; [by auto..|].
-    destruct b; first exact: srel_frame_core. simpl.
+    destruct b; first by auto. simpl.
     apply map_Forall_insert_2.
-    + eapply rrel_mono; eauto.
-    + eapply srel_frame_core; eauto.
-  - (* Case *) admit.
+    + eapply rrel_mono; last done; auto.
+    + eapply srel_core_mono; eauto.
+  - (* Case *)
+    move=>[Hwf1 /Forall_id Hwf2] xs Hxs /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_frame_core.
+    eapply sim_simple_post_mono, IHe; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    simplify_eq/=. eapply sim_simple_case.
+    { rewrite !fmap_length //. }
+    intros es et ??. rewrite !list_lookup_fmap.
+    destruct (el !! Z.to_nat i) eqn:Hlk; last done.
+    intros. simplify_eq/=.
+    eapply (Forall_lookup_1  _ _ _ _ H Hlk).
+    + eapply (Forall_lookup_1  _ _ _ _ Hwf2 Hlk).
+    + eauto.
 Admitted.
 
 End sem.

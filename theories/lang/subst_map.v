@@ -47,7 +47,7 @@ Fixpoint subst_map (xs : gmap string result) (e : expr) : expr :=
   match e with
   | Var y => if xs !! y is Some v then of_result v else Var y
   | Val v => Val v
-  | Call e el => Call (subst_map xs e) (map (subst_map xs) el)
+  | Call e el => Call (subst_map xs e) (fmap (subst_map xs) el)
   | InitCall e => InitCall (subst_map xs e)
   | EndCall e => EndCall (subst_map xs e)
   | Place l tag T => Place l tag T
@@ -65,7 +65,7 @@ Fixpoint subst_map (xs : gmap string result) (e : expr) : expr :=
       Let x1
         (subst_map xs e1)
         (subst_map (binder_delete x1 xs) e2)
-  | Case e el => Case (subst_map xs e) (map (subst_map xs) el)
+  | Case e el => Case (subst_map xs e) (fmap (subst_map xs) el)
   end.
 
 Lemma subst_map_empty e :

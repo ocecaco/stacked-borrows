@@ -314,7 +314,7 @@ Proof. intros EqN. destruct Ki; simplify_option_eq; eauto. Qed.
 
 Lemma list_expr_result_eq_inv rl1 rl2 e1 e2 el1 el2 :
   to_result e1 = None → to_result e2 = None →
-  map of_result rl1 ++ e1 :: el1 = map of_result rl2 ++ e2 :: el2 →
+  fmap of_result rl1 ++ e1 :: el1 = fmap of_result rl2 ++ e2 :: el2 →
   rl1 = rl2 ∧ el1 = el2.
 Proof.
   revert rl2; induction rl1; destruct rl2; intros H1 H2; inversion 1.

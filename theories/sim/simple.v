@@ -29,6 +29,18 @@ Notation "r ⊨ˢ{ n , fs , ft } ( es , css ) ≥ ( et , cst ) : Φ" :=
 Section simple.
 Implicit Types Φ: resUR → nat → result → call_id_stack → result → call_id_stack → Prop.
 
+(* TODO: also allow rewriting the postcondition. *)
+Global Instance sim_simple_proper fs ft :
+  Proper ((≡) ==> (=) ==> (=) ==> (=) ==> (=) ==> (=) ==> (=) ==> (↔))
+    (sim_simple fs ft).
+Proof.
+  intros r1 r2 EQr n ? <- es ? <- css ? <- et ? <- cst ? <- Φ ? <-.
+  split; intros HH σs σt ??.
+  - rewrite -EQr. exact: HH.
+  - rewrite EQr. exact: HH.
+Qed.
+Global Instance: Params sim_simple 2.
+
 (* FIXME: does this [apply]? *)
 Lemma sim_simplify
   (Φnew: resUR → nat → result → call_id_stack → result → call_id_stack → Prop)
@@ -54,6 +66,24 @@ Proof.
   intros HΦ <-<-. eapply sim_simplify. done.
 Qed.
 
+Lemma sim_simple_frame_l Φ r rf n fs ft es css et cst :
+  r ⊨ˢ{ n , fs , ft }
+    (es, css) ≥ (et, cst)
+  : (λ r' n' es' css' et' cst', ✓ (rf ⋅ r') → Φ (rf ⋅ r') n' es' css' et' cst') →
+  rf ⋅ r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ.
+Proof.
+  intros Hold σs σt <-<-. eapply sim_body_frame_l. auto.
+Qed.
+
+Lemma sim_simple_frame_r Φ r rf n fs ft es css et cst :
+  r ⊨ˢ{ n , fs , ft }
+    (es, css) ≥ (et, cst)
+  : (λ r' n' es' css' et' cst', ✓ (r' ⋅ rf) → Φ (r' ⋅ rf) n' es' css' et' cst') →
+  r ⋅ rf ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ.
+Proof.
+  intros Hold σs σt <-<-. eapply sim_body_frame_r. auto.
+Qed.
+
 Lemma sim_simple_frame_core Φ r n fs ft es css et cst :
   r ⊨ˢ{ n , fs , ft }
     (es, css) ≥ (et, cst)
@@ -61,6 +91,19 @@ Lemma sim_simple_frame_core Φ r n fs ft es css et cst :
   r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ.
 Proof.
   intros Hold σs σt <-<-. eapply sim_body_frame_core. auto.
+Qed.
+
+Lemma sim_simple_frame_more_core Φ r r' n fs ft es css et cst :
+  core r ⋅ r' ⊨ˢ{ n , fs , ft }
+    (es, css) ≥ (et, cst)
+  : (λ r'' n' es' css' et' cst', ✓ ((core r ⋅ core r') ⋅ r'') → Φ ((core r ⋅ core r') ⋅ r'') n' es' css' et' cst') →
+  core r ⋅ r' ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φ.
+Proof.
+  intros HH. assert (core r ⋅ r' ≡ (core r ⋅ core r') ⋅ (core r ⋅ r')) as ->.
+  { rewrite {1}cmra_core_dup. rewrite - !assoc. f_equiv.
+    rewrite [core r' ⋅ _]comm - !assoc. f_equiv.
+    rewrite cmra_core_r //. }
+  eapply sim_simple_frame_l, HH.
 Qed.
 
 Lemma sim_simple_post_mono Φ1 Φ2 r n fs ft es css et cst :
@@ -254,17 +297,33 @@ Lemma sim_simple_var fs ft r n css cst var Φ :
   r ⊨ˢ{n,fs,ft} (Var var, css) ≥ (Var var, cst) : Φ.
 Proof. intros σs σt <-<-. apply sim_body_var; eauto. Qed.
 
-Lemma sim_simple_proj fs ft r n (v i: result) css cst Φ :
-  (∀ vi vv iv, v = ValR vv → i = ValR [ScInt iv] →
+Lemma sim_simple_proj fs ft r n (v i: expr) (vr ir: result) css cst Φ :
+  v = of_result vr → i = of_result ir →
+  (∀ vi vv iv, vr = ValR vv → ir = ValR [ScInt iv] →
     vv !! (Z.to_nat iv) = Some vi → 0 ≤ iv →
     Φ r n (ValR [vi]) css (ValR [vi]) cst) →
   r ⊨ˢ{n,fs,ft} (Proj v i, css) ≥ (Proj v i, cst) : Φ.
-Proof. intros HH σs σt <-<-. apply sim_body_proj; eauto. Qed.
+Proof.
+  intros ->-> HH σs σt <-<-. apply sim_body_proj; eauto.
+Qed.
 
 Lemma sim_simple_conc fs ft r n (r1 r2: result) css cst Φ :
   (∀ v1 v2, r1 = ValR v1 → r2 = ValR v2 →
     Φ r n (ValR (v1 ++ v2)) css (ValR (v1 ++ v2)) cst) →
   r ⊨ˢ{n,fs,ft} (Conc r1 r2, css) ≥ (Conc r1 r2, cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_conc; eauto. Qed.
+
+Lemma sim_simple_case fs ft r n (rc: result) els elt css cst Φ :
+  length els = length elt →
+  (∀ (es et: expr) (i: Z), 0 ≤ i →
+    els !! (Z.to_nat i) = Some es →
+    elt !! (Z.to_nat i) = Some et →
+    rc = ValR [ScInt i] →
+    r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst) : Φ) →
+  r ⊨ˢ{n,fs,ft} (Case rc els, css) ≥ (Case rc elt, cst) : Φ.
+Proof.
+  intros ? HH σs σt <-<-. apply sim_body_case; first done.
+  intros. eapply HH; eauto.
+Qed.
 
 End simple.

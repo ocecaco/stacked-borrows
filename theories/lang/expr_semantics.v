@@ -14,11 +14,11 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Val v => Val v
   (* | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e *)
-  | Call e el => Call (subst x es e) (map (subst x es) el)
+  | Call e el => Call (subst x es e) (fmap (subst x es) el)
   | InitCall e => InitCall (subst x es e)
   | EndCall e => EndCall (subst x es e)
   | Place l tag T => Place l tag T
-  (* | App e1 el => App (subst x es e1) (map (subst x es) el) *)
+  (* | App e1 el => App (subst x es e1) (fmap (subst x es) el) *)
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
   | Proj e1 e2 => Proj (subst x es e1) (subst x es e2)
   | Conc e1 e2 => Conc (subst x es e1) (subst x es e2)
@@ -36,7 +36,7 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   | Let x1 e1 e2 =>
       Let x1 (subst x es e1)
                  (if bool_decide (BNamed x ≠ x1) then subst x es e2 else e2)
-  | Case e el => Case (subst x es e) (map (subst x es) el)
+  | Case e el => Case (subst x es e) (fmap (subst x es) el)
   (* | Fork e => Fork (subst x es e) *)
   (* | SysCall id => SysCall id *)
   end.

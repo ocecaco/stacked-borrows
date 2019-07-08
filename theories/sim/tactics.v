@@ -4,36 +4,40 @@ From stbor.sim Require Import body.
 
 Ltac reshape_expr e tac :=
   (* [vs] is the accumulator *)
-  let rec go_list K Ki v vs es :=
+  let rec go_call K v vs es :=
     match es with
-    | (Val ?v) :: ?es => go_list K v (v :: vs) es
-    | ?e :: ?es => go (Ki v (reverse vs) es :: K) e
+    | (Val ?v) :: ?es => go_call K v (v :: vs) es
+    | ?e :: ?es => go (CallRCtx v (reverse vs) es :: K) e
     end
   (* [K] accumulates the context *)
   with go K e :=
   match e with
   | _ => tac K e
-  | Call (Val ?v) ?el => go_list K CallRCtx v (@nil val) el
+  | Call (Val ?v) ?el => go_call K (ValR v) (@nil val) el
+  | Call (of_result ?r) ?el => go_call K r (@nil val) el
   | Call ?e ?el => go (CallLCtx el :: K) e
   | EndCall ?e => go (EndCallCtx :: K) e
-  | BinOp ?op (Val ?v1) ?e2 => go (BinOpRCtx op v1 :: K) e2
+  | BinOp ?op (Val ?v1) ?e2 => go (BinOpRCtx op (ValR v1) :: K) e2
+  | BinOp ?op (of_result ?r) ?e2 => go (BinOpRCtx op r :: K) e2
   | BinOp ?op ?e1 ?e2 => go (BinOpLCtx op e2 :: K) e1
-  | Proj (Val ?v1) ?e2 => go (ProjRCtx v1 :: K) e2
-  | Proj ?e1 ?e2 => go (ProjLCtx op e2 :: K) e1
-  | Conc (Val ?v1) ?e2 => go (ConcRCtx v1 :: K) e2
+  | Proj (Val ?v1) ?e2 => go (ProjRCtx (ValR v1) :: K) e2
+  | Proj (of_result ?r1) ?e2 => go (ProjRCtx r1 :: K) e2
+  | Proj ?e1 ?e2 => go (ProjLCtx e2 :: K) e1
+  | Conc (Val ?v1) ?e2 => go (ConcRCtx (ValR v1) :: K) e2
+  | Conc (of_result ?r1) ?e2 => go (ConcRCtx r1 :: K) e2
   | Conc ?e1 ?e2 => go (ConcLCtx op e2 :: K) e1
   | Copy ?e => go (CopyCtx :: K) e
-  | Write (Val ?v1) ?e2 => go (WriteRCtx v1 :: K) e2
+  | Write (Place ?l1 ?tg ?ty) ?e2 => go (WriteRCtx (PlaceR l1 tg ty) :: K) e2
+  | Write (of_result ?r1) ?e2 => go (WriteRCtx r1 :: K) e2
   | Write ?e1 ?e2 => go (WriteLCtx op e2 :: K) e1
   | Free ?e => go (FreeCtx :: K) e
   | Deref ?e ?T => go (DerefCtx T :: K) e
   | Ref ?e => go (RefCtx :: K) e
   | Retag ?e ?k => go (RetagCtx k :: K) e
   | Let ?x ?e1 ?e2 => go (LetCtx x e2 :: K) e1
-  | CaseCtx (Val ?v) ?el => go_list K CaseCtx v (@nil val) el
+  | Case ?e ?el => go (CaseCtx el :: K) e
   end
   in go (@nil ectx_item) e.
-
 
 (** bind if K is not empty. Otherwise do nothing.
 Binds cost us steps, so don't waste them! *)
@@ -111,6 +115,12 @@ Proof. rewrite right_id //. Qed.
 Lemma res_search_singleton (R W : resUR) :
   W ≡ ε ⋅ W.
 Proof. rewrite left_id //. Qed.
+Lemma res_search_from_incl (r1 r2 r3 : resUR) :
+  r2 ≡ r3 ⋅ r1 →
+  r1 ≼ r2.
+Proof.
+  intros EQ. eexists. rewrite EQ [r3 ⋅ _]comm. done.
+Qed.
 Ltac solve_res :=
   match goal with
   | |- _ ⋅ _ ≡ _ =>
@@ -126,5 +136,8 @@ Ltac solve_res :=
        the *last* operator. We always want to preserve having
        an operator on the LHS. *)
     simple apply res_search_descend;
+    solve_res
+  | |- _ ≼ _ =>
+    simple eapply res_search_from_incl;
     solve_res
 end.
