@@ -354,22 +354,6 @@ Proof.
     rewrite /= HS in TM2. by destruct TM2.
 Qed.
 
-Lemma tstep_bin_op_inv op (r1 r2: result) e' σ σ'
-  (STEP: (BinOp op r1 r2, σ) ~{fns}~> (e', σ')) :
-  ∃ l1 l2 l, bin_op_eval σ.(shp) op l1 l2 l ∧ e' = (#[l])%E ∧ σ' = σ.
-Proof.
-  inv_tstep. symmetry in Eq.
-  destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
-    as [[]|[[K' [? Eq']]|[v1 [K' [? [Eq' VAL]]]]]]; subst.
-  - clear Eq. simpl in HS. inv_head_step. naive_solver.
-  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
-    + rewrite /= Eq' to_of_result. by eexists.
-    + by rewrite Eq1' in HS.
-  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
-    + rewrite /= Eq' to_of_result. by eexists.
-    + by rewrite Eq1' in HS.
-Qed.
-
 Lemma tstep_bin_op_red_r e1 σ1 e2 e2' σ2 op:
   terminal e1 →
   (e2, σ1) ~{fns}~>* (e2', σ2) →
@@ -420,6 +404,35 @@ Proof.
   intros S1 T1 S2. etrans.
   - clear S2 T1. by eapply tstep_bin_op_red_l.
   - clear S1. by eapply tstep_bin_op_red_r.
+Qed.
+
+Lemma tstep_bin_op_inv op (r1 r2: result) e' σ σ'
+  (STEP: (BinOp op r1 r2, σ) ~{fns}~> (e', σ')) :
+  ∃ s1 s2 s, r1 = ValR [s1] ∧ r2 = ValR [s2] ∧
+    bin_op_eval σ.(shp) op s1 s2 s ∧ e' = (#[s])%E ∧ σ' = σ.
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_bin_op_decompose _ _ _ _ _ Eq)
+    as [[]|[[K' [? Eq']]|[v1 [K' [? [Eq' VAL]]]]]]; subst.
+  - clear Eq. simpl in HS. inv_head_step.
+    have Eq1 := to_of_result r1. rewrite -H1 /to_result in Eq1.
+    have Eq2 := to_of_result r2. rewrite -H2 /to_result in Eq2. simplify_eq.
+    naive_solver.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq' to_of_result. by eexists.
+    + by rewrite Eq1' in HS.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq' to_of_result. by eexists.
+    + by rewrite Eq1' in HS.
+Qed.
+
+Lemma bin_op_eval_dom h1 h2 op s1 s2 s
+  (EqD: dom (gset loc) h1 ≡ dom (gset loc) h2) :
+  bin_op_eval h1 op s1 s2 s → bin_op_eval h2 op s1 s2 s.
+Proof.
+  inversion 1 as [| | | |?? Eq| |]; subst; econstructor; eauto;
+  inversion Eq; subst; [constructor..|constructor 4];
+    rewrite -(not_elem_of_dom (D:=gset loc)) -EqD (not_elem_of_dom (D:=gset loc)) //.
 Qed.
 
 (** Let *)
