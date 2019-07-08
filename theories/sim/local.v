@@ -157,7 +157,7 @@ Proof.
   eauto.
 Qed.
 
-(* Viewshift *)
+(** Viewshift *)
 Definition viewshift (r1 r2: A) σs σt : Prop :=
   ∀ r_f, wsat (r_f ⋅ r1) σs σt → wsat (r_f ⋅ r2) σs σt.
 

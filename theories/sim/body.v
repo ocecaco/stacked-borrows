@@ -3,6 +3,33 @@ From stbor.sim Require Export instance.
 
 Set Default Proof Using "Type".
 
+Lemma sim_body_valid fs ft r n es σs et σt Φ :
+  (valid r →
+    r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
+                  (λ r' n' es' σs' et' σt', valid r' → Φ r' n' es' σs' et' σt' : Prop)) →
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
+Proof.
+  revert r n es σs et σt Φ. pcofix CIH.
+  intros r1 n es σs et σt Φ SIM.
+  pfold. intros NT r_f WSAT.
+  have VALIDr1: ✓ r1 by destruct WSAT as (?&?&VAL%cmra_valid_op_r&?).
+  specialize (SIM VALIDr1).
+  punfold SIM.
+  specialize (SIM NT r_f WSAT) as [NOTS TE SIM].
+  constructor; [done|..].
+  { intros.
+    destruct (TE _ TERM) as (vs' & σs' & r' & STEP' & WSAT' & HΦ).
+    have VALIDr': ✓ r' by destruct WSAT' as (?&?&VAL%cmra_valid_op_r&?).
+    specialize (HΦ VALIDr'). naive_solver. }
+  inversion SIM.
+  - left. intros.
+    specialize (STEP _ _ STEPT) as (es' & σs' & r' & idx' & STEP' & WSAT' & SIM').
+    exists es', σs', r', idx'. do 2 (split; [done|]).
+    pclearbot. right. by eapply CIH; eauto.
+  - econstructor 2; eauto. intros r' vs vt σs' σt' VRET WSAT' STACK.
+    destruct (CONT _ _ _ σs' σt' VRET WSAT' STACK) as [idx' SIM'].
+    exists idx'. pclearbot. right. by eapply CIH; eauto.
+Qed.
 
 Lemma sim_body_bind fs ft r n
   (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang fs)))
