@@ -184,6 +184,12 @@ Proof.
 Admitted.
 
 (** * Pure *)
+Lemma sim_simple_let fs ft r n x (vs1 vt1: expr) es2 et2 css cst Φ :
+  terminal vs1 → terminal vt1 →
+  r ⊨ˢ{n,fs,ft} (subst' x vs1 es2, css) ≥ (subst' x vt1 et2, cst) : Φ →
+  r ⊨ˢ{n,fs,ft} (let: x := vs1 in es2, css) ≥ ((let: x := vt1 in et2), cst) : Φ.
+Proof. intros ?? HH σs σt <-<-. apply sim_body_let; eauto. Qed.
+
 Lemma sim_simple_let_val fs ft r n x (vs1 vt1: value) es2 et2 css cst Φ :
   r ⊨ˢ{n,fs,ft} (subst' x vs1 es2, css) ≥ (subst' x vt1 et2, cst) : Φ →
   r ⊨ˢ{n,fs,ft} (let: x := vs1 in es2, css) ≥ ((let: x := vt1 in et2), cst) : Φ.
@@ -193,5 +199,33 @@ Lemma sim_simple_let_place fs ft r n x ls lt ts tt tys tyt es2 et2 css cst Φ :
   r ⊨ˢ{n,fs,ft} (subst' x (Place ls ts tys) es2, css) ≥ (subst' x (Place lt tt tyt) et2, cst) : Φ →
   r ⊨ˢ{n,fs,ft} (let: x := Place ls ts tys in es2, css) ≥ ((let: x := Place lt tt tyt in et2), cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_let; eauto. Qed.
+
+Lemma sim_simple_ref fs ft r n l tgs tgt Ts Tt css cst Φ :
+  Φ r n (ValR [ScPtr l tgs]) css (ValR [ScPtr l tgt]) cst →
+  r ⊨ˢ{n,fs,ft} ((& (Place l tgs Ts))%E, css) ≥ ((& (Place l tgt Tt))%E, cst) : Φ.
+Proof. intros HH σs σt <-<-. apply sim_body_ref; eauto. Qed.
+
+Lemma sim_simple_deref fs ft r n l tgs tgt Ts Tt css cst Φ :
+  tsize Ts = tsize Tt →
+  Φ r n (PlaceR l tgs Ts) css (PlaceR l tgt Tt) cst →
+  r ⊨ˢ{n,fs,ft} (Deref #[ScPtr l tgs] Ts, css) ≥ (Deref #[ScPtr l tgt] Tt, cst) : Φ.
+Proof. intros ? HH σs σt <-<-. apply sim_body_deref; eauto. Qed.
+
+Lemma sim_simple_var fs ft r n css cst var Φ :
+  r ⊨ˢ{n,fs,ft} (Var var, css) ≥ (Var var, cst) : Φ.
+Proof. intros σs σt <-<-. apply sim_body_var; eauto. Qed.
+
+Lemma sim_simple_proj fs ft r n (v i: result) css cst Φ :
+  (∀ vi vv iv, v = ValR vv → i = ValR [ScInt iv] →
+    vv !! (Z.to_nat iv) = Some vi → 0 ≤ iv →
+    Φ r n (ValR [vi]) css (ValR [vi]) cst) →
+  r ⊨ˢ{n,fs,ft} (Proj v i, css) ≥ (Proj v i, cst) : Φ.
+Proof. intros HH σs σt <-<-. apply sim_body_proj; eauto. Qed.
+
+Lemma sim_simple_conc fs ft r n (r1 r2: result) css cst Φ :
+  (∀ v1 v2, r1 = ValR v1 → r2 = ValR v2 →
+    Φ r n (ValR (v1 ++ v2)) css (ValR (v1 ++ v2)) cst) →
+  r ⊨ˢ{n,fs,ft} (Conc r1 r2, css) ≥ (Conc r1 r2, cst) : Φ.
+Proof. intros HH σs σt <-<-. apply sim_body_conc; eauto. Qed.
 
 End simple.

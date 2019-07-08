@@ -87,7 +87,7 @@ Proof.
   intros POST. pfold. intros NT r_f WSAT. split; [|done|].
   { right.
     edestruct NT as [[]|[es1 [σs1 RED]]]; [constructor 1|done|].
-Abort.
+Admitted.
 
 (** BinOp *)
 
