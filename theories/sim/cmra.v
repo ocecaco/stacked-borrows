@@ -180,6 +180,20 @@ Proof.
   - inversion Eq.
 Qed.
 
+Lemma callStateR_exclusive_Some T1 T2 cs :
+  Some cs ⋅ Some (to_callStateR (csOwned T1)) ≡ Some (to_callStateR (csOwned T2)) → False.
+Proof.
+  rewrite -Some_op. intros Eq%Some_equiv_inj.
+  destruct cs as [[]| |]; inversion Eq; simplify_eq.
+Qed.
+
+Lemma callStateR_exclusive_eq T1 T2 mb :
+  mb ⋅ Some (to_callStateR (csOwned T1)) ≡ Some (to_callStateR (csOwned T2)) → T1 = T2.
+Proof.
+  destruct mb. by intros ?%callStateR_exclusive_Some.
+  rewrite left_id. intros Eq%Some_equiv_inj. by simplify_eq.
+Qed.
+
 (** tmap properties *)
 Lemma tmap_insert_op_r (pm1 pm2: tmapUR) t h0 kh (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t = Some (to_tagKindR tkUnique, h0) →
