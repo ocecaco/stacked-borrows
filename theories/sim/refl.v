@@ -86,6 +86,12 @@ Proof.
   intros Hrel%srel_persistent ??. eapply srel_mono; done.
 Qed.
 
+Lemma vrel_core_mono r rf v1 v2 :
+  vrel r v1 v2 → ✓ rf → core r ≼ rf → vrel rf v1 v2.
+Proof.
+  intros Hrel%vrel_persistent ??. eapply vrel_mono; done.
+Qed.
+
 Lemma rrel_core_mono r rf r1 r2 :
   rrel r r1 r2 → ✓ rf → core r ≼ rf → rrel rf r1 r2.
 Proof.
@@ -203,8 +209,8 @@ Proof.
       - eapply IHHwf2. done. }
     intros r'' rs' rt' Hrel'.
     admit. (* needs call lemma that works with any result. *)
-  - (* InitCall *) done.
-  - (* EndCall *) done.
+  - (* InitCall: can't happen *) done.
+  - (* EndCall: can't happen *) done.
   - (* Proj *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
@@ -221,9 +227,38 @@ Proof.
     specialize (Hrel (Z.to_nat idx)).
     rewrite Hidx in Hrel. inversion Hrel. simplify_eq/=.
     constructor; last done. auto.
-  - (* Conc *) admit.
-  - (* BinOp *) admit.
-  - (* Place *) done.
+  - (* Conc *)
+    move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
+    eapply sim_simple_frame_core.
+    eapply sim_simple_post_mono, IHe1; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
+    eapply sim_simple_frame_more_core.
+    eapply sim_simple_post_mono, IHe2; [|by auto..].
+    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    simplify_eq/=. eapply sim_simple_conc; [done..|].
+    intros v1 v2 ??. simplify_eq/=.
+    do 3 (split; first done). simpl.
+    apply Forall2_app.
+    + eapply vrel_core_mono; first done; auto.
+    + eapply vrel_mono; last done; auto.
+  - (* BinOp *)
+    move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
+    eapply sim_simple_frame_core.
+    eapply sim_simple_post_mono, IHe1; [|by auto..].
+    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
+    eapply sim_simple_frame_more_core.
+    eapply sim_simple_post_mono, IHe2; [|by auto..].
+    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    simplify_eq/=. eapply sim_simple_bin_op; [done..|].
+    intros v1 v2 s ? ?? Heval. simplify_eq/=.
+    do 3 (split; first done). constructor; last done.
+    assert (arel (core r ⋅ core r' ⋅ r'') v1 v1) as Hrel_v1.
+    { apply Forall2_cons_inv in Hrel as [??]. auto. }
+    inversion Heval; simpl; auto; []. do 2 (split; first done).
+    simplify_eq/=. apply Hrel_v1.
+  - (* Place: can't happen *) done.
   - (* Deref *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
@@ -239,7 +274,7 @@ Proof.
   - (* Copy *) admit.
   - (* Write *) admit.
   - (* Alloc *) admit.
-  - (* Free *) done.
+  - (* Free: can't happen *) done.
   - (* Retag *) admit.
   - (* Let *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).

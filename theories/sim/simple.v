@@ -332,6 +332,13 @@ Lemma sim_simple_conc fs ft r n (r1 r2: result) css cst Φ :
   r ⊨ˢ{n,fs,ft} (Conc r1 r2, css) ≥ (Conc r1 r2, cst) : Φ.
 Proof. intros HH σs σt <-<-. apply sim_body_conc; eauto. Qed.
 
+Lemma sim_simple_bin_op fs ft r n op (r1 r2: result) css cst Φ :
+  (∀ s1 s2 s mem, r1 = ValR [s1] → r2 = ValR [s2] →
+    bin_op_eval mem op s1 s2 s →
+    Φ r n (ValR [s]) css (ValR [s]) cst : Prop) →
+  r ⊨ˢ{n,fs,ft} (BinOp op r1 r2, css) ≥ (BinOp op r1 r2, cst) : Φ.
+Proof. intros HH σs σt <-<-. apply sim_body_bin_op; eauto. Qed.
+
 Lemma sim_simple_case fs ft r n (rc: result) els elt css cst Φ :
   length els = length elt →
   (∀ (es et: expr) (i: Z), 0 ≤ i →
