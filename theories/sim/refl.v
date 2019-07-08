@@ -79,7 +79,7 @@ Qed.
 Lemma expr_wf_soundness r e :
   expr_wf e → sem_wf r e e.
 Proof.
-  intros Hwf. induction e; simpl in Hwf.
+  intros Hwf. induction e using expr_ind; simpl in Hwf.
   - (* Value *)
     move=>_ _ /=.
     apply sim_simple_val.
@@ -116,7 +116,13 @@ Proof.
   - (* Alloc *) admit.
   - (* Free *) done.
   - (* Retag *) admit.
-  - (* Let *) admit.
+  - (* Let *)
+    move=>xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
+    eapply sim_simple_post_mono, IHe1; [|by apply Hwf|done].
+    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
+    intros σs σt ??. eapply sim_body_let.
+    { destruct rs; eauto. } { destruct rt; eauto. }
+    
   - (* Case *) admit.
 Admitted.
 

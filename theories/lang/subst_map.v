@@ -46,9 +46,12 @@ Definition is_var {T: Type} (y: string) (x: string * T) :=
 Global Instance is_var_dec {T: Type} y x : Decision (@is_var T y x).
 Proof. rewrite /is_var /=. apply _. Qed.
 
+Definition subst_map_delete {T: Type} (b: binder) (xs : list (string * T)) :=
+  if b is BNamed s then list_filter (λ x, ¬is_var s x) _ xs else xs.
+
 Fixpoint subst_map (xs : list (string * result)) (e : expr) : expr :=
   match e with
-  | Var y => if list_find (is_var y) xs is Some (_, (_, v)) then of_result v else Var y
+  | Var y => if snd <$> list_find (is_var y) xs is Some (_, v) then of_result v else Var y
   | Val v => Val v
   | Call e el => Call (subst_map xs e) (map (subst_map xs) el)
   | InitCall e => InitCall (subst_map xs e)
@@ -67,7 +70,7 @@ Fixpoint subst_map (xs : list (string * result)) (e : expr) : expr :=
   | Let x1 e1 e2 =>
       Let x1
         (subst_map xs e1)
-        (subst_map (if x1 is BNamed s then list_filter (λ x, ¬is_var s x) _ xs else xs) e2)
+        (subst_map (subst_map_delete x1 xs) e2)
   | Case e el => Case (subst_map xs e) (map (subst_map xs) el)
   end.
 
@@ -119,3 +122,119 @@ Proof.
     + done.
     + rewrite subst_map_cons. done.
 Qed.
+
+Lemma list_find_delete_None {T: Type} xb b (xs : list (string * T)) :
+  list_find (is_var xb) xs = None →
+  list_find (is_var xb) (subst_map_delete b xs) = None.
+Proof.
+  rewrite /subst_map_delete.
+  induction xs; simpl.
+  - by destruct b.
+  - destruct b; simpl; first done.
+    destruct a as [??]. case_decide; first done.
+    intros Hfind. case_decide; simpl.
+    + rewrite decide_False //. rewrite IHxs //.
+      destruct (list_find (is_var xb) xs); done.
+    + rewrite IHxs //.
+      destruct (list_find (is_var xb) xs); done.
+Qed.
+
+Lemma list_find_delete_ne {T: Type} xb b (xs : list (string * T)) p :
+  (if b is BNamed b then xb ≠ b else True) →
+  snd <$> list_find (is_var xb) xs = Some p →
+  snd <$> list_find (is_var xb) (subst_map_delete b xs) = Some p.
+Proof.
+  destruct b; first done. intros Hne.
+  induction xs; simpl; first done.
+  destruct p as [y ?].
+  case_decide.
+  - rewrite decide_True. { intros ?. apply Hne. etrans; done. }
+    simpl. rewrite decide_True //.
+  - case_decide; simpl; intros Heq.
+    + rewrite decide_False //.
+      destruct (list_find (is_var xb) xs) as [[i' [y' ?]]|]; last done.
+      simpl in Heq. rewrite -IHxs. done.
+      rewrite /subst_map_delete /filter.
+      destruct (list_find _ _); done.
+    + destruct (list_find (is_var xb) xs) as [[i' [y' ?]]|]; last done.
+      simpl in Heq. rewrite -IHxs. done.
+      rewrite /subst_map_delete /filter.
+      destruct (list_find _ _); done.
+Qed.
+
+Lemma subst_subst_map_delete b (r : result) (xs : list (string * result)) e :
+  list_find (is_var b) xs = None →
+  subst b r (subst_map xs e) =
+  subst_map ((b,r)::xs) e.
+Proof.
+  revert xs b r; induction e using expr_ind; intros xs xb xr Hfind;
+  try (simpl; f_equal; by eauto).
+  - destruct (decide (x=xb)) as [<-|ne]; simpl.
+    + rewrite decide_True //. rewrite Hfind /=.
+      rewrite bool_decide_true //.
+    + rewrite decide_False //. { intros ?. apply ne. done. }
+      destruct (list_find (is_var x) xs); simpl.
+      * destruct p as [?[??]]. simpl. by destruct r.
+      * rewrite bool_decide_false //.
+  - simpl. f_equal; first by auto.
+    induction H; first done. simpl. f_equal; by auto.
+  - simpl. case_bool_decide.
+    + f_equal; first by auto. rewrite IHe2.
+      * apply list_find_delete_None. done.
+      * rewrite /subst_map_delete /=.
+        destruct b; try done.
+        rewrite decide_True //. { intros ?. apply H. f_equal. done. }
+    + f_equal; first by auto. subst b. simpl.
+      rewrite decide_False //. intros HH. apply HH. done.
+  - simpl. f_equal; first by auto.
+    induction H; first done. simpl. f_equal; by auto.
+Qed.
+
+Definition subst_map_eq (xs1 xs2 : list (string * result)) :=
+  ∀ x, snd <$> list_find (is_var x) xs1 = snd <$> list_find (is_var x) xs2.
+
+Lemma subst_map_delete_proper (xs1 xs2 : list (string * result)) b :
+  subst_map_eq xs1 xs2 →
+  subst_map_eq (subst_map_delete b xs1) (subst_map_delete b xs2).
+Proof.
+  rewrite /subst_map_eq /subst_map_delete=>Heq x.
+  destruct b; first by auto.
+  specialize (Heq x). revert Heq; induction xs1; simpl.
+  - intros Heq. rewrite (list_find_delete_None _ s) //.
+    by destruct (list_find (is_var x) xs2).
+  - 
+    case_decide; simpl.
+    + intros Heq.
+      case_decide; simpl.
+      * rewrite decide_True //. simpl. symmetry.
+        apply (list_find_delete_ne _ (BNamed s)); last done.
+        intros [=->]. done.
+      * apply IHxs1.
+      * 
+    + rewrite decide_False //.
+      rewrite (list_find_delete_None _ s); auto.
+      by destruct (list_find (is_var x) xs2).
+    + rewrite (list_find_delete_None _ s); auto.
+      by destruct (list_find (is_var x) xs2).
+  - 
+
+Lemma subst_map_proper (xs1 xs2 : list (string * result)) e :
+  subst_map_eq xs1 xs2 →
+  subst_map xs1 e = subst_map xs2 e.
+Proof.
+  revert xs1 xs2; induction e using expr_ind; intros xs1 xs2 Heq; simpl;
+  try (f_equal; by eauto).
+  - rewrite Heq. case_match; done.
+  - f_equal; first by auto.
+    induction H; first done. simpl. f_equal; by auto.
+  - f_equal; first by auto.
+    apply IHe2.
+
+Lemma subst'_subst_map_delete b (r : result) (xs : list (string * result)) e :
+  subst' b r (subst_map (subst_map_delete b xs) e) =
+  subst_map (if b is BNamed s then (s,r)::xs else xs) e.
+Proof.
+  destruct b; first done. simpl.
+  rewrite subst_subst_map_delete.
+  - admit.
+  - 
