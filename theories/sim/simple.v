@@ -73,6 +73,26 @@ Proof.
   auto.
 Qed.
 
+Lemma sim_simple_valid_pre fs ft r n es css et cst Φ :
+  (valid r → r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst) : Φ) →
+  r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst) : Φ.
+Proof.
+  intros Hold σs σt <-<-.
+  eapply sim_body_valid=>Hval.
+  eapply sim_local_body_post_mono, Hold; done.
+Qed.
+
+Lemma sim_simple_valid_post fs ft r n es css et cst Φ :
+  (r ⊨ˢ{n,fs,ft}
+    (es, css) ≥ (et, cst)
+  : (λ r' n' es' css' et' cst', valid r' → Φ r' n' es' css' et' cst')) →
+  r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst) : Φ.
+Proof.
+  intros Hold σs σt <-<-.
+  eapply sim_body_valid=>Hval.
+  eapply sim_local_body_post_mono, Hold; done.
+Qed.
+
 (** Simple proof for a function taking one argument. *)
 (* TODO: make the two call stacks the same. *)
 Lemma sim_fun_simple1 n (esf etf: function) :
