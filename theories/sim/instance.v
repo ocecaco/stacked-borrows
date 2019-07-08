@@ -1,10 +1,13 @@
 From stbor.lang Require Import steps_inversion.
 From stbor.sim Require Export local invariant.
 
+Set Default Proof Using "Type".
+
 Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
   (sim_local_body wsat vrel fs ft r n%nat es%E σs et%E σt Φ)
   (at level 70, format "'[hv' r  '/' ⊨{ n , fs , ft }  '/  ' '[ ' ( es ,  '/' σs ) ']'  '/' ≥  '/  ' '[ ' ( et ,  '/' σt ) ']'  '/' :  Φ ']'").
 
+Notation "r |==> r'" := (viewshift wsat r r') (at level 65, format "r  |==>  r'").
 
 (** "modular" simulation relations dont make assumptions
 about the global fn table.

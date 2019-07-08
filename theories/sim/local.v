@@ -158,17 +158,17 @@ Proof.
 Qed.
 
 (** Viewshift *)
-Definition viewshift (r1 r2: A) σs σt : Prop :=
-  ∀ r_f, wsat (r_f ⋅ r1) σs σt → wsat (r_f ⋅ r2) σs σt.
+Definition viewshift (r1 r2: A) : Prop :=
+  ∀ r_f σs σt, wsat (r_f ⋅ r1) σs σt → wsat (r_f ⋅ r2) σs σt.
 
 Lemma viewshift_sim_local_body r1 r2 n es σs et σt Φ :
-  viewshift r1 r2 σs σt →
+  viewshift r1 r2 →
   sim_local_body r2 n es σs et σt Φ → sim_local_body r1 n es σs et σt Φ.
 Proof.
   revert r1 r2 n es σs et σt Φ. pcofix CIH.
   intros r1 r2 n es σs et σt Φ VS SIM.
   pfold. punfold SIM; [|apply sim_local_body_mono].
-  intros NT r_f WSAT1. have WSAT2 := VS _ WSAT1.
+  intros NT r_f WSAT1. have WSAT2 := VS _ _ _ WSAT1.
   specialize (SIM NT r_f WSAT2) as [NOTS TE SIM].
   constructor; [done|..].
   { intros.
