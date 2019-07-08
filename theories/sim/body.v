@@ -132,6 +132,26 @@ Proof.
     pclearbot. right. by apply CIH. }
 Qed.
 
+Lemma sim_body_bind_call r n fs ft es σs et σt (fns fnt: result) (pres pret: list result) posts postt Φ :
+  r ⊨{n,fs,ft} (es, σs) ≥ (et, σt)
+    : (λ r' n' rs' σs' rt' σt',
+        r' ⊨{n',fs,ft}
+          (Call fns ((of_result <$> pres) ++ (of_result rs') :: posts), σs')
+        ≥
+          (Call fnt ((of_result <$> pret) ++ (of_result rt') :: postt), σt')
+        : Φ) →
+  r ⊨{n,fs,ft}
+    (Call fns ((of_result <$> pres) ++ es :: posts), σs)
+  ≥
+    (Call fnt ((of_result <$> pret) ++ et :: postt), σt)
+  : Φ.
+Proof.
+  intros HH.
+  eapply sim_body_bind with
+    (Ks:=[CallRCtx fns pres posts]) (es:=es)
+    (Kt:=[CallRCtx fnt pret postt]) (et:=et).
+  simpl. apply HH.
+Qed.
 
 Lemma sim_body_result fs ft r n es et σs σt Φ :
   (✓ r → Φ r n es σs et σt : Prop) →

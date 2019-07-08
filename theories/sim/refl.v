@@ -129,6 +129,50 @@ Proof.
     + apply IHv. done.
 Qed.
 
+Lemma sim_simple_call_args' r r' (el1 el2: list expr) (rs rt: result) Φ :
+  Forall2 (λ e1 e2, core r ⊨ˢ{sem_steps,fs,ft} (e1, css) ≥ (e2, cst) : sem_post) el1 el2 →
+  (∀ r' (vs vt: list result),
+    Forall2 (rrel r') vs vt →
+    core r ⋅ r' ⊨ˢ{sem_steps,fs,ft}
+      (Call rs (of_result <$> vs), css) ≥ (Call rt (of_result <$> vt), cst)
+    : Φ ) →
+  ∀ vs vt, Forall2 (rrel r') vs vt →
+  core r ⋅ r' ⊨ˢ{sem_steps,fs,ft}
+    (Call rs ((of_result <$> vs) ++ el1), css) ≥ (Call rt ((of_result <$> vt) ++ el2), cst)
+  : Φ.
+Proof.
+  intros He Hcont. revert r'. induction He; intros r'.
+  { intros vs vt ?. rewrite !app_nil_r. eapply (Hcont _ vs vt). done. }
+  clear Hcont. intros vs vt Hvst.
+  eapply sim_simple_bind_call.
+  rewrite cmra_core_dup -assoc.
+  eapply sim_simple_frame_r.
+  eapply sim_simple_post_mono, H.
+  intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+  simplify_eq/=.
+  rewrite !cons_middle !assoc.
+  change [rt']%E with (of_result <$> [rt']).
+  rewrite - !fmap_app. rewrite [r'' ⋅ core r]comm -assoc=>Hval.
+  eapply IHHe. eapply Forall2_app.
+  - eapply Forall2_impl; first done. intros.
+    eapply rrel_mono; last done; eauto using cmra_valid_included.
+  - constructor; last done.
+    eapply rrel_mono; last done; eauto using cmra_valid_included.
+Qed.
+
+Lemma sim_simple_call_args r r' (el1 el2: list expr) (rs rt: result) Φ :
+  Forall2 (λ e1 e2, core r ⊨ˢ{sem_steps,fs,ft} (e1, css) ≥ (e2, cst) : sem_post) el1 el2 →
+  (∀ r' (vs vt: list result),
+    Forall2 (rrel r') vs vt →
+    core r ⋅ r' ⊨ˢ{sem_steps,fs,ft}
+      (Call rs (of_result <$> vs), css) ≥ (Call rt (of_result <$> vt), cst)
+    : Φ ) →
+  core r ⋅ r' ⊨ˢ{sem_steps,fs,ft} (Call rs el1, css) ≥ (Call rt el2, cst) : Φ.
+Proof.
+  intros He Hcont.
+  eapply sim_simple_call_args' with (vs:=[]) (vt:=[]); auto.
+Qed.
+
 Lemma expr_wf_soundness r e :
   expr_wf e → sem_wf r e e.
 Proof.
@@ -148,10 +192,17 @@ Proof.
       eapply (Hxswf (rs, rt)). done.
     + simpl. apply sim_simple_var.
   - (* Call *)
-    move=>[Hwf1 Hwf2] xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    move=>[Hwf1 /Forall_id Hwf2] xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
-    admit.
+    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel) Hval. simpl.
+    eapply sim_simple_call_args.
+    { induction Hwf2; simpl; first by auto.
+      destruct (Forall_cons_1 _ _ _ H) as [IHx IHl]. constructor.
+      - eapply IHx; auto. exact: srel_persistent.
+      - eapply IHHwf2. done. }
+    intros r'' rs' rt' Hrel'.
+    admit. (* needs call lemma that works with any result. *)
   - (* InitCall *) done.
   - (* EndCall *) done.
   - (* Proj *)

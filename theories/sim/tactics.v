@@ -13,8 +13,8 @@ Ltac reshape_expr e tac :=
   with go K e :=
   match e with
   | _ => tac K e
-  | Call (Val ?v) ?el => go_call K (ValR v) (@nil val) el
-  | Call (of_result ?r) ?el => go_call K r (@nil val) el
+  | Call (Val ?v) ?el => go_call K (ValR v) (@nil result) el
+  | Call (of_result ?r) ?el => go_call K r (@nil result) el
   | Call ?e ?el => go (CallLCtx el :: K) e
   | EndCall ?e => go (EndCallCtx :: K) e
   | BinOp ?op (Val ?v1) ?e2 => go (BinOpRCtx op (ValR v1) :: K) e2

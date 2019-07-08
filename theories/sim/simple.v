@@ -180,6 +180,25 @@ Proof.
   clear. simpl. intros r n vs σs vt σt HH. exact: HH.
 Qed.
 
+Lemma sim_simple_bind_call r n fs ft es css et cst (fns fnt: result) (pres pret: list result) posts postt Φ :
+  r ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst)
+    : (λ r' n' rs' css' rt' cst',
+        r' ⊨ˢ{n',fs,ft}
+          (Call fns ((of_result <$> pres) ++ (of_result rs') :: posts), css')
+        ≥
+          (Call fnt ((of_result <$> pret) ++ (of_result rt') :: postt), cst')
+        : Φ) →
+  r ⊨ˢ{n,fs,ft}
+    (Call fns ((of_result <$> pres) ++ es :: posts), css)
+  ≥
+    (Call fnt ((of_result <$> pret) ++ et :: postt), cst)
+  : Φ.
+Proof.
+  intros HH σs σt <-<-. apply sim_body_bind_call.
+  eapply sim_local_body_post_mono; last exact: HH.
+  clear. simpl. intros r n vs σs vt σt HH. exact: HH.
+Qed.
+
 Lemma sim_simple_val fs ft r n (vs vt: value) css cst Φ :
   Φ r n vs css vt cst →
   r ⊨ˢ{n,fs,ft} (vs, css) ≥ (vt, cst) : Φ.
