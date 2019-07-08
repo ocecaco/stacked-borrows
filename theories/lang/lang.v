@@ -66,6 +66,10 @@ Proof.
   rewrite to_of_result. by eexists.
 Qed.
 
+Lemma of_result_list_expr (vl: list value) :
+  (of_result <$> (ValR <$> vl)) = Val <$> vl.
+Proof. induction vl as [|v vl IH]; [done|]. by rewrite 3!fmap_cons IH. Qed.
+
 (* Lemma subst_is_closed X x es e :
   is_closed X es → is_closed (x::X) e → is_closed X (subst x es e).
 Proof.
