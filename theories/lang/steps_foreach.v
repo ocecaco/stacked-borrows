@@ -38,6 +38,22 @@ Lemma init_stacks_foldr α l n si:
   fold_right (λ (i: nat) hi, <[(l +ₗ i):= init_stack si]> hi) α (seq 0 n).
 Proof. by rewrite -init_stacks_foldr' shift_loc_0. Qed.
 
+Lemma init_mem_dom' l n h (m: nat):
+  dom (gset loc) (init_mem (l +ₗ m) n h) ≡
+  dom (gset loc) h ∪ dom (gset loc) (init_mem (l +ₗ m) n ∅) .
+Proof.
+  revert h m. induction n as [|n IHn]; intros h m.
+  - by rewrite /= dom_empty right_id.
+  - rewrite /= 2!dom_insert.
+    rewrite (_ : (l +ₗ m +ₗ 1) = (l +ₗ S m)).
+    + rewrite IHn. set_solver.
+    + rewrite shift_loc_assoc -(Nat2Z.inj_add _ 1). f_equal. lia.
+Qed.
+
+Lemma init_mem_dom l n h:
+  dom (gset loc) (init_mem l n h) ≡
+  dom (gset loc) h ∪ dom (gset loc) (init_mem l n ∅) .
+Proof. by rewrite -(shift_loc_0_nat l) init_mem_dom'. Qed.
 
 Lemma for_each_lookup α l n f α' :
   for_each α l n false f = Some α' →
@@ -91,6 +107,29 @@ Proof.
     intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia.
   - left. rewrite EQ3 in Eq'; [by simplify_eq|].
     intros i Lt Eq3. apply NEql. by rewrite Eq3.
+Qed.
+
+Lemma for_each_lookup_case_2 α l n f α' :
+  for_each α l n false f = Some α' →
+  (∀ (i: nat), (i < n)%nat → ∃ stk stk',
+    α !! (l +ₗ i) = Some stk ∧ α' !! (l +ₗ i) = Some stk' ∧ f stk = Some stk' ) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l').
+Proof.
+  revert α. induction n as [|n IH]; intros α; simpl.
+  { move => [<-]. split; intros ??; [lia|done]. }
+  case (α !! (l +ₗ n)) as [stkn|] eqn:Eqn; [|done] => /=.
+  case (f stkn) as [stkn'|] eqn: Eqn'; [|done] => /= /IH [IH1 IH2].
+  split.
+  - intros i Lt.
+    case (decide (i = n)) => Eq'; [subst i|].
+    + rewrite Eqn. rewrite IH2; [rewrite lookup_insert; naive_solver|].
+      move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia.
+    + destruct (IH1 i) as (stk & stk' & Eqs & ?); [lia|].
+      rewrite lookup_insert_ne in Eqs; [naive_solver|].
+      by move => /shift_loc_inj /Z_of_nat_inj ? //.
+  - intros l' Lt. rewrite IH2.
+    + rewrite lookup_insert_ne; [done|]. move => Eql'. apply (Lt n); by [lia|].
+    + move => ??. apply Lt. lia.
 Qed.
 
 Lemma init_mem_lookup l n h :
