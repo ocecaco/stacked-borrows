@@ -88,6 +88,7 @@ Proof.
   rewrite lookup_insert_ne //.
 Qed.
 
+(** Result relation properties *)
 Lemma rrel_eq  r (e1 e2: result) :
   rrel vrel r e1 e2 → e1 = e2.
 Proof.
