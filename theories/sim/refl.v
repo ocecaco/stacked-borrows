@@ -52,6 +52,45 @@ Proof.
   intros. split; first done. exact: rrel_eq.
 Qed.
 
+(** Well-formed two-substitutions. *)
+Definition srel (r: resUR) (xs: gmap string (result * result)) : Prop :=
+  map_Forall (λ _ '(rs, rt), rrel r rs rt) xs.
+
+Lemma rrel_persistent r rs rt :
+  rrel r rs rt → rrel (core r) rs rt.
+Proof. destruct rs, rt; simpl; naive_solver eauto using vrel_persistent. Qed.
+
+Lemma rrel_mono r1 r2 rs rt :
+  ✓ r2 → r1 ≼ r2 →
+  rrel r1 rs rt → rrel r2 rs rt.
+Proof. destruct rs, rt; simpl; intros; naive_solver eauto using vrel_mono. Qed.
+
+Lemma srel_persistent r xs :
+  srel r xs → srel (core r) xs.
+Proof.
+  intros Hrel x [vs vt] Hlk. apply rrel_persistent.
+  eapply (Hrel _ _ Hlk).
+Qed.
+
+Lemma srel_mono r1 r2 xs :
+  ✓ r2 → r1 ≼ r2 →
+  srel r1 xs → srel r2 xs.
+Proof.
+  intros Hval Hincl Hrel x [vs vt] Hlk. eapply rrel_mono; [done..|].
+  eapply (Hrel _ _ Hlk).
+Qed.
+
+Lemma srel_frame_core r rf xs :
+  ✓ (core r ⋅ rf) → srel r xs → srel (core r ⋅ rf) xs.
+Proof.
+  move=>Hval /srel_persistent. apply: srel_mono; first done.
+  eexists. eauto.
+Qed.
+
+(** Hints. *)
+Local Hint Extern 0 (_ ≼ _) => exact: cmra_included_r : core. (* needs to be written like this to trump the reflexivity Hint. *)
+Local Hint Resolve srel_frame_core.
+
 (** We define a "semantic well-formedness", in some context. *)
 Definition sem_steps := 10%nat.
 
@@ -60,7 +99,7 @@ Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
 
 Definition sem_wf (r: resUR) es et :=
   ∀ xs : gmap string (result * result),
-    map_Forall (λ _ '(rs, rt), rrel r rs rt) xs →
+    srel r xs →
     r ⊨ˢ{sem_steps,fs,ft}
       (subst_map (fst <$> xs) es, css)
     ≥
@@ -132,9 +171,12 @@ Proof.
     rewrite !subst'_subst_map.
     change rs with (fst (rs, rt)). change rt with (snd (rs, rt)) at 2.
     rewrite !binder_insert_map.
-    (* FIXME: we need validity. *)
-    Fail eapply IHe2; [|by auto..].
-    admit.
+    eapply sim_simple_valid_pre=>Hval.
+    eapply IHe2; [by auto..|].
+    destruct b; first exact: srel_frame_core. simpl.
+    apply map_Forall_insert_2.
+    + eapply rrel_mono; eauto.
+    + eapply srel_frame_core; eauto.
   - (* Case *) admit.
 Admitted.
 
