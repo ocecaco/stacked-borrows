@@ -263,22 +263,24 @@ Lemma sim_simple_write_local fs ft r r' n l tg ty v v' css cst Φ :
   : Φ.
 Proof. intros Hty Hres HH σs σt <-<-. eapply sim_body_write_local_1; eauto. Qed.
 
-Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg m ty css cst Φ :
+Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
   r ≡ r' ⋅ res_mapsto l 1 s (init_stack (Tagged tg)) →
   arel rs s' s →
   r' ≡ r'' ⋅ rs →
   (∀ l_inner tg_inner hplt,
     let s_new := ScPtr l_inner (Tagged tg_inner) in
-    let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
+(*    let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
     match m with 
     | Mutable => is_Some (hplt !! l_inner)
     | Immutable => if is_freeze ty then is_Some (hplt !! l_inner) else True
-    end →
+    end → *)
+    let tk := tkUnique in
+    is_Some (hplt !! l_inner) →
     Φ (r'' ⋅ rs ⋅ res_mapsto l 1 s_new (init_stack (Tagged tg)) ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft}
-    (Retag (Place l (Tagged tg) (Reference (RefPtr m) ty)) Default, css)
+    (Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default, css)
   ≥
-    (Retag (Place l (Tagged tg) (Reference (RefPtr m) ty)) Default, cst)
+    (Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default, cst)
   : Φ.
 Proof.
 Admitted.
