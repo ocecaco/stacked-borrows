@@ -70,7 +70,7 @@ Proof.
     econstructor. econstructor; eauto. }
   constructor 1. intros.
   destruct (tstep_proj_inv _ _ _ _ _ _ STEPT)
-    as (vv & iv & vi & ? & ? & ? & ? & ? & ?). subst v i et' σt'.
+    as (vv & iv & vi & ? & ? & ? & ? & ? & ?). subst.
   exists (#[vi])%E, σs, r, n. split; last split; [|done|].
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
@@ -87,11 +87,70 @@ Proof.
   intros POST. pfold. intros NT r_f WSAT. split; [|done|].
   { right.
     edestruct NT as [[]|[es1 [σs1 RED]]]; [constructor 1|done|].
-Admitted.
+    destruct (tstep_conc_inv _ _ _ _ _ _ RED) as (v1 & v2 &?&?&?&?). subst.
+    do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor. econstructor; eauto. }
+  constructor 1. intros.
+  destruct (tstep_conc_inv _ _ _ _ _ _ STEPT) as (v1 & v2 &?&?&?&?). subst.
+  exists (#(v1 ++ v2))%E, σs, r, n. split; last split; [|done|].
+  { left. constructor 1. eapply (head_step_fill_tstep _ []).
+    by econstructor; econstructor. }
+  left. apply (sim_body_result _ _ _ _ (ValR _) (ValR _)). intros.
+  eapply POST; eauto.
+Qed.
 
 (** BinOp *)
+Lemma sim_body_bin_op fs ft r n op (r1 r2: result) σs σt Φ :
+  (∀ s1 s2 s, r1 = ValR [s1] → r2 = ValR [s2] →
+    bin_op_eval σt.(shp) op s1 s2 s →
+    Φ r n (ValR [s]) σs (ValR [s]) σt : Prop) →
+  r ⊨{n,fs,ft} (BinOp op r1 r2, σs) ≥ (BinOp op r1 r2, σt) : Φ.
+Proof.
+  intros POST. pfold. intros NT r_f WSAT. split; [|done|].
+  { right.
+    edestruct NT as [[]|[es1 [σs1 RED]]]; [constructor 1|done|].
+    destruct (tstep_bin_op_inv _ _ _ _ _ _ _ RED) as (s1 & s2 & s &?&?& BO &?&?).
+    subst. do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor; econstructor; eauto.
+    eapply bin_op_eval_dom; [|eauto]. by rewrite (wsat_heap_dom _ _ _ WSAT). }
+  constructor 1. intros.
+  destruct (tstep_bin_op_inv _ _ _ _ _ _ _ STEPT) as (s1 & s2 & s &?&?& BO &?&?).
+  subst.
+  exists (#[s])%E, σs, r, n. split; last split; [|done|].
+  { left. constructor 1. eapply (head_step_fill_tstep _ []).
+    econstructor; econstructor; eauto.
+    eapply bin_op_eval_dom; [|eauto]. by rewrite (wsat_heap_dom _ _ _ WSAT). }
+  left. apply (sim_body_result _ _ _ _ (ValR _) (ValR _)). intros.
+  eapply POST; eauto.
+Qed.
 
 (** Case *)
+Lemma sim_body_case fs ft r n (rc: result) els elt σs σt Φ :
+  length els = length elt →
+  (∀ (es et: expr) (i: Z), 0 ≤ i →
+    els !! (Z.to_nat i) = Some es →
+    elt !! (Z.to_nat i) = Some et →
+    rc = ValR [ScInt i] →
+    r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ) →
+  r ⊨{n,fs,ft} (Case rc els, σs) ≥ (Case rc elt, σt) : Φ.
+Proof.
+  intros EqL POST. pfold. intros NT r_f WSAT. split; [|done|].
+  { right.
+    edestruct NT as [[]|[es1 [σs1 RED]]]; [constructor 1|done|].
+    destruct (tstep_case_inv _ _ _ _ _ _ RED) as (i & es & ? &Eqs&?&?&?). subst.
+    assert (is_Some (elt !! (Z.to_nat i))) as [et ?].
+    { rewrite lookup_lt_is_Some -EqL -lookup_lt_is_Some. by eexists. }
+    do 2 eexists. eapply (head_step_fill_tstep _ []).
+    econstructor; econstructor; eauto. }
+  constructor 1. intros.
+  destruct (tstep_case_inv _ _ _ _ _ _ STEPT)as (i & et & ? &Eqt&?&?&?). subst.
+  assert (is_Some (els !! (Z.to_nat i))) as [es ?].
+  { rewrite lookup_lt_is_Some EqL -lookup_lt_is_Some. by eexists. }
+  exists es, σs, r, n. split; last split; [|done|].
+  { left. constructor 1. eapply (head_step_fill_tstep _ []).
+    econstructor; econstructor; eauto. }
+  left. eapply POST; eauto.
+Qed.
 
 (** Let *)
 Lemma sim_body_let fs ft r n x es1 es2 et1 et2 σs σt Φ :
