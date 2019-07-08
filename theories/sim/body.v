@@ -172,11 +172,11 @@ Proof.
 Qed.
 Global Instance: Params (@sim_local_body) 5.
 
-Lemma sim_body_frame' fs ft n (rf r: resUR) es σs et σt Φ :
+Lemma sim_body_frame_r' fs ft n (rf r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
   ∀ (r': resUR), r' ≡ rf ⋅ r →
     r' ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
-    (λ r' n' es' σs' et' σt', ∃ r0, r' = rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
+    (λ r' n' es' σs' et' σt', ∃ r0, r' = r0 ⋅ rf ∧ Φ r0 n' es' σs' et' σt').
 Proof.
   revert n rf r es σs et σt Φ. pcofix CIH.
   intros n rf r0 es σs et σt Φ SIM r' EQ'.
@@ -185,8 +185,9 @@ Proof.
   rewrite ->EQ', ->(cmra_assoc r_f rf r0) in WSAT.
   specialize (SIM NT _ WSAT) as [SU TE ST]. split; [done|..].
   { intros. destruct (TE _ TERM) as (vs' & σs' & r2 & STEP' & WSAT' & POST).
-    exists vs', σs', (rf ⋅ r2).
-    split; last split; [done|by rewrite cmra_assoc|by exists r2]. }
+    exists vs', σs', (r2 ⋅ rf).
+    split; last split; [done|by rewrite [r2 ⋅ rf]comm cmra_assoc|by exists r2].
+ }
   inversion ST.
   - constructor 1. intros.
     specialize (STEP _ _ STEPT) as (es' & σs' & r2 & idx' & STEPS' & WSAT' & SIM').
@@ -201,11 +202,57 @@ Proof.
     exists idx'. pclearbot. right. eapply CIH; eauto. by rewrite cmra_assoc.
 Qed.
 
-Lemma sim_body_frame fs ft n (rf r: resUR) es σs et σt Φ :
+(* So ugly. We just copy the above proof to get the version with the frame added
+on the other side.  There *probably* is a better way... *)
+Lemma sim_body_frame_l' fs ft n (rf r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ : Prop →
-  rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
+  ∀ (r': resUR), r' ≡ rf ⋅ r →
+    r' ⊨{n,fs,ft} (es, σs) ≥ (et, σt) :
     (λ r' n' es' σs' et' σt', ∃ r0, r' = rf ⋅ r0 ∧ Φ r0 n' es' σs' et' σt').
-Proof. intros. eapply sim_body_frame'; eauto. Qed.
+Proof.
+  revert n rf r es σs et σt Φ. pcofix CIH.
+  intros n rf r0 es σs et σt Φ SIM r' EQ'.
+  pfold. punfold SIM.
+  intros NT r_f WSAT.
+  rewrite ->EQ', ->(cmra_assoc r_f rf r0) in WSAT.
+  specialize (SIM NT _ WSAT) as [SU TE ST]. split; [done|..].
+  { intros. destruct (TE _ TERM) as (vs' & σs' & r2 & STEP' & WSAT' & POST).
+    exists vs', σs', (rf ⋅ r2).
+    split; last split; [done|by rewrite cmra_assoc|by exists r2].
+ }
+  inversion ST.
+  - constructor 1. intros.
+    specialize (STEP _ _ STEPT) as (es' & σs' & r2 & idx' & STEPS' & WSAT' & SIM').
+    exists es', σs', (rf ⋅ r2), idx'.
+    split; last split; [done|by rewrite cmra_assoc|].
+    pclearbot. right. by eapply CIH.
+  - econstructor 2; eauto.
+    { instantiate (1:= rf ⋅ rc). by rewrite -cmra_assoc (cmra_assoc r_f). }
+    intros.
+    specialize (CONT _ _ _ σs' σt' VRET) as [idx' SIM']; [|done|].
+    { move : WSAT1. by rewrite 3!cmra_assoc. }
+    exists idx'. pclearbot. right. eapply CIH; eauto. by rewrite cmra_assoc.
+Qed.
+
+Lemma sim_body_frame_r fs ft n (rf r: resUR) es σs et σt Φ :
+  r ⊨{n,fs,ft}
+    (es, σs) ≥ (et, σt)
+  : (λ r' n' es' σs' et' σt', Φ (r' ⋅ rf) n' es' σs' et' σt') →
+  r ⋅ rf ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
+Proof.
+  intros HH. eapply sim_local_body_post_mono, sim_body_frame_r'; [|done|by rewrite comm].
+  simpl. intros r' n' es' σs' et' σt' (rf' & -> & ?). done.
+Qed.
+
+Lemma sim_body_frame_l fs ft n (rf r: resUR) es σs et σt Φ :
+  r ⊨{n,fs,ft}
+    (es, σs) ≥ (et, σt)
+  : (λ r' n' es' σs' et' σt', Φ (rf ⋅ r') n' es' σs' et' σt') →
+  rf ⋅ r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
+Proof.
+  intros HH. eapply sim_local_body_post_mono, sim_body_frame_l'; [|done..].
+  simpl. intros r' n' es' σs' et' σt' (rf' & -> & ?). done.
+Qed.
 
 Lemma sim_body_frame_core fs ft n (r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft}
@@ -214,8 +261,7 @@ Lemma sim_body_frame_core fs ft n (r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
 Proof.
   intros HH. rewrite -(cmra_core_l r).
-  eapply sim_local_body_post_mono, sim_body_frame, HH.
-  intros r' n' rs' σs' rt' σt' [r'' [-> HΦ]]. done.
+  eapply sim_body_frame_l. done.
 Qed.
 
 Lemma sim_body_val_elim fs ft r n vs σs vt σt Φ :
@@ -234,3 +280,9 @@ Proof.
     - by apply result_tstep_stuck in STEP2. }
   subst σs' vs'. done.
 Qed.
+
+Lemma sim_body_viewshift r2 r1 fs ft n es σs et σt Φ :
+  r1 |==> r2 →
+  r2 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →
+  r1 ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ.
+Proof. by eapply viewshift_sim_local_body. Qed.

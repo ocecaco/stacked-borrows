@@ -1,5 +1,5 @@
 From stbor.lang Require Import lang subst_map.
-From stbor.sim Require Import refl_step simple tactics.
+From stbor.sim Require Import refl_step simple tactics viewshift.
 
 Set Default Proof Using "Type".
 
@@ -190,12 +190,13 @@ Proof.
   intros vs vt σs σt Hrel Hsubst1 Hsubst2. exists sem_steps.
   apply sim_body_init_call=>/=.
   set css := snc σs :: scs σs. set cst := snc σt :: scs σt. move=>Hstacks.
-  (* FIXME: viewshift to public call ID, use framing or something to get it to fun_post. *)
+  eapply (sim_body_viewshift (r ⋅ res_callState _ csPub)).
+  { eapply vs_call_empty_public. }
   eapply sim_local_body_post_mono with
     (Φ:=(λ r n vs' σs' vt' σt', sem_post css cst r n vs' σs'.(scs) vt' σt'.(scs))).
-  { intros r' n' rs css' rt cst' (-> & ? & ? & Hrrel).
+  { intros r' n' rs css' rt cst' (-> & Hcss & Hcst & Hrrel). simplify_eq.
     split.
-    - eexists. split. subst cst css. rewrite <-Hstacks. congruence.
+    - eexists. split; first by rewrite Hcst.
       admit. (* end_call_sat *)
     - done.
   }

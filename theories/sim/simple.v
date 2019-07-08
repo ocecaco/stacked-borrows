@@ -93,8 +93,16 @@ Proof.
   eapply sim_local_body_post_mono, Hold; done.
 Qed.
 
+Lemma sim_simple_viewshift r2 r1 fs ft n es css et cst Φ :
+  r1 |==> r2 →
+  r2 ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst) : Φ →
+  r1 ⊨ˢ{n,fs,ft} (es, css) ≥ (et, cst) : Φ.
+Proof.
+  intros Hvs Hold σs σt <-<-. eapply viewshift_sim_local_body, Hold; done.
+Qed.
+
 (** Simple proof for a function taking one argument. *)
-(* TODO: make the two call stacks the same. *)
+(* TODO: make the two call stacks the same? *)
 Lemma sim_fun_simple1 n (esf etf: function) :
   length (esf.(fun_args)) = 1%nat →
   length (etf.(fun_args)) = 1%nat →
