@@ -52,7 +52,10 @@ Proof.
   (* Call *)
   sim_apply sim_simple_let_val=>/=.
   sim_apply (sim_simple_call 10 [] [] ε); [done|done|solve_res|].
-  intros rf frs frt FREL.
+  intros rf frs frt _ _ _ _ FREL.
+  apply sim_simple_val. simpl.
+  sim_apply sim_simple_let_val=>/=.
+  (* Deref *)
 
 Admitted.
 
