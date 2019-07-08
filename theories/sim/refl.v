@@ -51,12 +51,12 @@ Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
 
 (** We define a "semantic well-formedness", in some context. *)
 Definition sem_wf (r: resUR) es et :=
-  ∀ xs : list (string * (result * result)),
-    Forall (λ '(_, (rs, rt)), rrel r rs rt) xs →
+  ∀ xs : gmap string (result * result),
+    map_Forall (λ _ '(rs, rt), rrel r rs rt) xs →
     r ⊨ˢ{sem_steps,fs,ft}
-      (subst_map (prod_map id fst <$> xs) es, css)
+      (subst_map (fst <$> xs) es, css)
     ≥
-      (subst_map (prod_map id snd <$> xs) et, cst)
+      (subst_map (snd <$> xs) et, cst)
     : sem_post.
 
 Lemma value_wf_soundness r v :
@@ -69,32 +69,25 @@ Proof.
     + apply IHv. done.
 Qed.
 
-Lemma list_find_var {A B : Type} x (f : A → B) (xs : list (string * A)):
-  list_find (is_var x) (prod_map id f <$> xs) =
-  prod_map id (prod_map id f) <$> list_find (is_var x) xs.
-Proof.
-  rewrite list_find_fmap. f_equal. apply list_find_proper. auto.
-Qed.
-
 Lemma expr_wf_soundness r e :
   expr_wf e → sem_wf r e e.
 Proof.
-  intros Hwf. induction e using expr_ind; simpl in Hwf.
+  revert r. induction e using expr_ind; simpl; intros r Hwf.
   - (* Value *)
     move=>_ _ /=.
     apply sim_simple_val.
-    split; first admit.
+    split; first done.
     split; first done. split; first done.
     apply value_wf_soundness. done.
   - (* Variable *)
     move=>{Hwf} xs Hxswf /=.
-    rewrite !list_find_var. destruct (list_find (is_var x) xs) eqn:Hfind; simpl.
-    + destruct p as [i [x' [rs rt]]]. simpl.
-      destruct (list_find_Some _ _ _ _ Hfind).
+    rewrite !lookup_fmap. specialize (Hxswf x).
+    destruct (xs !! x); simplify_eq/=.
+    + destruct p as [rs rt].
       intros σs σt ??. eapply sim_body_result=>_.
-      split; first admit.
+      split; first done.
       split; first done. split; first done.
-      eapply (Forall_lookup_1 _ _ _ _ Hxswf H).
+      eapply (Hxswf (rs, rt)). done.
     + simpl.
       (* FIXME: need lemma for when both sides are stuck on an unbound var. *)
       admit.
@@ -122,7 +115,11 @@ Proof.
     intros r' n' rs css' rt cst' (-> & -> & -> & Hrel). simpl.
     intros σs σt ??. eapply sim_body_let.
     { destruct rs; eauto. } { destruct rt; eauto. }
-    
+    rewrite !subst'_subst_map.
+    change rs with (fst (rs, rt)). change rt with (snd (rs, rt)) at 2.
+    rewrite !binder_insert_map.
+    eapply sim_simplify', IHe2; [done..|by apply Hwf|].
+    admit. (* resources dont match?? *)
   - (* Case *) admit.
 Admitted.
 
@@ -145,29 +142,9 @@ Proof.
       admit. (* end_call_sat *)
     - done.
   }
-  rewrite (subst_l_map _ _ _ _ Hsubst1).
-  rewrite (subst_l_map _ _ _ _ Hsubst2).
-  set subst := fn_lists_to_subst (fun_args f) (zip (ValR <$> vs) (ValR <$> vt)).
-  (* FIXME: we do 3 very similar inductions here. Not sure how to generalize though. *)
-  replace (fn_lists_to_subst (fun_args f) (ValR <$> vs)) with (prod_map id fst <$> subst); last first.
-  { rewrite /subst /fn_lists_to_subst. rewrite list_fmap_omap.
-    apply omap_ext'. revert Hrel. clear. revert vs vt.
-    induction (fun_args f); intros vs vt Hrel; simpl; first constructor.
-    inversion Hrel; simplify_eq/=; first constructor.
-    constructor. by destruct a. exact: IHl. }
-  replace (fn_lists_to_subst (fun_args f) (ValR <$> vt)) with (prod_map id snd <$> subst); last first.
-  { rewrite /subst /fn_lists_to_subst. rewrite list_fmap_omap.
-    apply omap_ext'. revert Hrel. clear. revert vs vt.
-    induction (fun_args f); intros vs vt Hrel; simpl; first constructor.
-    inversion Hrel; simplify_eq/=; first constructor.
-    constructor. by destruct a. exact: IHl. }
+  destruct (subst_l_map _ _ _ _ _ _ _ _ Hsubst1 Hsubst2 Hrel) as (map & -> & -> & Hmap).
   eapply sim_simplify, expr_wf_soundness; [done..|].
-  subst subst. revert Hrel. clear. revert vs vt.
-  induction (fun_args f); intros vs vt Hrel; simpl; first constructor.
-  inversion Hrel; simplify_eq/=; first constructor.
-  destruct a; first exact: IHl. constructor.
-  { admit. (* resource stuff. *) }
-  exact: IHl.
+  admit. (* resource stuff. *)
 Admitted.
 
 Lemma sim_mod_funs_refl prog :

@@ -41,6 +41,18 @@ Proof.
   intros HΦ HH. eapply sim_local_body_post_mono; last exact: HH.
   apply HΦ.
 Qed.
+Lemma sim_simplify'
+  (Φnew: resUR → nat → result → call_id_stack → result → call_id_stack → Prop)
+  (Φ: resUR → nat → result → state → result → state → Prop)
+  r n fs ft es σs et σt css cst :
+  (∀ r n vs σs vt σt, Φnew r n vs σs.(scs) vt σt.(scs) → Φ r n vs σs vt σt) →
+  σs.(scs) = css →
+  σt.(scs) = cst →
+  r ⊨ˢ{ n , fs , ft } (es, css) ≥ (et, cst) : Φnew →
+  r ⊨{ n , fs , ft } (es, σs) ≥ (et, σt) : Φ.
+Proof.
+  intros HΦ <-<-. eapply sim_simplify. done.
+Qed.
 
 Lemma sim_simple_post_mono Φ1 Φ2 r n fs ft es css et cst :
   Φ1 <6= Φ2 →

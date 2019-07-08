@@ -53,7 +53,6 @@ Proof.
   sim_apply sim_simple_let_val=>/=.
   sim_apply (sim_simple_call 10 [] [] ε); [done|done|solve_res|].
   intros rf frs frt FREL.
-  apply sim_simple_val.
 
 Admitted.
 
