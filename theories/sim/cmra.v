@@ -34,13 +34,13 @@ Definition to_heapletR (h: mem) : heapletR := fmap to_agree h.
 Definition to_tmapUR (pm: tmap) : tmapUR :=
   fmap (λ tm, (to_tagKindR tm.1, to_heapletR tm.2)) pm.
 
-Inductive loc_state := lsLocal (s: scalar) (stk: stack) | lsShared.
-Definition loc_stateR := (csumR (exclR (leibnizO (scalar * stack))) unitR).
-Definition lmap := gmap loc (scalar * stack).
+Inductive loc_state := lsLocal (s: scalar) (t: ptr_id) | lsShared.
+Definition loc_stateR := (csumR (exclR (leibnizO (scalar * nat))) unitR).
+Definition lmap := gmap loc (scalar * ptr_id).
 Definition lmapUR := gmapUR loc loc_stateR.
 Definition to_locStateR (ls: loc_state) : loc_stateR :=
   match ls with
-  | lsLocal s stk => Cinl (Excl (s, stk))
+  | lsLocal s t => Cinl (Excl (s, t))
   | lsShared => Cinr ()
   end.
 
@@ -92,13 +92,19 @@ Proof.
   - inversion Eq.
 Qed.
 
-Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
-  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → h0 ≡ h.
+Lemma tagKindR_exclusive_heaplet' (h0 h: heapletR) mb k1 :
+  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR k1, h) →
+  h0 ≡ h ∧ k1 = tkUnique.
 Proof.
   destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
-    intros [Eq1 Eq2]%Some_equiv_inj; [|done].
-  destruct k as [[[]|]| |]; inversion Eq1; simplify_eq.
+    intros [Eq1 Eq2]%Some_equiv_inj.
+  - destruct k as [[[]|]| |], k1 ; inversion Eq1; simplify_eq.
+  - destruct k1; by inversion Eq1.
 Qed.
+
+Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → h0 ≡ h.
+Proof. by intros []%tagKindR_exclusive_heaplet'. Qed.
 
 Lemma tagKindR_valid (k: tagKindR) :
   valid k → ∃ k', k = to_tagKindR k'.
@@ -352,23 +358,36 @@ Definition res_tag tg tk h : resUR :=
 Definition res_callState (c: call_id) (cs: call_state) : resUR :=
   (ε, {[c := to_callStateR cs]}, ε).
 
-Fixpoint init_local (l:loc) (n:nat) (s: scalar) (stk: stack)
-  (ls: gmap loc (scalar * stack)) : gmap loc (scalar * stack) :=
+Fixpoint init_local (l:loc) (n:nat) (s: scalar) (t: ptr_id)
+  (ls: gmap loc (scalar * ptr_id)) : gmap loc (scalar * ptr_id) :=
   match n with
   | O => ls
-  | S n => <[l := (s, stk)]>(init_local (l +ₗ 1) n s stk ls)
+  | S n => <[l := (s, t)]>(init_local (l +ₗ 1) n s t ls)
   end.
-Definition init_local_res l n s stk ls : lmapUR :=
-  fmap (λ sstk, to_locStateR $ lsLocal sstk.1 sstk.2) (init_local l n s stk ls).
 
-Definition res_mapsto (l:loc) (n:nat) (s: scalar) (stk: stack) : resUR :=
-  (ε, ε, init_local_res l n s stk ∅).
+Definition init_local_res l n s t ls : lmapUR :=
+  fmap (λ sstk, to_locStateR $ lsLocal sstk.1 sstk.2) (init_local l n s t ls).
 
-Lemma init_local_lookup l n s stk ls :
+Definition res_mapsto (l:loc) (n:nat) (s: scalar) (t: ptr_id) : resUR :=
+  (ε, ε, init_local_res l n s t ∅).
+
+(** res_tag *)
+Lemma res_tag_alloc_local_update lsf t k h (FRESH: lsf.(rtm) !! t = None) :
+  (lsf, ε) ~l~> (lsf ⋅ res_tag t k h, res_tag t k h).
+Proof.
+  destruct lsf as [[tm cm] lm]. rewrite 2!pair_op right_id right_id.
+  apply prod_local_update_1, prod_local_update_1.
+  rewrite cmra_comm -insert_singleton_op //.
+  apply alloc_singleton_local_update; [done|].
+  split. by destruct k. apply to_heapletR_valid.
+Qed.
+
+(** res_mapsto *)
+Lemma init_local_lookup l n s t ls :
   (∀ (i: nat), (i < n)%nat →
-    init_local l n s stk ls !! (l +ₗ i) = Some (s,stk)) ∧
+    init_local l n s t ls !! (l +ₗ i) = Some (s,t)) ∧
   (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
-    init_local l n s stk ls !! l' = ls !! l').
+    init_local l n s t ls !! l' = ls !! l').
 Proof.
   revert l ls. induction n as [|n IH]; intros l ls; simpl.
   { split; intros ??; [lia|done]. }
@@ -390,12 +409,12 @@ Proof.
     + specialize (Lt O ltac:(lia)). by rewrite shift_loc_0_nat in Lt.
 Qed.
 
-Lemma init_local_lookup_case l n s stk ls :
-  ∀ l' s', init_local l n s stk ls !! l' = Some s' →
+Lemma init_local_lookup_case l n s t ls :
+  ∀ l' s', init_local l n s t ls !! l' = Some s' →
   ls !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
   ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
 Proof.
-  destruct (init_local_lookup l n s stk ls) as [EQ1 EQ2].
+  destruct (init_local_lookup l n s t ls) as [EQ1 EQ2].
   intros l1 s1 Eq'.
   case (decide (l1.1 = l.1)) => [Eql|NEql];
     [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
@@ -414,86 +433,113 @@ Proof.
     rewrite EQ2 // in Eq'.
 Qed.
 
-Lemma res_mapsto_lookup l n s stk :
+Lemma res_mapsto_lookup l n s t :
   (∀ (i: nat), (i < n)%nat →
-    rlm (res_mapsto l n s stk) !! (l +ₗ i) = Some $ to_locStateR $ lsLocal s stk) ∧
+    rlm (res_mapsto l n s t) !! (l +ₗ i) = Some $ to_locStateR $ lsLocal s t) ∧
   (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
-    rlm (res_mapsto l n s stk) !! l' = None).
+    rlm (res_mapsto l n s t) !! l' = None).
 Proof.
-  destruct (init_local_lookup l n s stk ∅) as [EQ1 EQ2]. split.
+  destruct (init_local_lookup l n s t ∅) as [EQ1 EQ2]. split.
   - intros i Lti. by rewrite /= lookup_fmap (EQ1 _ Lti).
   - intros l' NEQ. by rewrite /= lookup_fmap (EQ2 _ NEQ).
 Qed.
 
-Lemma res_mapsto_lookup_case l n s stk :
-  ∀ l' s', rlm (res_mapsto l n s stk) !! l' ≡ Some s' →
-  s' = to_locStateR $ lsLocal s stk ∧ ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+Lemma res_mapsto_lookup_case l n s t :
+  ∀ l' s', rlm (res_mapsto l n s t) !! l' ≡ Some s' →
+  s' = to_locStateR $ lsLocal s t ∧ ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
 Proof.
   intros l' s' Eq'. apply leibniz_equiv_iff in Eq'.
   move : Eq'. rewrite /= lookup_fmap.
-  destruct (init_local l n s stk ∅ !! l') as [[s1 stk1]|] eqn:Eql'; [|done].
+  destruct (init_local l n s t ∅ !! l') as [[s1 stk1]|] eqn:Eql'; [|done].
   simpl. intros. simplify_eq.
   destruct (init_local_lookup_case _ _ _ _ _ _ _ Eql') as [[]|Eq']; [done|].
   destruct Eq' as [i [[? Lti] Eqi]].
   have Lti': (Z.to_nat i < n)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
-  destruct (init_local_lookup l n s stk ∅) as [EQ _].
+  destruct (init_local_lookup l n s t ∅) as [EQ _].
   specialize (EQ _ Lti'). rewrite Z2Nat.id // -Eqi Eql' in EQ. simplify_eq.
   naive_solver.
 Qed.
 
-Lemma res_mapsto_lookup_shared l n s stk lm:
-  ∀ l', rlm (lm ⋅ res_mapsto l n s stk) !! l' ≡ Some (to_locStateR lsShared) →
+Lemma res_mapsto_lookup_shared l n s t lm:
+  ∀ l', rlm (lm ⋅ res_mapsto l n s t) !! l' ≡ Some (to_locStateR lsShared) →
   rlm lm !! l' ≡  Some (to_locStateR lsShared) ∧
   (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i).
 Proof.
   intros l'. rewrite lookup_op.
-  destruct (rlm (res_mapsto l n s stk) !! l') as [s'|] eqn: Eqs'; rewrite Eqs'.
+  destruct (rlm (res_mapsto l n s t) !! l') as [s'|] eqn: Eqs'; rewrite Eqs'.
   - apply leibniz_equiv_iff, res_mapsto_lookup_case in Eqs' as [Eqs' ?].
     subst s'. by intros ?%lmap_exclusive.
   - rewrite right_id. intros. split; [done|].
     intros i Lt Eq. subst l'.
     move : Eqs'. rewrite /= lookup_fmap.
-    destruct (init_local_lookup l n s stk ∅) as [EQ1 _].
+    destruct (init_local_lookup l n s t ∅) as [EQ1 _].
     by rewrite (EQ1 _ Lt).
 Qed.
 
-Lemma init_local_plus1 l n s stk :
-  init_local (l +ₗ 1) n s stk ∅ !! l = None.
+Lemma init_local_plus1 l n s t :
+  init_local (l +ₗ 1) n s t ∅ !! l = None.
 Proof.
-  destruct (init_local_lookup (l +ₗ 1) n s stk ∅) as [_ EQ].
+  destruct (init_local_lookup (l +ₗ 1) n s t ∅) as [_ EQ].
   rewrite EQ //. intros ??. rewrite shift_loc_assoc -{1}(shift_loc_0 l).
   intros ?%shift_loc_inj. lia.
 Qed.
 
-Lemma init_local_res_S l n s stk :
-  init_local_res l (S n) s stk ∅ ≡
-  {[l := to_locStateR $ lsLocal s stk ]} ⋅ (init_local_res (l +ₗ 1) n s stk ∅).
+Lemma init_local_res_S l n s t :
+  init_local_res l (S n) s t ∅ ≡
+  {[l := to_locStateR $ lsLocal s t ]} ⋅ (init_local_res (l +ₗ 1) n s t ∅).
 Proof.
   rewrite {1}/init_local_res /= fmap_insert /= insert_singleton_op // lookup_fmap.
   rewrite init_local_plus1 //.
 Qed.
 
-Lemma init_local_res_local_update lsf l n s stk:
+Lemma init_local_res_local_update lsf l n s t:
   (∀ i, (i < n)%nat → lsf !! (l +ₗ i) = None) →
-  (lsf, ε) ~l~> (lsf ⋅ init_local_res l n s stk ∅, init_local_res l n s stk ∅).
+  (lsf, ε) ~l~> (lsf ⋅ init_local_res l n s t ∅, init_local_res l n s t ∅).
 Proof.
   revert l lsf.
   induction n as [|n IH]; intros l lsf HL.
   - rewrite /init_local_res /= fmap_empty right_id //.
   - rewrite /= init_local_res_S.
-    rewrite (cmra_comm {[l := to_locStateR (lsLocal s stk)]}
+    rewrite (cmra_comm {[l := to_locStateR (lsLocal s t)]}
                        (init_local_res _ _ _ _ _)).
     rewrite cmra_assoc.
     etrans.
     + apply (IH (l +ₗ 1)).
       intros i Lt. rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
       apply HL. lia.
-    + have NEQ1: init_local_res (l +ₗ 1) n s stk ∅ !! l = None.
+    + have NEQ1: init_local_res (l +ₗ 1) n s t ∅ !! l = None.
       { rewrite {1}/init_local_res lookup_fmap init_local_plus1 //. }
-      have ?: (lsf ⋅ init_local_res (l +ₗ 1) n s stk ∅) !! l = None.
+      have ?: (lsf ⋅ init_local_res (l +ₗ 1) n s t ∅) !! l = None.
       { rewrite lookup_op NEQ1 right_id_L.
         specialize (HL O). rewrite shift_loc_0_nat in HL. apply HL. lia. }
-      rewrite 2!(cmra_comm _  {[l := to_locStateR (lsLocal s stk)]})
+      rewrite 2!(cmra_comm _  {[l := to_locStateR (lsLocal s t)]})
               -insert_singleton_op // -insert_singleton_op //.
       by apply alloc_local_update.
+Qed.
+
+Lemma res_mapsto_local_alloc_local_update lsf l n s t:
+  (∀ i, (i < n)%nat → lsf.(rlm) !! (l +ₗ i) = None) →
+  (lsf, ε) ~l~> (lsf ⋅ res_mapsto l n s t, res_mapsto l n s t).
+Proof.
+  intros. destruct lsf as [[tm cm] lm]. rewrite 2!pair_op 2!right_id.
+  apply prod_local_update_2.
+  by apply init_local_res_local_update.
+Qed.
+
+Lemma res_mapsto_1_insert_local_update (r: resUR) (l: loc) v1 v2 (t: ptr_id)
+  (NONE: r.(rlm) !! l = None):
+  (r ⋅ res_mapsto l 1 v1 t, res_mapsto l 1 v1 t) ~l~>
+  (r ⋅ res_mapsto l 1 v2 t, res_mapsto l 1 v2 t).
+Proof.
+  intros. destruct r as [[tm cm] lm]. rewrite 4!pair_op 2!right_id.
+  apply prod_local_update_2.
+  rewrite cmra_comm (cmra_comm _ (init_local_res l 1 v2 t ∅)).
+  rewrite /= /init_local_res /= 2!fmap_insert /= fmap_empty.
+  do 2 rewrite -insert_singleton_op //.
+  rewrite -(insert_insert lm l (to_locStateR $ lsLocal v2 t) (to_locStateR $ lsLocal v1 t)).
+  eapply (singleton_local_update (<[l:=Cinl (Excl (v1, t))]> lm : lmapUR)).
+  { by rewrite lookup_insert. }
+  (* FIXME(Coq bug 6294) : we shouldn't need to assert here. *)
+  assert (Exclusive (A:=loc_stateR) (Cinl (Excl (v1, t)))) by exact: Cinl_exclusive.
+  by apply : exclusive_local_update.
 Qed.
