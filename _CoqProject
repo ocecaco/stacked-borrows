@@ -11,6 +11,7 @@ theories/lang/lang.v
 theories/lang/defs.v
 theories/lang/steps_foreach.v
 theories/lang/steps_list.v
+theories/lang/steps_access.v
 theories/lang/steps_wf.v
 theories/lang/steps_progress.v
 theories/lang/steps_inversion.v
