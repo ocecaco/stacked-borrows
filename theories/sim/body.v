@@ -133,26 +133,6 @@ Proof.
     pclearbot. right. by apply CIH. }
 Qed.
 
-Lemma sim_body_bind_r fs ft
-  (Kt: list (ectxi_language.ectx_item (bor_ectxi_lang ft))) et
-  r n es σs σt Φ :
-  r ⊨{n,fs,ft} (#[], σs) ≥ (et, σt)
-    : (λ r' n' _ _ et' σt',
-        r' ⊨{n',fs,ft} (es, σs) ≥ (fill Kt et', σt') : Φ) →
-  r ⊨{n,fs,ft} (es, σs) ≥ (fill Kt et, σt) : Φ.
-Proof.
-Admitted.
-
-Lemma sim_body_bind_l fs ft
-  (Ks: list (ectxi_language.ectx_item (bor_ectxi_lang ft))) es
-  r n et σs σt Φ :
-  r ⊨{n,fs,ft} (es, σs) ≥ (#[], σt)
-    : (λ r' n' es' σs' _ _,
-        r' ⊨{n',fs,ft} (fill Ks es', σs') ≥ (et, σt) : Φ) →
-  r ⊨{n,fs,ft} (fill Ks es, σs) ≥ (et, σt) : Φ.
-Proof.
-Admitted.
-
 Lemma sim_body_bind_call r n fs ft es σs et σt (fns fnt: result) (pres pret: list result) posts postt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt)
     : (λ r' n' rs' σs' rt' σt',

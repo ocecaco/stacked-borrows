@@ -90,8 +90,7 @@ Proof.
   sim_apply_l sim_body_deref_l. simpl.
   sim_apply_l sim_body_copy_unique_l; [try solve_sim..|].
   { rewrite lookup_insert. done. }
-  apply: sim_body_result=>_. simpl.
-  apply: sim_body_result=>Hval. split.
+  apply: sim_body_result=>Hval. simpl. split.
   - eexists. split; first done. admit. (* end_call_sat *)
   - constructor; simpl; auto.
 Admitted.
