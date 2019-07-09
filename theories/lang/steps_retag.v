@@ -2,12 +2,9 @@ From stbor.lang Require Export defs steps_foreach steps_list.
 
 Set Default Proof Using "Type".
 
-Definition tag_in t (stk: stack) :=
-  ∃ pm opro, pm ≠ Disabled ∧ mkItem pm (Tagged t) opro ∈ stk.
-Definition tag_in_stack σ l t :=
-  ∃ stk, σ.(sst) !! l = Some stk ∧ tag_in t stk.
-Definition tag_on_top σt l tag : Prop :=
-  tg <$> (σt.(sst) !! l) ≫= head = Some (Tagged tag).
+(* FIXME; should not require [Unique] *)
+Definition tag_on_top (stks: stacks) l tag : Prop :=
+  ∃ prot, (stks !! l) ≫= head = Some (mkItem Unique (Tagged tag) prot).
 
 (** Active protector preserving *)
 Definition active_preserving (cids: call_id_stack) (stk stk': stack) :=
@@ -636,4 +633,20 @@ Proof.
     have HL: stk !! k = Some it. { rewrite -(lookup_take _ n2) //. }
     have Ltk2: (k < i1)%nat. { eapply Nat.lt_le_trans; eauto. }
     by rewrite (HL1 _ _ Ltk2 HL).
+Qed.
+
+(** Tag-on-top *)
+Lemma tag_on_top_write σ l tg stks :
+  tag_on_top σ.(sst) l tg →
+  memory_written (sst σ) (scs σ) l (Tagged tg) 1 = Some stks →
+  tag_on_top stks l tg.
+Proof.
+  rewrite /memory_written /tag_on_top /= shift_loc_0.
+  destruct (sst σ !! l) eqn:Hlk; last done. simpl.
+  destruct s as [|it st]; first done. simpl.
+  destruct it as [perm tg' prot']. intros [prot ?]; simplify_eq/=.
+  edestruct tag_unique_head_access as [n ->].
+  { eexists. done. }
+  simpl. intros. simplify_eq/=. eexists. rewrite lookup_insert.
+  simpl. done.
 Qed.

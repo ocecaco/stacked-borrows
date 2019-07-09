@@ -13,7 +13,7 @@ Lemma sim_body_let_l fs ft r n x et es1 es2 vs1 σs σt Φ :
   r ⊨{n,fs,ft} (subst' x es1 es2, σs) ≥ (et, σt) : Φ →
   r ⊨{n,fs,ft} (let: x := es1 in es2, σs) ≥ (et, σt) : Φ.
 Proof.
-Admitted.
+Abort.
 
 Lemma sim_body_deref_l fs ft r n et (rt: result) l t T σs σt Φ :
   IntoResult et rt →

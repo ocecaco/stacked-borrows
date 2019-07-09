@@ -734,6 +734,7 @@ Proof.
   intros. simpl. by apply POST.
 Qed.
 
+(** For writing to owned *or* public locations. *)
 Lemma sim_body_write_related_values
   fs ft (r: resUR) k0 h0 n l tg Ts Tt v σs σt Φ
   (EQS: tsize Ts = tsize Tt)
@@ -1046,12 +1047,13 @@ Lemma sim_body_write_owned
   fs ft (r r' r'' rs: resUR) h n l tg T s σs σt Φ:
   tsize T = 1%nat →
   r ≡ r' ⋅ res_tag tg tkUnique h →
+  is_Some (h !! l) →
   arel rs s s → (* assuming to-write values are related *)
   r' ≡ r'' ⋅ rs →
   (∀ α', memory_written σt.(sst) σt.(scs) l (Tagged tg) (tsize T) = Some α' →
     let σs' := mkState (write_mem l [s] σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
     let σt' := mkState (write_mem l [s] σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
-    tag_on_top σt l tg →
+    tag_on_top σt.(sst) l tg →
     Φ (r' ⋅ res_tag tg tkUnique (<[l:=s]> h)) n (ValR [☠]%S) σs' (ValR [☠]%S) σt') →
   r ⊨{n,fs,ft}
     (Place l (Tagged tg) T <- #[s], σs) ≥ (Place l (Tagged tg) T <- #[s], σt) : Φ.

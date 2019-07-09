@@ -166,10 +166,10 @@ Proof. intros ->. rewrite - !assoc. f_equiv. exact: comm. Qed.
 Lemma res_search_found_left (F W : resUR) :
   W ⋅ F ≡ F ⋅ W.
 Proof. exact: comm. Qed.
-Lemma res_search_found_unit (F W : resUR) :
+Lemma res_search_found_unit (F : resUR) :
   F ≡ F ⋅ ε.
 Proof. rewrite right_id //. Qed.
-Lemma res_search_singleton (R W : resUR) :
+Lemma res_search_singleton (W : resUR) :
   W ≡ ε ⋅ W.
 Proof. rewrite left_id //. Qed.
 Lemma res_search_from_incl (r1 r2 r3 : resUR) :
@@ -183,11 +183,11 @@ Ltac solve_res :=
   | |- _ ⋅ _ ≡ _ =>
       reflexivity
   | |- _ ≡ _ ⋅ ε =>
-      exact: res_search_found_unit
+      solve [ simple apply res_search_found_unit ]
   | |- _ ⋅ _ ≡ _ =>
-      exact: res_search_found_left
+      solve [ simple apply res_search_found_left ]
   | |- _ ≡ _ =>
-      exact: res_search_singleton
+      solve [ simple apply res_search_singleton ]
   | |- _ ⋅ _ ≡ _ =>
     (* The descent lemma makes sure we don't descend below
        the *last* operator. We always want to preserve having

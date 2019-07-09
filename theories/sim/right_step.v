@@ -35,7 +35,7 @@ Admitted.
 Lemma sim_body_copy_unique_r
   fs ft (r r': resUR) (h: heaplet) n (l: loc) tg T (s: scalar) es σs σt Φ :
   tsize T = 1%nat →
-  tag_on_top σt l tg →
+  tag_on_top σt.(sst) l tg →
   r ≡ r' ⋅ res_tag tg tkUnique h →
   h !! l = Some s →
   (r ⊨{n,fs,ft} (es, σs) ≥ (#[s], σt) : Φ : Prop) →

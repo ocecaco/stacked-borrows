@@ -1,4 +1,4 @@
-From stbor.sim Require Import local invariant refl tactics simple program refl_step right_step left_step.
+From stbor.sim Require Import local invariant refl tactics simple program refl_step right_step left_step viewshift.
 
 Set Default Proof Using "Type".
 
@@ -70,7 +70,7 @@ Proof.
   (* Copy unique (right) *)
   sim_apply_r sim_body_deref_r. simpl.
   sim_apply_r sim_body_copy_unique_r; [try solve_sim..|].
-  { subst σt'. admit. (* show that tag_op_top is preserved. *) }
+  { subst σt'. eapply steps_retag.tag_on_top_write; done. }
   { rewrite lookup_insert. done. }
   apply: sim_body_result=>_. simpl.
   apply: sim_body_let_r. simpl. (* FIXME: figure out why [sim_apply_r] does the wrong thing here *)
@@ -90,10 +90,14 @@ Proof.
   sim_apply_l sim_body_deref_l. simpl.
   sim_apply_l sim_body_copy_unique_l; [try solve_sim..|].
   { rewrite lookup_insert. done. }
+  (* Finishing up. *)
+  eapply sim_body_viewshift.
+  { do 6 eapply viewshift_frame_r. eapply vs_call_empty_public. }
   apply: sim_body_result=>Hval. simpl. split.
-  - eexists. split; first done. admit. (* end_call_sat *)
+  - eexists. split; first done. eapply res_end_call_sat; first done.
+    solve_res.
   - constructor; simpl; auto.
-Admitted.
+Qed.
 
 (** Top-level theorem: Two programs that only differ in the
 "ex1" function are related. *)
