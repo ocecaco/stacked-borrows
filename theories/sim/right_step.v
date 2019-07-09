@@ -22,16 +22,6 @@ Lemma sim_body_deref_r fs ft r n es (rs: result) l t T σs σt Φ :
 Proof.
 Admitted.
 
-Lemma sim_body_copy_local_r fs ft r r' n l tg ty s es σs σt Φ :
-  tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [s] tg →
-  (r ⊨{n,fs,ft} (es, σs) ≥ (#[s], σt) : Φ) →
-  r ⊨{S n,fs,ft}
-    (es, σs) ≥ (Copy (Place l (Tagged tg) ty), σt)
-  : Φ.
-Proof.
-Admitted.
-
 Lemma sim_body_copy_unique_r
   fs ft (r r': resUR) (h: heaplet) n (l: loc) tg T (s: scalar) es σs σt Φ :
   tsize T = 1%nat →
@@ -40,6 +30,17 @@ Lemma sim_body_copy_unique_r
   h !! l = Some s →
   (r ⊨{n,fs,ft} (es, σs) ≥ (#[s], σt) : Φ : Prop) →
   r ⊨{S n,fs,ft} (es, σs) ≥ (Copy (Place l (Tagged tg) T), σt) : Φ.
+Proof.
+Admitted.
+
+(* should be a fairly direct consequence of the above. *)
+Lemma sim_body_copy_local_r fs ft r r' n l tg ty s es σs σt Φ :
+  tsize ty = 1%nat →
+  r ≡ r' ⋅ res_mapsto l [s] tg →
+  (r ⊨{n,fs,ft} (es, σs) ≥ (#[s], σt) : Φ) →
+  r ⊨{S n,fs,ft}
+    (es, σs) ≥ (Copy (Place l (Tagged tg) ty), σt)
+  : Φ.
 Proof.
 Admitted.
 
