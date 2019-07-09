@@ -1,0 +1,14 @@
+Things in the "logical" side of the model that could be made better:
+- The invariant for one (sub-)resource should only talk about that resource.
+  To fix CallMapInv: replace set T by `gmap loc tag` indicating which locations are protected.
+  To fix TagMapInv: kill the "value" part of LMAP.
+  To fix LocMapInv: make it a `gmap loc tag` that all just have a singleton stack with that loc.
+  Then we can also make PrivLoc handle fairly uniformly locations that are "privatized" by being protected or by being local.
+- No need for (persistently) public call IDs.  Still need to be able to pass
+  ownership of *all* tag protected by a call ID though, so
+  `gmap call_id (ex (gmap tag loc))` seems reasonable, or else `gmap call_id (prod frac (gmap tag (ex loc)))`.
+- Can the separate private/local things be better integrated to the notion of a "private location" for the purposes of stating lemmas about them?
+  Or will that just always be `own_local loc tag \/ (exists cid h, own_call_id cid h /\ h !! loc = Some tag)`?
+
+Things in the "model" side:
+- Can we get rid of this EndCall-based stack tracking?  Would be nice to treat EndCall more like InitCall, as part of the body of the fn, instead of special-casing it so much.
