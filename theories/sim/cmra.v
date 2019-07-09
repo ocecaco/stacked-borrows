@@ -493,6 +493,14 @@ Proof.
   rewrite init_local_plus1 //.
 Qed.
 
+Lemma init_local_res_mem_dom l n s t :
+  dom (gset loc) (init_local_res l n s t ∅) ≡ dom (gset loc) (init_mem l n ∅).
+Proof.
+  revert l. induction n as [|n IH]; simpl; intros l; rewrite /init_local_res.
+  - by rewrite fmap_empty.
+  - rewrite /= fmap_insert 2!dom_insert IH //.
+Qed.
+
 Lemma init_local_res_local_update lsf l n s t:
   (∀ i, (i < n)%nat → lsf !! (l +ₗ i) = None) →
   (lsf, ε) ~l~> (lsf ⋅ init_local_res l n s t ∅, init_local_res l n s t ∅).

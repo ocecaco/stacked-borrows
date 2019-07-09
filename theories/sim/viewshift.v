@@ -47,9 +47,10 @@ Proof.
       destruct cs' as [[]| |]; try inversion Eq. done.
     + intros EQcs. apply (CINV  c' cs').
       move : EQcs. rewrite 2!lookup_op lookup_insert_ne // lookup_insert_ne //.
-  - destruct SREL as (?&?&?&?& PB). do 4 (split; [done|]).
-    intros l InD. rewrite -EQlm. intros SHR.
-    specialize (PB _ InD SHR) as [PB|(t & c' & T & h & Eqc' & InT & ?)]; [left|right].
+  - destruct SREL as (?&?&?&?& EqD & PB). do 4 (split; [done|]).
+    split. { by rewrite -EQlm. }
+    intros l. rewrite -EQlm. intros SHR.
+    specialize (PB _ SHR) as [PB|(t & c' & T & h & Eqc' & InT & ?)]; [left|right].
     + intros st Eqst. specialize (PB _ Eqst) as (ss & ? & AREL).
       by exists ss.
     + exists t, c', T, h. rewrite -EQtm. split; [|done].

@@ -67,8 +67,7 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   end.
 
 Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ (l: loc), l ∈ dom (gset loc) r.(rlm) → l ∈ dom (gset loc) σt.(shp) ∧
-    ∀ s t,
+  ∀ (l: loc) s t,
     r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s t)) →
     σs.(shp) !! l = Some s ∧ σt.(shp) !! l = Some s ∧
     σs.(sst) !! l = Some (init_stack (Tagged t)) ∧
@@ -89,8 +88,8 @@ Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
 Definition srel (r: resUR) (σs σt: state) : Prop :=
   σs.(sst) = σt.(sst) ∧ σs.(snp) = σt.(snp) ∧
   σs.(scs) = σt.(scs) ∧ σs.(snc) = σt.(snc) ∧
-  ∀ (l: loc), l ∈ dom (gset loc) σt.(shp) →
-    r.(rlm) !! l ≡ Some (to_locStateR lsShared) →
+  dom (gset loc) σt.(shp) ≡ dom (gset loc) r.(rlm) ∧
+  ∀ (l: loc), r.(rlm) !! l ≡ Some (to_locStateR lsShared) →
     pub_loc r l σs σt ∨ (∃ (t: ptr_id), priv_loc r l t).
 
 Definition wsat (r: resUR) (σs σt: state) : Prop :=
@@ -134,8 +133,9 @@ Proof.
     + rewrite lookup_singleton. intros Eq%Some_equiv_inj.
       destruct cs as [[]| |]; [..|lia|]; by inversion Eq.
     + rewrite lookup_singleton_ne //. by inversion 1.
-  - repeat split. simpl. set_solver.
-  - intros ? HL. exfalso. move : HL. by rewrite /= dom_empty elem_of_empty.
+  - split; set_solver.
+  - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty.
+    by inversion 1.
 Qed.
 
 Lemma arel_ptr l tg :
