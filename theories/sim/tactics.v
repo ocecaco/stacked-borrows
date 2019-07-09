@@ -98,42 +98,63 @@ Tactic Notation "sim_apply" open_constr(lem) :=
     )
   end.
 
+(* HACK to avoid a bind-left/right rule. Does not work in general (e.g. when
+there is an [Alloc T] in eval position on the left), but works for now. *)
+Ltac test_pure_head e :=
+  match e with
+  | of_result _ => idtac
+  | Val _ => idtac
+  | Place _ _ _ => idtac
+  | _ => fail
+  end.
+
 Tactic Notation "sim_bind_r" open_constr(efoc) :=
   match goal with 
-  | |- _ ⊨{_,_,_} (_, _) ≥ (?et, _) : _ =>
-    reshape_expr et ltac:(fun Kt et =>
-      unify et efoc;
-      eapply (sim_body_bind_r _ _ Kt et)
+  | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+    reshape_expr es ltac:(fun Ks es =>
+      test_pure_head es;
+      reshape_expr et ltac:(fun Kt et =>
+        unify et efoc;
+        sim_body_bind_core Ks es Kt et
+      )
     )
   end.
 
 Tactic Notation "sim_apply_r" open_constr(lem) :=
   match goal with
   | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
-    reshape_expr et ltac:(fun Kt et =>
-      eapply (sim_body_bind_r _ _ Kt et);
-      apply: lem
+    reshape_expr es ltac:(fun Ks es =>
+      test_pure_head es;
+      reshape_expr et ltac:(fun Kt et =>
+        sim_body_bind_core Ks es Kt et;
+        apply: lem
+      )
     )
   end.
 
 Tactic Notation "sim_bind_l" open_constr(efoc) :=
   match goal with 
-  | |- _ ⊨{_,_,_} (?es, _) ≥ (_, _) : _ =>
+  | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
     reshape_expr es ltac:(fun Ks es =>
       unify es efoc;
-      eapply (sim_body_bind_l _ _ Ks es)
+      reshape_expr et ltac:(fun Kt et =>
+        test_pure_head et;
+        sim_body_bind_core Ks es Kt et
+      )
     )
   end.
 
 Tactic Notation "sim_apply_l" open_constr(lem) :=
   match goal with
-  | |- _ ⊨{_,_,_} (?es, _) ≥ (_, _) : _ =>
-    reshape_expr es ltac:(fun Ks es =>
-      eapply (sim_body_bind_l _ _ Ks es);
-      apply: lem
+  | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+    reshape_expr et ltac:(fun Kt et =>
+      test_pure_head et;
+      reshape_expr es ltac:(fun Ks es =>
+        sim_body_bind_core Ks es Kt et;
+        apply: lem
+      )
     )
   end.
-
 
 (** The expectation is that lemmas state their resource requirements as
 [r ≡ frame ⋅ what_lemma_needs].  Users eapply the lemma, and [frame]
