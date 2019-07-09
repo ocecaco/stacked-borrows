@@ -32,7 +32,6 @@ Definition tmap_inv (r: resUR) (σ: state) : Prop :=
     (t < σ.(snp))%nat ∧
     ∀ (l: loc) (s: scalar),
       h !! l ≡ Some (to_agree s) →
-      r.(rlm) !! l ≡ Some (to_locStateR lsShared) ∧
       ∀ (stk: stack), σ.(sst) !! l = Some stk →
         ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk → pm ≠ Disabled →
           (* as long as the tag [t] is in the stack [stk] (Disabled is
@@ -67,19 +66,19 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   end.
 
 Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ (l: loc) s t,
-    r.(rlm) !! l ≡ Some (to_locStateR (lsLocal s t)) →
-    σs.(shp) !! l = Some s ∧ σt.(shp) !! l = Some s ∧
-    σs.(sst) !! l = Some (init_stack (Tagged t)) ∧
+  ∀ (l: loc) t,
+    (r.(rlm) !! l: optionR tagR) ≡ Some (to_tagR t) →
+    (t < σt.(snp))%nat ∧
     σt.(sst) !! l = Some (init_stack (Tagged t)) ∧
-    ∃ h, r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h).
+    σt.(shp) !! l = σs.(shp) !! l.
 
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
-  ∃ (c: call_id) (T: gset ptr_id) h,
-  r.(rcm) !! c ≡ Some (Cinl (Excl T)) ∧ t ∈ T ∧
-  r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h) ∧ l ∈ dom (gset loc) h.
+  ∃ h, r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h) ∧
+  ((* local *) (r.(rlm) !! l: optionR tagR) ≡ Some (to_tagR t) ∨
+   (* protected *) ∃ (c: call_id) (T: gset ptr_id),
+      r.(rcm) !! c ≡ Some (to_callStateR $ csOwned T) ∧ t ∈ T ∧ l ∈ dom (gset loc) h).
 
 Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
   ∀ st, σt.(shp) !! l = Some st → ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st.
@@ -88,8 +87,7 @@ Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
 Definition srel (r: resUR) (σs σt: state) : Prop :=
   σs.(sst) = σt.(sst) ∧ σs.(snp) = σt.(snp) ∧
   σs.(scs) = σt.(scs) ∧ σs.(snc) = σt.(snc) ∧
-  dom (gset loc) σt.(shp) ≡ dom (gset loc) r.(rlm) ∧
-  ∀ (l: loc), r.(rlm) !! l ≡ Some (to_locStateR lsShared) →
+  ∀ (l: loc), l ∈ dom (gset loc) σt.(shp) →
     pub_loc r l σs σt ∨ (∃ (t: ptr_id), priv_loc r l t).
 
 Definition wsat (r: resUR) (σs σt: state) : Prop :=
@@ -133,9 +131,8 @@ Proof.
     + rewrite lookup_singleton. intros Eq%Some_equiv_inj.
       destruct cs as [[]| |]; [..|lia|]; by inversion Eq.
     + rewrite lookup_singleton_ne //. by inversion 1.
-  - split; set_solver.
-  - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty.
-    by inversion 1.
+  - do 4 (split; [done|]). intros l. rewrite /= dom_empty. set_solver.
+  - intros ?? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
 Qed.
 
 Lemma arel_ptr l tg :
@@ -191,18 +188,20 @@ Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qe
 Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ l t, priv_loc r1 l t → priv_loc r2 l t.
 Proof.
-  intros LE l t (c & T & h & Eq2 & InT & Eq1 & InD).
+  intros LE l t (h & Eqh & PRIV).
   do 2 (apply prod_included in LE as [LE ]).
   do 2 (apply pair_valid in VAL as [VAL ]).
-  exists c, T, h. repeat split; [|done| |done].
-  - by apply (cmap_lookup_op_unique_included r1.(rcm)).
-  - by apply (tmap_lookup_op_unique_included r1.(rtm)).
+  exists h. split.
+  { by apply (tmap_lookup_op_unique_included r1.(rtm)). }
+  destruct PRIV as [|(c & T & ? & ?)]; [left|right].
+  - by eapply lmap_lookup_op_included.
+  - exists c, T. split; [|done]. by apply (cmap_lookup_op_unique_included r1.(rcm)).
 Qed.
 
 Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> iff) tmap_inv.
 Proof.
   intros r1 r2 [[Eqt Eqc] Eqm] ? σ ?. subst. rewrite /tmap_inv.
-  setoid_rewrite Eqt. by setoid_rewrite Eqm.
+  by setoid_rewrite Eqt.
 Qed.
 
 Instance cmap_inv_proper : Proper ((≡) ==> (=) ==> iff) cmap_inv.

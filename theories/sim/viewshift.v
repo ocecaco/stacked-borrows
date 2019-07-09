@@ -35,10 +35,7 @@ Proof.
     rewrite -(insert_insert _ c (Cinr ()) (Cinl (Excl ∅))).
     eapply singleton_local_update; [by rewrite lookup_insert|].
     by apply exclusive_local_update.
-  - intros t k h. rewrite -EQtm. intros Eqkh.
-    specialize (PINV _ _ _ Eqkh) as [? PINV]. split; [done|].
-    intros l s Eqs. rewrite -EQlm.
-    by specialize (PINV _ _ Eqs) as [? PINV].
+  - intros t k h. rewrite -EQtm. intros Eqkh. by apply PINV.
   - intros c' cs'. case (decide (c' = c)) => ?; [subst c'|].
     + rewrite lookup_op UNIQUE left_id /= lookup_insert.
       intros Eq%Some_equiv_inj.
@@ -47,17 +44,17 @@ Proof.
       destruct cs' as [[]| |]; try inversion Eq. done.
     + intros EQcs. apply (CINV  c' cs').
       move : EQcs. rewrite 2!lookup_op lookup_insert_ne // lookup_insert_ne //.
-  - destruct SREL as (?&?&?&?& EqD & PB). do 4 (split; [done|]).
-    split. { by rewrite -EQlm. }
-    intros l. rewrite -EQlm. intros SHR.
-    specialize (PB _ SHR) as [PB|(t & c' & T & h & Eqc' & InT & ?)]; [left|right].
+  - destruct SREL as (?&?&?&?& PB). do 4 (split; [done|]).
+    intros l InD. specialize (PB _ InD) as [PB|(t & h & Eqh & PV)]; [left|right].
     + intros st Eqst. specialize (PB _ Eqst) as (ss & ? & AREL).
       by exists ss.
-    + exists t, c', T, h. rewrite -EQtm. split; [|done].
+    + exists t, h. rewrite -EQtm -EQlm. split; [done|].
+      destruct PV as [?|(c' & T' & Eqc' & InT & ?)]; [by left|right].
+      exists c', T'. split; [|done].
       have ? : c' ≠ c.
       { intros ?. subst c'. move : Eqc'.
         rewrite lookup_op /= lookup_insert. intros ?%callStateR_exclusive_eq.
-        subst T. by apply not_elem_of_empty in InT. }
+        subst T'. by apply not_elem_of_empty in InT. }
       move : Eqc'.
       rewrite 2!lookup_op lookup_insert_ne // lookup_insert_ne //.
   - intros l. setoid_rewrite <-EQlm. by specialize (LINV l).

@@ -24,7 +24,7 @@ Admitted.
 
 Lemma sim_body_copy_local_l fs ft r r' n l tg ty s et σs σt Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  r ≡ r' ⋅ res_mapsto l [s] tg →
   (r ⊨{n,fs,ft} (#[s], σs) ≥ (et, σt) : Φ) →
   r ⊨{n,fs,ft}
     (Copy (Place l (Tagged tg) ty), σs) ≥ (et, σt)
