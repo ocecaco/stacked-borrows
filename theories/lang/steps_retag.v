@@ -440,21 +440,6 @@ Proof.
   clear -HD'. destruct HD' as [? EqD]. rewrite EqD. by left.
 Qed.
 
-Lemma access1_read_replace_incompatible_head_protector stk t ti cids n stk' c :
-  (is_stack_head (mkItem Unique (Tagged ti) (Some c)) stk) →
-  c ∈ cids →
-  access1 stk AccessRead (Tagged t) cids = Some (n, stk') →
-  t ≠ ti → False.
-Proof.
-  intros HD ACTIVE. rewrite /access1.
-  case find_granting as [[n' pm']|] eqn:GRANT; [|done]. simpl.
-  case replace_check as [stk1|] eqn:Eq; [|done].
-  simpl. intros ?. simplify_eq. intros NEQ.
-  have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
-  destruct HD' as [stk' Eqs].
-  move : Eq. rewrite Eqs /replace_check /= /check_protector /=.
-Abort.
-
 Lemma active_SRO_elem_of t stk :
   t ∈ active_SRO stk → ∃ i it, stk !! i = Some it ∧ it.(tg) = Tagged t ∧
   it.(perm) = SharedReadOnly ∧
@@ -539,6 +524,31 @@ Proof.
     as (i & it & Eqi & Eqt & Lt).
   rewrite -{1}(take_drop n stk) in ND. intros ?.
   eapply (remove_check_incompatible_items _ _ _ _ idx it i ti ND); eauto.
+Qed.
+
+Lemma access1_incompatible_head_protector stk t ti kind cids n stk' c :
+  (is_stack_head (mkItem Unique (Tagged ti) (Some c)) stk) →
+  c ∈ cids →
+  access1 stk kind (Tagged t) cids = Some (n, stk') →
+  t = ti.
+Proof.
+  intros HD ACTIVE. case (decide (t = ti)) => NEQ; [done|].
+  rewrite /access1.
+  case find_granting as [[n' pm']|] eqn:GRANT; [|done]. simpl.
+  destruct kind.
+  - case replace_check as [stk1|] eqn:Eq; [|done].
+    simpl. intros ?. simplify_eq.
+    have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
+    destruct HD' as [stk' Eqs].
+    move : Eq.
+    rewrite Eqs /replace_check /= /check_protector /= /is_active bool_decide_true //.
+  - have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
+    case find_first_write_incompatible as [idx|] eqn:INC; [|done]. simpl.
+    have NONEZ: (0 < idx)%nat.
+    { eapply (find_first_write_incompatible_head _ _ _ _ _ _ HD'); eauto. }
+    destruct HD' as [stk2 Eqs].
+    rewrite Eqs /=. destruct idx; [lia|].
+    rewrite /= /check_protector /= /is_active bool_decide_true //.
 Qed.
 
 (* Property of [t] that when used to access [stk], it will not change [stk] *)

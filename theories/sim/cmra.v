@@ -288,7 +288,7 @@ Qed.
 
 (** lmap *)
 Lemma lmap_lookup_op_r (lm1 lm2 : lmapUR) (VALID: ✓ (lm1 ⋅ lm2)) l ls :
-  lm2 !! l ≡ Some ls → (lm1 ⋅ lm2) !! l ≡ Some ls.
+  lm2 !! l ≡ Some ls → ((lm1 ⋅ lm2) !! l : optionR tagR) ≡ Some ls.
 Proof.
   intros Eq. move : (VALID l). rewrite lookup_op Eq.
   destruct (lm1 !! l) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
