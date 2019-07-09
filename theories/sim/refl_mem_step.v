@@ -391,7 +391,7 @@ Lemma sim_body_copy_public fs ft r n (pl: result) σs σt Φ
     ∀ α', memory_read σt.(sst) σt.(scs) l t (tsize T) = Some α' →
       let σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc) in
       let σt' := mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc) in
-      vrel (r ⋅ r') vs vt → Φ (r ⋅ r') n (ValR vs) σs' (ValR vt) σt') →
+      vrel ((* r ⋅  *) r') vs vt → Φ (r ⋅ r') n (ValR vs) σs' (ValR vt) σt') →
   r ⊨{n,fs,ft} (Copy pl, σs) ≥ (Copy pl, σt) : Φ.
 Proof.
   intros POST. pfold. intros NT. intros.
@@ -504,10 +504,7 @@ Proof.
       destruct (local_access_eq _ _ _ _ _ _ _ _ _ _ Eqst ACC1 WSAT1 Eqs)
         as [? Eqstk2]. by rewrite Eq2 Eqstk2. }
   left.
-  apply: sim_body_result. intros.
-  have VREL2: vrel (r ⋅ (core (r_f ⋅ r))) vs vt.
-  { eapply vrel_mono; [done| |exact VREL']. apply cmra_included_r. }
-  eapply POST; eauto.
+  apply: sim_body_result. intros. eapply POST; eauto.
 Qed.
 
 (** Write *)
@@ -624,16 +621,22 @@ Proof.
   { rewrite LenT in EQL. destruct v as [|s v]; [simpl in EQL; done|].
     exists s. destruct v; [done|simpl in EQL; lia]. } subst v.
 
-  have VALIDr:= cmra_valid_op_r _ _ VALID.
-  have HLlr: r.(rlm) !! l ≡ Some (to_locStateR (lsLocal v' tg)).
-  { rewrite Eqr. apply lmap_lookup_op_r.
-    - rewrite ->Eqr in VALIDr. apply VALIDr.
-    - by rewrite /= /init_local_res lookup_fmap /= lookup_insert /=. }
-  destruct (LINV l v' tg) as (Eql1 & Eql2 & Eqsl1 & Eqsl2 & LocUnique).
+  have VALIDr:= cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
+  have HLlr: (r.(rlm) !! l : optionR tagR) ≡ Some (to_tagR tg).
+  { rewrite Eqr. apply (lmap_lookup_op_included (res_mapsto l [v'] tg).(rlm)).
+    - apply VALIDr.
+    - apply cmra_included_r.
+    - apply res_mapsto_llookup_1. simpl; lia. }
+  have HLtr: r.(rtm) !! tg ≡
+      Some (to_tagKindR tkUnique, {[l := to_agree v']}).
+    { rewrite Eqr.
+      eapply tmap_lookup_op_unique_included;
+        [apply VALIDr|apply cmra_included_r|].
+      rewrite res_mapsto_tlookup /= fmap_insert fmap_empty //. }
+  destruct (LINV l tg) as (Lte & Eql2 & Eqh2).
   { apply lmap_lookup_op_r; [apply VALID|done]. }
   have ?: α' = σt.(sst).
-  { move : Eqα'. rewrite LenT /= /memory_written /= shift_loc_0_nat.
-    rewrite Eqsl2 /=.
+  { move : Eqα'. rewrite LenT /= /memory_written /= shift_loc_0_nat Eql2 /=.
     destruct (tag_unique_head_access σt.(scs) (init_stack (Tagged tg))
                 tg None AccessWrite) as [ns Eqss]; [by exists []|].
     rewrite Eqss /= insert_id //. by inversion 1. } subst α'.
@@ -646,90 +649,125 @@ Proof.
     rewrite EQL in EqD. rewrite -Eqnp in IN.
     eapply (head_step_fill_tstep _ []), write_head_step'; eauto. }
 
-  exists (#[☠])%V, σs', (r' ⋅ res_mapsto l 1 s tg), n.
+  exists (#[☠])%V, σs', (r' ⋅ res_mapsto l [s] tg), n.
   split; last split.
   { left. by constructor 1. }
-  { have HLlrf: (r_f ⋅ r) .(rlm) !! l ≡ Some (to_locStateR (lsLocal v' tg)).
+  { have HLlrf: ((r_f ⋅ r) .(rlm) !! l : optionR tagR) ≡ Some $ to_tagR tg.
     { apply lmap_lookup_op_r; [apply VALID|done]. }
     have HLN: (r_f ⋅ r').(rlm) !! l = None.
     { destruct ((r_f ⋅ r').(rlm) !! l) as [ls|] eqn:Eqls; [|done].
       exfalso. move : HLlrf.
-      rewrite Eqr cmra_assoc lookup_op Eqls /=
-              /init_local_res lookup_fmap /= lookup_insert.
-      apply lmap_exclusive_2. }
-    have HTEq: (r_f ⋅ r' ⋅ res_mapsto l 1 v' tg).(rtm) ≡
-               (r_f ⋅ r' ⋅ res_mapsto l 1 s tg).(rtm).
-    { rewrite /rtm /= right_id //. }
-    have HCEq: (r_f ⋅ r' ⋅ res_mapsto l 1 v' tg).(rcm) ≡
-               (r_f ⋅ r' ⋅ res_mapsto l 1 s tg).(rcm).
+      rewrite Eqr cmra_assoc lookup_op Eqls (res_mapsto_llookup_1 l [v'] tg).
+      - apply lmap_exclusive_2.
+      - simpl; lia. }
+    have HLtrf: (r_f ⋅ r) .(rtm) !! tg ≡
+      Some (to_tagKindR tkUnique, {[l := to_agree v']}).
+    { apply tmap_lookup_op_r_unique_equiv; [apply VALID|done]. }
+    have HLNt: (r_f ⋅ r').(rtm) !! tg = None.
+    { destruct ((r_f ⋅ r').(rtm) !! tg) as [ls|] eqn:Eqls; [|done].
+      exfalso. move : HLtrf.
+      rewrite Eqr cmra_assoc lookup_op Eqls res_mapsto_tlookup.
+      apply tagKindR_exclusive_heaplet. }
+    (* have HTEq: (r_f ⋅ r' ⋅ res_mapsto l [v'] tg).(rtm) ≡
+               (r_f ⋅ r' ⋅ res_mapsto l [s] tg).(rtm). *)
+    have HCEq : (r_f ⋅ r' ⋅ res_mapsto l [v'] tg).(rcm) ≡
+               (r_f ⋅ r' ⋅ res_mapsto l [s] tg).(rcm).
     { rewrite /rcm /= right_id //. }
+    have HLtg: (r_f ⋅ r' ⋅ res_mapsto l [s] tg).(rtm) !! tg ≡
+                  Some (to_tagKindR tkUnique, {[l := to_agree s]}).
+    { rewrite lookup_op HLNt left_id res_mapsto_tlookup fmap_insert fmap_empty //. }
     rewrite cmra_assoc.
+    have VALID' : ✓ (r_f ⋅ r' ⋅ res_mapsto l [s] tg).
+    { move : VALID. rewrite Eqr cmra_assoc => VALID.
+      apply (local_update_discrete_valid_frame _ _ _ VALID).
+      by eapply res_mapsto_1_insert_local_update. }
     split; last split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
-    - move : VALID. rewrite Eqr cmra_assoc => VALID.
-      apply (local_update_discrete_valid_frame _ _ _ VALID).
-      by eapply res_mapsto_1_insert_local_update.
-    - intros t k h HL. destruct (PINV t k h) as [? PI].
-      { rewrite Eqr. move: HL. by rewrite 4!lookup_op /= 2!right_id. }
-      split; [done|]. simpl.
-      intros l1 s1 Eqs1. specialize (PI l1 s1 Eqs1) as [HLs1 PI].
-      have NEql1: l1 ≠ l.
-      { intros ?. subst l1. move : HLs1. rewrite HLlrf.
-        intros Eq%Some_equiv_inj. inversion Eq. } split.
-      { move : HLs1. rewrite Eqr cmra_assoc /=.
-        rewrite lookup_op (lookup_op (r_f.2 ⋅ r'.2)) /init_local_res /= 2!lookup_fmap.
-        do 2 rewrite lookup_insert_ne //. }
-      by setoid_rewrite lookup_insert_ne.
+    - done.
+    - intros t k h HL. simpl.
+      case (decide (t = tg)) => ?; [subst t|].
+      + specialize (PINV _ _ _ HLtrf) as [? PINV]. split; [done|].
+        move : HL. rewrite HLtg.
+        intros [Eq1 Eq2]%Some_equiv_inj. simpl in Eq1, Eq2. simplify_eq.
+        intros l1 s1. rewrite -Eq2.
+        case (decide (l1 = l)) => ?;
+          [subst l1| rewrite lookup_insert_ne //; by inversion 1].
+        rewrite lookup_insert. intros Eq%Some_equiv_inj%to_agree_inj.
+        symmetry in Eq.
+        intros stk Eqstk. rewrite Eqstk in Eql2. simplify_eq.
+        intros pm opro Inp%elem_of_list_singleton NDIS.
+        split; [by rewrite lookup_insert|]. simplify_eq.
+        destruct k; [|by inversion Eq1]. by exists [].
+      + have HL': (r_f ⋅ r).(rtm) !! t ≡ Some (to_tagKindR k, h).
+        { rewrite Eqr cmra_assoc. move: HL.
+          rewrite lookup_op res_mapsto_tlookup_ne //.
+          rewrite (lookup_op _ (res_mapsto _ _ _).(rtm)) res_mapsto_tlookup_ne //. }
+        specialize (PINV _ _ _ HL') as [? PINV]. split; [done|].
+        intros l1 s1 Eqs1 stk Eqstk.
+        case (decide (l1 = l)) => ?;
+          [subst l1; rewrite lookup_insert|rewrite lookup_insert_ne //].
+        * rewrite Eqstk in Eql2. simplify_eq.
+          intros pm opro Inp%elem_of_list_singleton NDIS. simplify_eq.
+        * by apply PINV.
     - intros c cs. simpl. rewrite -HCEq. intros Eqcm.
       move : CINV. rewrite Eqr cmra_assoc => CINV.
-      specialize (CINV _ _ Eqcm). destruct cs as [[]| |]; [|done..].
-      destruct CINV as [? CINV]. split; [done|]. by setoid_rewrite <- HTEq.
-    - destruct SREL as (?&?&?&?& EqDl & REL). do 4 (split; [done|]).
-      simpl. split.
-      { rewrite dom_insert EqDl Eqr cmra_assoc. clear.
-        rewrite 2!(dom_op (r_f.2 ⋅ r'.2)) 2!init_local_res_mem_dom
-                /= insert_empty dom_singleton. set_solver. }
-      intros l1 Eq1.
-      have NEql1: l1 ≠ l.
-      { intros ?. subst l1. move : Eq1. rewrite lookup_op HLN left_id.
-        rewrite /init_local_res lookup_fmap /= lookup_insert.
-        intros Eq%Some_equiv_inj. inversion Eq. }
-      (* move : Inl1. rewrite dom_insert elem_of_union elem_of_singleton.
-      intros [?|Inl1]; [done|]. *)
-      have Eq1' : (r_f ⋅ r).(rlm) !! l1 ≡ Some (Cinr ()).
-      { rewrite Eqr cmra_assoc -Eq1 lookup_op (lookup_op (r_f.2 ⋅ r'.2)).
-        rewrite /init_local_res /= 2!lookup_fmap lookup_insert_ne //
-                lookup_insert_ne //. }
-      specialize (REL _ Eq1') as [REL|REL].
-      + left. move : REL. rewrite /pub_loc /=.
-        do 2 rewrite lookup_insert_ne //. intros REL st Eqst.
-        specialize (REL st Eqst) as [ss [Eqss AREL]].
-        exists ss. split; [done|]. move : AREL. rewrite /arel /=.
-        destruct ss as [| |? [] |], st as [| |? []|]; try done; [|naive_solver].
-        setoid_rewrite Eqr. setoid_rewrite cmra_assoc. by setoid_rewrite <- HTEq.
-      + right. move : REL. setoid_rewrite Eqr. setoid_rewrite cmra_assoc.
-        rewrite /priv_loc. by setoid_rewrite <- HTEq.
+      specialize (CINV _ _ Eqcm). destruct cs as [[Tc|]| |]; [|done..].
+      destruct CINV as [Inc CINV]. split; [done|].
+      intros t Int. specialize (CINV _ Int) as [Ltt CINV]. split; [done|].
+      intros k h.
+      (* two private locs, one by protector, one by local *)
+      (* TODO: extract? *)
+      case (decide (t = tg)) => ?; [subst t|].
+      + exfalso. move : HLtrf. rewrite Eqr cmra_assoc. intros HLtrf.
+        specialize (CINV _ _ HLtrf l) as (stk & pm & Eqst & Instk & ?).
+        { by rewrite dom_singleton elem_of_singleton. }
+        rewrite Eqst in Eql2. simplify_eq. clear -Instk.
+        apply elem_of_list_singleton in Instk. simplify_eq.
+      + intros HL.
+        have HL': (r_f ⋅ r' ⋅ res_mapsto l [v'] tg).(rtm) !! t ≡ Some (k, h).
+        { move : HL. rewrite lookup_op res_mapsto_tlookup_ne //.
+          rewrite (lookup_op _ (res_mapsto _ _ _).(rtm)) res_mapsto_tlookup_ne //. }
+        apply (CINV _ _ HL').
+    - destruct SREL as (?&?&?&?& REL). do 4 (split; [done|]).
+      simpl. intros l1 Inl1.
+      case (decide (l1 = l)) => ?; [subst l1|].
+      + right. eexists tg, _. split. { by rewrite HLtg. }
+        left. apply lmap_lookup_op_r; [apply VALID'|].
+        rewrite (res_mapsto_llookup_1 l [s] tg) //. simpl; lia.
+      + move : Inl1. rewrite dom_insert elem_of_union elem_of_singleton.
+        intros [?|Inl1]; [done|].
+        specialize (REL _ Inl1) as [PB|[t PV]]; [left|right].
+        * move : PB. rewrite Eqr cmra_assoc /pub_loc /= lookup_insert_ne; [|done].
+          intros PB st Eqst. specialize (PB _ Eqst) as (ss & Eqss & AREL).
+          exists ss. split; [by rewrite lookup_insert_ne|].
+          move : AREL. apply arel_res_mapsto_overwrite_1.
+        * exists t. move : PV. rewrite Eqr cmra_assoc /priv_loc.
+          intros (h & Eqh & PV).
+          case (decide (t = tg)) => ?; [subst t|].
+          { eexists. rewrite HLtg. split; [eauto|].
+            move : HLtrf. rewrite Eqr cmra_assoc. rewrite Eqh.
+            intros [_ Eqh']%Some_equiv_inj. simpl in Eqh'.
+            destruct PV as [PV|(c & Tc & PV & ? & Inh)]; [left|right].
+            - move : PV.
+              rewrite lookup_op /= right_id lookup_fmap
+                      insert_empty lookup_insert_ne //.
+            - exfalso. move : Inh.
+              rewrite Eqh' dom_singleton elem_of_singleton //. }
+          { exists h. setoid_rewrite HCEq. split; [|destruct PV as [PB|PV]].
+            - move : Eqh.
+              rewrite lookup_op res_mapsto_tlookup_ne; [|done].
+              rewrite (lookup_op _ (res_mapsto _ _ _).(rtm)) res_mapsto_tlookup_ne //.
+            - left. move : PB.
+              rewrite lookup_op /= right_id lookup_fmap
+                      insert_empty lookup_insert_ne //.
+            - by right. }
     - move : LINV. rewrite Eqr cmra_assoc.
       (* TODO: general property of lmap_inv w.r.t to separable resource *)
-      intros LINV l1 s1 t1. specialize (LINV l1 s1 t1).
-      destruct ((r_f ⋅ r').(rlm) !! l1) as [ls1|] eqn:Eqls1.
-      + have NEQ: l1 ≠ l. { intros ?. subst l1. by rewrite Eqls1 in HLN. }
-        intros EQl1.
-        have EQl1' : (r_f ⋅ r' ⋅ res_mapsto l 1 v' tg).(rlm) !! l1
-            ≡ Some (to_locStateR (lsLocal s1 t1)).
-        { move : EQl1. rewrite lookup_op Eqls1 lookup_op Eqls1.
-          rewrite /= /init_local_res 2!lookup_fmap /= lookup_insert_ne // lookup_insert_ne //. }
-        specialize (LINV EQl1').
-        rewrite /= lookup_insert_ne // lookup_insert_ne //.
-      + rewrite /= lookup_op Eqls1 left_id /init_local_res /= lookup_fmap.
-        intros Eq. case (decide (l1 = l)) => ?; [subst l1|].
-        * move : Eq. rewrite 3!lookup_insert /=.
-          intros Eq%Some_equiv_inj. simplify_eq. do 4 (split; [done|]).
-          destruct LocUnique as [h1 Eqh1]. exists h1.
-          by rewrite -HTEq -cmra_assoc -Eqr Eqh1.
-        * exfalso. move : Eq. rewrite lookup_insert_ne // lookup_empty /=.
-          by inversion 1. }
+      intros LINV l1 t1 Eq1. simpl. specialize (LINV l1 t1 Eq1) as (?&?&?).
+      do 2 (split; [done|]).
+      case (decide (l1 = l)) => [->|?];
+        [rewrite 2!lookup_insert //|rewrite lookup_insert_ne// lookup_insert_ne//]. }
   left.
   apply: sim_body_result.
   intros. simpl. by apply POST.
@@ -754,7 +792,7 @@ Lemma sim_body_write_related_values
   r ⊨{n,fs,ft}
     (Place l (Tagged tg) Ts <- #v, σs) ≥ (Place l (Tagged tg) Tt <- #v, σt) : Φ.
 Proof.
-  intros rw Eqr rw' POST. pfold. intros NT. intros.
+  (* intros rw Eqr rw' POST. pfold. intros NT. intros.
   have WSAT1 := WSAT.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; [|done|].
@@ -1062,7 +1100,7 @@ Proof.
   }
   left.
   apply: sim_body_result.
-  intros. simpl. by apply POST.
+  intros. simpl. by apply POST. *)
 Abort.
 
 
@@ -1085,70 +1123,6 @@ Proof.
 Admitted.
 
 (** Retag *)
-
-Lemma retag_ref_change_1 h α cids c nxtp x rk mut T h' α' nxtp'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
-  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
-  ∃ rk' new,
-    h' = <[x := ScPtr l new]>h ∧
-    retag_ref h α cids nxtp l otag T rk' (adding_protector rk c) =
-      Some (new, α', nxtp') ∧
-    rk' = if mut then UniqueRef (is_two_phase rk) else SharedRef.
-Proof.
-  rewrite retag_equation_2 /=.
-  destruct (h !! x) as [[| |l t|]|]; simpl; [done..| |done|done].
-  destruct mut; (case retag_ref as [[[t1 α1] n1]|] eqn:Eq => [/=|//]);
-    intros; simplify_eq; exists l, t; (split; [done|]);
-    eexists; exists t1; done.
-Qed.
-
-Lemma retag_ref_change_2
-  h α cids c nxtp l otag rk (mut: mutability) T new α' nxtp'
-  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  let rk' := if mut then UniqueRef false else SharedRef in
-  let opro := (adding_protector rk c) in
-  retag_ref h α cids nxtp l otag T rk' opro = Some (new, α', nxtp') →
-  nxtp' = S nxtp ∧ new = Tagged nxtp ∧
-  reborrowN α cids l (tsize T) otag (Tagged nxtp)
-            (if mut then Unique else SharedReadOnly) opro = Some α'.
-Proof.
-  intros rk' opro. rewrite /retag_ref. destruct (tsize T) as [|n] eqn:EqT; [lia|].
-  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //];
-    case reborrowN as [α1|] eqn:Eq1 => [/=|//]; intros; simplify_eq; by rewrite -EqT.
-Qed.
-
-Lemma retag_ref_change h α cids c nxtp x rk mut T h' α' nxtp'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
-  ∃ l otag, h !! x = Some (ScPtr l otag) ∧
-    h' = <[x := ScPtr l (Tagged nxtp)]>h ∧
-    nxtp' = S nxtp ∧
-    reborrowN α cids l (tsize T) otag (Tagged nxtp)
-            (if mut then Unique else SharedReadOnly) (adding_protector rk c) = Some α'.
-Proof.
-  intros RT.
-  apply retag_ref_change_1 in RT
-    as (l & otag & EqL & rk' & new & Eqh & RT &?); [|done..].
-  subst. exists l, otag. split; [done|].
-  rewrite (_: is_two_phase rk = false) in RT; [|by destruct rk].
-  apply retag_ref_change_2 in RT as (?&?&?); [|done..]. by subst new.
-Qed.
-
-Lemma retag_ref_reborrowN
-  (h: mem) α t cids c x l otg T rk (mut: mutability) α'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  h !! x = Some (ScPtr l otg) →
-  reborrowN α cids l (tsize T) otg (Tagged t)
-     (if mut then Unique else SharedReadOnly) (adding_protector rk c) =
-     Some α' →
-  retag h α t cids c x rk (Reference (RefPtr mut) T) = Some (<[x:=ScPtr l (Tagged t)]> h, α', S t).
-Proof.
-  intros Eqx RB. rewrite retag_equation_2 Eqx /= /retag_ref.
-  destruct (tsize T) eqn:EqT; [lia|].
-  rewrite (_: is_two_phase rk = false); [|by destruct rk].
-  destruct mut; simpl; [|rewrite visit_freeze_sensitive_is_freeze //]; rewrite EqT RB /= //.
-Qed.
 
 Lemma sim_body_retag_default fs ft r n x xtag mut T σs σt Φ
   (TS: (O < tsize T)%nat) (FRZ: is_freeze T) (Eqx: σs.(shp) = σt.(shp)) :

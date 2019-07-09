@@ -287,3 +287,15 @@ Proof.
   intros Hrel. eapply Forall2_impl; first done.
   eauto using vrel_persistent.
 Qed.
+
+Lemma arel_res_mapsto_overwrite_1  r l t v1 v2 ss st :
+  arel (r ⋅ res_mapsto l [v1] t) ss st → arel (r ⋅ res_mapsto l [v2] t) ss st.
+Proof.
+  destruct ss as [| |? [t1|]|], st as [| |? []|]; simpl; auto; [|naive_solver].
+  intros (?&?& h & Eqh). do 2 (split; [done|]).
+  case (decide (t1 = t)) => ?; [subst t1|].
+  - exfalso. move : Eqh. rewrite lookup_op res_mapsto_tlookup.
+    apply tagKindR_exclusive.
+  - exists h. move : Eqh.
+    by do 2 (rewrite lookup_op res_mapsto_tlookup_ne; [|done]).
+Qed.

@@ -99,8 +99,11 @@ Proof.
 Qed.
 
 Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
-  mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → h0 ≡ h.
-Proof. by intros []%tagKindR_exclusive_heaplet'. Qed.
+  Some mb ⋅ Some (to_tagKindR tkUnique, h0) ≡ Some (to_tagKindR tkUnique, h) → False.
+Proof.
+  destruct mb as [c ]. rewrite -Some_op pair_op. intros [Eq _]%Some_equiv_inj.
+  destruct c; inversion Eq; simpl in *; simplify_eq.
+Qed.
 
 Lemma tagKindR_valid (k: tagKindR) :
   valid k → ∃ k', k = to_tagKindR k'.
@@ -214,6 +217,15 @@ Qed.
 Lemma tmap_lookup_op_r (pm1 pm2: tmapUR) t h0 (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t = Some (to_tagKindR tkUnique, h0) →
   (pm1 ⋅ pm2) !! t = Some (to_tagKindR tkUnique, h0).
+Proof.
+  intros HL. move : (VALID t). rewrite lookup_op HL.
+  destruct (pm1 !! t) as [[k1 h1]|] eqn:Eqt; rewrite Eqt; [|done].
+  rewrite -Some_op pair_op. intros [?%exclusive_r]; [done|apply _].
+Qed.
+
+Lemma tmap_lookup_op_r_unique_equiv (pm1 pm2: tmapUR) t h0 (VALID: ✓ (pm1 ⋅ pm2)):
+  pm2 !! t ≡ Some (to_tagKindR tkUnique, h0) →
+  (pm1 ⋅ pm2) !! t ≡ Some (to_tagKindR tkUnique, h0).
 Proof.
   intros HL. move : (VALID t). rewrite lookup_op HL.
   destruct (pm1 !! t) as [[k1 h1]|] eqn:Eqt; rewrite Eqt; [|done].
@@ -453,6 +465,14 @@ Proof.
   destruct (write_local_lookup l (length v) t ∅) as [EQ _].
   specialize (EQ _ Lti'). rewrite Z2Nat.id // -Eqi Eql' in EQ. simplify_eq.
   naive_solver.
+Qed.
+
+Lemma res_mapsto_llookup_1 l v t (LEN: (0 < length v)%nat) :
+  ((res_mapsto l v t).(rlm) !! l : optionR tagR) ≡ Some (to_tagR t).
+Proof.
+  rewrite lookup_op /= lookup_empty right_id lookup_fmap.
+  destruct (length v); [lia|].
+  rewrite /= lookup_insert //.
 Qed.
 
 Lemma res_mapsto_tlookup l v (t: ptr_id) :

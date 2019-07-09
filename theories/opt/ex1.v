@@ -92,7 +92,7 @@ Proof.
   { rewrite lookup_insert. done. }
   (* Finishing up. *)
   eapply sim_body_viewshift.
-  { do 6 eapply viewshift_frame_r. eapply vs_call_empty_public. }
+  { do 5 eapply viewshift_frame_r. eapply vs_call_empty_public. }
   apply: sim_body_result=>Hval. simpl. split.
   - eexists. split; first done. eapply res_end_call_sat; first done.
     solve_res.

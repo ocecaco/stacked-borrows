@@ -243,9 +243,8 @@ Qed.
 (** * Memory: local *)
 Lemma sim_simple_alloc_local fs ft r n T css cst Φ :
   (∀ (l: loc) (tg: nat),
-    let rt := res_tag tg tkUnique ∅ in
-    let r' := res_mapsto l (tsize T) ☠ tg in
-    Φ (r ⋅ rt ⋅ r') n (PlaceR l (Tagged tg) T) css (PlaceR l (Tagged tg) T) cst) →
+    let r' := res_mapsto l (repeat ☠%S (tsize T)) tg in
+    Φ (r ⋅ r') n (PlaceR l (Tagged tg) T) css (PlaceR l (Tagged tg) T) cst) →
   r ⊨ˢ{n,fs,ft} (Alloc T, css) ≥ (Alloc T, cst) : Φ.
 Proof.
   intros HH σs σt <-<-. apply sim_body_alloc_local=>/=. exact: HH.
@@ -253,8 +252,8 @@ Qed.
 
 Lemma sim_simple_write_local fs ft r r' n l tg ty v v' css cst Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l 1 v' tg →
-  (∀ s, v = [s] → Φ (r' ⋅ res_mapsto l 1 s tg) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
+  r ≡ r' ⋅ res_mapsto l [v'] tg →
+  (∀ s, v = [s] → Φ (r' ⋅ res_mapsto l [s] tg) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft}
     (Place l (Tagged tg) ty <- #v, css) ≥ (Place l (Tagged tg) ty <- #v, cst)
   : Φ.
@@ -262,7 +261,7 @@ Proof. intros Hty Hres HH σs σt <-<-. eapply sim_body_write_local_1; eauto. Qe
 
 Lemma sim_simple_copy_local_l fs ft r r' n l tg ty s et css cst Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  r ≡ r' ⋅ res_mapsto l [s] tg →
   (r ⊨ˢ{n,fs,ft} (#[s], css) ≥ (et, cst) : Φ) →
   r ⊨ˢ{n,fs,ft}
     (Copy (Place l (Tagged tg) ty), css) ≥ (et, cst)
@@ -274,7 +273,7 @@ Qed.
 
 Lemma sim_simple_copy_local_r fs ft r r' n l tg ty s es css cst Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  r ≡ r' ⋅ res_mapsto l [s] tg →
   (r ⊨ˢ{n,fs,ft} (es, css) ≥ (#[s], cst) : Φ) →
   r ⊨ˢ{S n,fs,ft}
     (es, css) ≥ (Copy (Place l (Tagged tg) ty), cst)
@@ -286,7 +285,7 @@ Qed.
 
 Lemma sim_simple_copy_local fs ft r r' n l tg ty s css cst Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  r ≡ r' ⋅ res_mapsto l [s] tg →
   (r ⊨ˢ{n,fs,ft} (#[s], css) ≥ (#[s], cst) : Φ) →
   r ⊨ˢ{S n,fs,ft}
     (Copy (Place l (Tagged tg) ty), css) ≥ (Copy (Place l (Tagged tg) ty), cst)
@@ -298,7 +297,7 @@ Proof.
 Qed.
 
 Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
-  r ≡ r' ⋅ res_mapsto l 1 s tg →
+  r ≡ r' ⋅ res_mapsto l [s] tg →
   arel rs s' s →
   r' ≡ r'' ⋅ rs →
   (∀ l_inner tg_inner hplt,
@@ -310,7 +309,7 @@ Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
     end → *)
     let tk := tkUnique in
     is_Some (hplt !! l_inner) →
-    Φ (r'' ⋅ rs ⋅ res_mapsto l 1 s_new tg ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
+    Φ (r'' ⋅ rs ⋅ res_mapsto l [s_new] tg ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft}
     (Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default, css)
   ≥
@@ -337,15 +336,18 @@ Proof.
   intros [Hrel1 ?]%rrel_with_eq [Hrel2 ?]%rrel_with_eq. simplify_eq.
 Admitted.
 
+
 Lemma sim_simple_copy_shared fs ft r n (rs rt: result) css cst Φ :
   rrel r rs rt →
-  (∀ r' (v1 v2: result),
-    rrel r' v1 v2 →
+  (∀ r' (v1 v2: value),
+    (* this post-condition is weak, we can return related values *)
+    vrel r' v1 v2 →
     Φ (r ⋅ r') n v1 css v2 cst) →
   r ⊨ˢ{n,fs,ft} (Copy rs, css) ≥ (Copy rt, cst) : Φ.
 Proof.
-  intros [Hrel ?]%rrel_with_eq. simplify_eq.
-Admitted.
+  intros [Hrel <-]%rrel_with_eq HH σs σt <-<-.
+  eapply sim_body_copy_public; eauto.
+Qed.
 
 Lemma sim_simple_retag_shared fs ft r n (rs rt: result) k css cst Φ :
   rrel r rs rt →
