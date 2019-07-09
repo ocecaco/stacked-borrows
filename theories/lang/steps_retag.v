@@ -99,6 +99,29 @@ Proof.
     intros i Lt Eq. apply NEql. by rewrite Eq.
 Qed.
 
+Lemma for_each_access1_lookup_inv α cids l n tg kind α':
+  for_each α l n false
+          (λ stk, nstk' ← access1 stk kind tg cids; Some nstk'.2) = Some α' →
+  ∀ l stk, α !! l = Some stk →
+  ∃ stk', α' !! l = Some stk' ∧
+    ((∃ n', access1 stk kind tg cids = Some (n', stk')) ∨  α' !! l = α !! l).
+Proof.
+  intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
+  intros l1 stk1 Eq1.
+  case (decide (l1.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
+      destruct l, l1. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    destruct (EQ1 (Z.to_nat (l1.2 - l.2)) stk1)
+      as [stk [Eq [[n1 stk'] [Eq' Eq0]]%bind_Some]];
+      [rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia|by rewrite -Eql2|].
+    simpl in Eq0. simplify_eq. rewrite -Eql2 in Eq. naive_solver.
+  - rewrite EQ3; [naive_solver|].
+    intros i Lt Eq. apply NIN. rewrite Eq /=. lia.
+  - rewrite EQ3; [naive_solver|].
+    intros i Lt Eq. apply NEql. by rewrite Eq.
+Qed.
 
 (** Head preserving *)
 Definition is_stack_head (it: item) (stk: stack) :=
