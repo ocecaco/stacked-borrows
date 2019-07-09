@@ -3,8 +3,8 @@ From stbor.lang Require Export defs steps_foreach steps_list.
 Set Default Proof Using "Type".
 
 Lemma access1_in_stack stk kind t cids n stk' :
-   access1 stk kind (Tagged t) cids = Some (n, stk') →
-   ∃ it, it ∈ stk ∧ it.(tg) = Tagged t.
+   access1 stk kind t cids = Some (n, stk') →
+   ∃ it, it ∈ stk ∧ it.(tg) = t.
 Proof.
   rewrite /access1. case find_granting as [gip|] eqn:Eq1; [|done].
   apply fmap_Some in Eq1 as [[i it] [[IN [? Eq]]%list_find_Some EQ]].

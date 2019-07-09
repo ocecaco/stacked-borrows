@@ -303,17 +303,25 @@ Proof.
 Qed.
 
 (** Removing incompatible items *)
-Lemma find_granting_incompatible_head stk kind t ti idx pm pmi oproi
-  (HD: is_stack_head (mkItem pmi (Tagged ti) oproi) stk)
-  (NEQ: t ≠ ti) :
-  find_granting stk kind (Tagged t) = Some (idx, pm) →
-  is_stack_head (mkItem pmi (Tagged ti) oproi) (take idx stk).
+
+Lemma find_granting_incompatible_head' stk kind t ti idx pm pmi oproi
+  (HD: is_stack_head (mkItem pmi (Tagged t) oproi) stk)
+  (NEQ: Tagged t ≠ ti) :
+  find_granting stk kind ti = Some (idx, pm) →
+  is_stack_head (mkItem pmi (Tagged t) oproi) (take idx stk).
 Proof.
   destruct HD as [stk' Eqi]. rewrite Eqi.
   rewrite /find_granting /= decide_False; last (intros [_ Eq]; by inversion Eq).
   case list_find => [[idx' pm'] /=|//]. intros . simplify_eq. simpl.
   by eexists.
 Qed.
+
+Lemma find_granting_incompatible_head stk kind t ti idx pm pmi oproi
+  (HD: is_stack_head (mkItem pmi (Tagged ti) oproi) stk)
+  (NEQ: t ≠ ti) :
+  find_granting stk kind (Tagged t) = Some (idx, pm) →
+  is_stack_head (mkItem pmi (Tagged ti) oproi) (take idx stk).
+Proof. apply find_granting_incompatible_head'; [done|naive_solver]. Qed.
 
 (* Writing *)
 Lemma find_first_write_incompatible_head stk pm idx t opro pmi
@@ -527,22 +535,22 @@ Proof.
 Qed.
 
 Lemma access1_incompatible_head_protector stk t ti kind cids n stk' c :
-  (is_stack_head (mkItem Unique (Tagged ti) (Some c)) stk) →
+  (is_stack_head (mkItem Unique (Tagged t) (Some c)) stk) →
   c ∈ cids →
-  access1 stk kind (Tagged t) cids = Some (n, stk') →
-  t = ti.
+  access1 stk kind ti cids = Some (n, stk') →
+  ti = Tagged t.
 Proof.
-  intros HD ACTIVE. case (decide (t = ti)) => NEQ; [done|].
+  intros HD ACTIVE. case (decide (Tagged t = ti)) => NEQ; [done|].
   rewrite /access1.
   case find_granting as [[n' pm']|] eqn:GRANT; [|done]. simpl.
   destruct kind.
   - case replace_check as [stk1|] eqn:Eq; [|done].
     simpl. intros ?. simplify_eq.
-    have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
+    have HD' := find_granting_incompatible_head' _ _ _ _ _ _ _ _ HD NEQ GRANT.
     destruct HD' as [stk' Eqs].
     move : Eq.
     rewrite Eqs /replace_check /= /check_protector /= /is_active bool_decide_true //.
-  - have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
+  - have HD' := find_granting_incompatible_head' _ _ _ _ _ _ _ _ HD NEQ GRANT.
     case find_first_write_incompatible as [idx|] eqn:INC; [|done]. simpl.
     have NONEZ: (0 < idx)%nat.
     { eapply (find_first_write_incompatible_head _ _ _ _ _ _ HD'); eauto. }

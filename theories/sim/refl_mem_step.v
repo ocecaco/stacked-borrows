@@ -311,116 +311,124 @@ Qed. *)
 
 (** Copy *)
 
-Lemma priv_loc_not_public (r1 r2: resUR) l t t' :
-  valid (r1 ⋅ r2) →
-  priv_loc r1 l t →
-  (∃ (h: heapletR), r2.(rtm) !! t' ≡ Some (to_tagKindR tkPub, h)) →
+Lemma priv_loc_not_public r l t t' :
+  priv_loc r l t →
+  (∃ (h: heapletR), r.(rtm) !! t' ≡ Some (to_tagKindR tkPub, h)) →
   t ≠ t'.
 Proof.
-  intros VALID [h1 [Eqh1 ?]] [h2 Eqh2] ?. subst t'.
-  move : (proj1 (proj1 VALID) t).
-  rewrite lookup_op Eqh1 Eqh2 -Some_op pair_op. intros [[] ?].
+  intros [h1 [Eqh1 ?]] [h2 Eqh2] ?. subst t'. move : Eqh2. rewrite Eqh1.
+  intros [Eq1 ?]%Some_equiv_inj. by inversion Eq1.
 Qed.
 
-Lemma local_access_eq r_f r l t t' stk kind σs σt :
+Lemma local_access_eq r l t t' stk kind σs σt :
   σt.(sst) !! l = Some stk →
-  is_Some (access1 stk kind (Tagged t') σt.(scs)) →
-  wsat (r_f ⋅ r) σs σt →
+  is_Some (access1 stk kind t' σt.(scs)) →
+  wsat r σs σt →
   (r.(rlm) !! l : optionR tagR) ≡ Some (to_tagR t) →
-  t = t'.
+  t' = Tagged t.
 Proof.
   intros Eql [[n stk'] Eqstk] WSAT Eqt'.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
-  have Eqt'2: ((r_f ⋅ r).(rlm) !! l : optionR tagR) ≡ Some (to_tagR t)
-    by apply lmap_lookup_op_r; [apply VALID|done].
-  specialize (LINV _ _ Eqt'2) as [? [Eqs ?]]. rewrite Eql in Eqs. simplify_eq.
+  specialize (LINV _ _ Eqt') as [? [Eqs ?]]. rewrite Eql in Eqs. simplify_eq.
   apply access1_in_stack in Eqstk as [it [?%elem_of_list_singleton Eqt]].
-  subst. simpl in Eqt. by simplify_eq.
+  by subst.
 Qed.
 
-Lemma priv_loc_UB_access r_f r l kind σs σt t t' stk :
+Lemma priv_loc_UB_access_eq r l kind σs σt t t' stk :
   σt.(sst) !! l = Some stk →
-  is_Some (access1 stk kind (Tagged t') σt.(scs)) →
-  wsat (r_f ⋅ r) σs σt →
+  is_Some (access1 stk kind t' σt.(scs)) →
+  wsat r σs σt →
   priv_loc r l t →
-  t = t'.
+  t' = Tagged t.
 Proof.
   intros Eql ACC WSAT (h & Eqh & [LOC|PRO]).
   { eapply local_access_eq; eauto. }
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
-  have Eqh': (r_f ⋅ r).(rtm) !! t ≡ Some (to_tagKindR tkUnique, h).
-  { eapply tmap_lookup_op_unique_included; [apply VALID|apply cmra_included_r|done]. }
-  specialize (PINV _ _ _ Eqh') as [Lt PINV].
+  specialize (PINV _ _ _ Eqh) as [Lt PINV].
   destruct PRO as (c & T & Eqc & InT & Inl). have Inl' := Inl.
   move : Inl'. rewrite elem_of_dom. intros [sa Eqs].
-  have VALkh := proj1 (proj1 VALID) t. rewrite ->Eqh' in VALkh.
-  destruct VALkh as [_ VALh]. simpl in VALh. specialize (VALh l).
-  rewrite Eqs in VALh. apply to_agree_uninj in VALh as [s Eqsa].
+  move : (proj1 (proj1 VALID) t). rewrite Eqh. intros [_ VALh].
+  specialize (VALh l). rewrite Eqs in VALh.
+  apply to_agree_uninj in VALh as [s Eqsa].
   have Eqss : h !! l ≡ Some (to_agree s) by rewrite Eqsa Eqs.
   specialize (PINV _ _ Eqss stk Eql).
-
-  have Eqc': (r_f ⋅ r).(rcm) !! c ≡ Some (to_callStateR (csOwned T)).
-  { eapply cmap_lookup_op_unique_included; [apply VALID|apply cmra_included_r|done]. }
-  specialize (CINV _ _ Eqc'). simpl in CINV. destruct CINV as [Ltc CINV].
+  specialize (CINV _ _ Eqc). simpl in CINV. destruct CINV as [Ltc CINV].
   specialize (CINV _ InT) as [Ltt CIN].
-  specialize (CIN _ _ Eqh' _ Inl) as (stk1 & pm1 & Eqstk1 & In1 & NDIS1).
+  specialize (CIN _ _ Eqh _ Inl) as (stk1 & pm1 & Eqstk1 & In1 & NDIS1).
   rewrite Eqstk1 in Eql. simplify_eq.
   specialize (PINV _ _ In1 NDIS1) as [Eqs1 HD].
 
   destruct ACC as [[n stk'] ACC].
-  symmetry.
   apply (access1_incompatible_head_protector _ _ _ _ _ _ _ _ HD Ltc ACC).
 Qed.
 
-Lemma sim_body_copy_public fs ft r n l t Ts Tt σs σt Φ
-  (EQS: tsize Ts = tsize Tt)
-  (PUBLIC: ∃ (h: heapletR), r.(rtm) !! t ≡ Some (to_tagKindR tkPub, h)) :
-  (∀ vs vt r',
-    read_mem l (tsize Ts) σs.(shp) = Some vs →
-    read_mem l (tsize Tt) σt.(shp) = Some vt →
-    ∀ α', memory_read σt.(sst) σt.(scs) l (Tagged t) (tsize Tt) = Some α' →
+Lemma priv_pub_access_UB (r: resUR) l kind σs σt t t' stk :
+  σt.(sst) !! l = Some stk →
+  is_Some (access1 stk kind t' σt.(scs)) →
+  wsat r σs σt →
+  priv_loc r l t →
+  (if t' is (Tagged t2)
+   then ∃ (h: heapletR), r.(rtm) !! t2 ≡ Some (to_tagKindR tkPub, h)
+   else True) →
+  False.
+Proof.
+  intros Eql IS WSAT PV PB.
+  have Eq := priv_loc_UB_access_eq _ _ _ _ _ _ _ _ Eql IS WSAT PV.
+  rewrite Eq in PB.
+  by apply (priv_loc_not_public _ _ _ _ PV PB).
+Qed.
+
+Lemma sim_body_copy_public fs ft r n (pl: result) σs σt Φ
+  (RREL: rrel r pl pl) :
+  (∀ l t T vs vt r',
+    pl = PlaceR l t T →
+    read_mem l (tsize T) σs.(shp) = Some vs →
+    read_mem l (tsize T) σt.(shp) = Some vt →
+    ∀ α', memory_read σt.(sst) σt.(scs) l t (tsize T) = Some α' →
       let σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc) in
       let σt' := mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc) in
       vrel (r ⋅ r') vs vt → Φ (r ⋅ r') n (ValR vs) σs' (ValR vt) σt') →
-  r ⊨{n,fs,ft} (Copy (Place l (Tagged t) Ts), σs) ≥ (Copy (Place l (Tagged t) Tt), σt) : Φ.
+  r ⊨{n,fs,ft} (Copy pl, σs) ≥ (Copy pl, σt) : Φ.
 Proof.
   intros POST. pfold. intros NT. intros.
   have WSAT1 := WSAT. (* backup *)
+
+  (* making a step *)
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   split; [|done|].
   { right.
-    destruct (NT (Copy (Place l (Tagged t) Ts)) σs) as [[]|[es' [σs' STEPS]]];
+    destruct (NT (Copy pl) σs) as [[]|[es' [σs' STEPS]]];
       [done..|].
-    destruct (tstep_copy_inv _ (PlaceR l (Tagged t) Ts) _ _ _ STEPS)
-      as (?&?&?& vs & α' & EqH & ? & Eqvs & Eqα' & ?). symmetry in EqH. simplify_eq.
-    destruct (read_mem_is_Some l (tsize Tt) σt.(shp)) as [vt Eqvt].
-    { intros m. rewrite (srel_heap_dom _ _ _ WFS WFT SREL) -EQS.
-      apply (read_mem_is_Some' l (tsize Ts) σs.(shp)). by eexists. }
-    have Eqα'2: memory_read σt.(sst) σt.(scs) l (Tagged t)  (tsize Tt) = Some α'.
-    { destruct SREL as (Eqst&?&Eqcs&?). by rewrite -Eqst -Eqcs -EQS. }
+    destruct (tstep_copy_inv _ _ _ _ _ STEPS)
+      as (l&t&T& vs & α' & EqH & ? & Eqvs & Eqα' & ?). symmetry in EqH. simplify_eq.
+    destruct (read_mem_is_Some l (tsize T) σt.(shp)) as [vt Eqvt].
+    { intros m. rewrite (srel_heap_dom _ _ _ WFS WFT SREL).
+      apply (read_mem_is_Some' l (tsize T) σs.(shp)). by eexists. }
+    have Eqα'2: memory_read σt.(sst) σt.(scs) l t (tsize T) = Some α'.
+    { destruct SREL as (Eqst&?&Eqcs&?). by rewrite -Eqst -Eqcs. }
     exists (#vt)%E, (mkState σt.(shp) α' σt.(scs) σt.(snp) σt.(snc)).
     by eapply (head_step_fill_tstep _ []), copy_head_step'. }
   constructor 1. intros.
-  destruct (tstep_copy_inv _ (PlaceR l (Tagged t) Tt) _ _ _ STEPT)
-    as (?&?&?& vt & α' & EqH & ? & Eqvt & Eqα' & ?). symmetry in EqH. simplify_eq.
-  destruct (read_mem_is_Some l (tsize Ts) σs.(shp)) as [vs Eqvs].
-  { intros m. rewrite -(srel_heap_dom _ _ _ WFS WFT SREL) EQS.
-    apply (read_mem_is_Some' l (tsize Tt) σt.(shp)). by eexists. }
-  have Eqα'2: memory_read σs.(sst) σs.(scs) l (Tagged t)  (tsize Ts) = Some α'.
-  { destruct SREL as (Eqst&?&Eqcs&?). by rewrite Eqst Eqcs EQS. }
+  destruct (tstep_copy_inv _ _ _ _ _ STEPT)
+    as (l&t&T& vt & α' & EqH & ? & Eqvt & Eqα' & ?). symmetry in EqH. simplify_eq.
+  destruct (read_mem_is_Some l (tsize T) σs.(shp)) as [vs Eqvs].
+  { intros m. rewrite -(srel_heap_dom _ _ _ WFS WFT SREL).
+    apply (read_mem_is_Some' l (tsize T) σt.(shp)). by eexists. }
+  have Eqα'2: memory_read σs.(sst) σs.(scs) l t (tsize T) = Some α'.
+  { destruct SREL as (Eqst&?&Eqcs&?). by rewrite Eqst Eqcs. }
   set σs' := mkState σs.(shp) α' σs.(scs) σs.(snp) σs.(snc).
-  have STEPS: (Copy (Place l (Tagged t)  Ts), σs) ~{fs}~> ((#vs)%E, σs').
+  have STEPS: (Copy (Place l t T), σs) ~{fs}~> ((#vs)%E, σs').
   { by eapply (head_step_fill_tstep _ []), copy_head_step'. }
-  have SHR: ∀ i, (i < tsize Tt)%nat →
-    (r_f ⋅ r).(rlm) !! (l +ₗ i) ≡ Some $ to_locStateR lsShared.
-  { eapply public_access_not_local; eauto. } clear WSAT1.
+
+  (* unfolding rrel for place *)
+  simpl in RREL. destruct RREL as [VREL _].
+  inversion VREL as [|???? AREL U]; subst; simplify_eq. clear U VREL.
+  destruct AREL as (_ & _ & AREL).
+
+  (* returned values must be related *)
   have CORE : (r_f ⋅ r) ≡ r_f ⋅ r ⋅ core (r_f ⋅ r) by rewrite cmra_core_r.
   assert (VREL': vrel (core (r_f ⋅ r)) vs vt).
-  { destruct PUBLIC as [h PUB].
-    destruct (tmap_lookup_op_r_equiv_pub r_f.(rtm) r.(rtm) t h) as [h0 Eqh0];
-      [apply VALID|done|].
-    destruct (PINV _ _ _ Eqh0) as [Lt PB].
-    destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc & EqDl & PRIV).
+  { destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc & PRIV).
     destruct (read_mem_values _ _ _ _ Eqvs) as [Eqls HLs].
     destruct (read_mem_values _ _ _ _ Eqvt) as [Eqlt HLt].
     apply Forall2_same_length_lookup. split; [by rewrite Eqls Eqlt|].
@@ -428,41 +436,25 @@ Proof.
     have HLLs := lookup_lt_Some _ _ _ Hss. have HLLt := lookup_lt_Some _ _ _ Hst.
     rewrite -Eqls in HLs. specialize (HLs _ HLLs). rewrite Hss in HLs.
     rewrite -Eqlt in HLt. specialize (HLt _ HLLt). rewrite Hst in HLt.
-    rewrite -Eqlt in SHR. specialize (SHR _ HLLt).
-    specialize (PRIV _ SHR) as [PUBl|[t' PV]].
-    { destruct (PUBl _ HLt) as [ss' [Eqss' AREL]].
-      rewrite HLs in Eqss'. symmetry in Eqss'. simplify_eq. move: AREL.
-      destruct ss as [| |l1 [t1|]|], st as [| |l2 [t2|]|]; auto; simpl; [|by intros [?[]]].
-      intros [? [? [h' Eqh']]]. simplify_eq. do 2 (split; [done|]).
-      exists h'. by apply tmap_lookup_core_pub. }
-    destruct PV as (c' & T' & h' & Eqci & InT' & Eqh' & Inl).
-     (* impossible: t' is protected by c' which is still active.
-      So t ≠ t' and protected(t',c') is on top of (l +ₗ i), so access with t is UB *)
-    exfalso.
-    have NEQ: t' ≠ t.
-    { intros ?. subst t'.
-      apply (tmap_lookup_op_r_equiv_pub r_f.(rtm)) in PUB as [? PUB];
-        [|by apply VALID].
-      rewrite -> PUB in Eqh'. apply Some_equiv_inj in Eqh' as [Eqk' ?].
-      inversion Eqk'. }
-    specialize (CINV _ _ Eqci) as [Inc' CINV].
-    specialize (CINV _ InT') as [Ltt' CINV].
-    specialize (CINV _ _ Eqh' _ Inl) as (stk & pm & Eqstk & Instk & NDIS).
-    specialize (PINV _ _ _ Eqh') as [_ PINV].
-    have VALh' : ✓ h'.
-    { apply (Some_valid (to_tagKindR tkUnique,h')).
-      rewrite -Some_valid -Eqh'. apply VALID. }
-    destruct (heapletR_elem_of_dom _ _ VALh' Inl) as [s Eqs].
-    specialize (PINV _ _ Eqs) as [_ PINV].
-    specialize (PINV _ Eqstk _ _ Instk NDIS) as (Eqss & HD).
-    destruct (for_each_lookup _ _ _ _ _ Eqα') as [EQ1 _].
+    have InD: (l +ₗ i) ∈ dom (gset loc) σt.(shp) by eapply elem_of_dom_2.
+    specialize (PRIV _ InD).
+
+    destruct (for_each_lookup_case_2 _ _ _ _ _ Eqα') as [EQ1 _].
     rewrite Eqlt in HLLt.
-    specialize (EQ1 _ _ HLLt Eqstk) as (stk' & Eqstk' & EQ2).
-    move : EQ2. case access1 as [[n1 stk1]|] eqn:EQ3; [|done].
-    simpl. inversion 1. subst stk1.
-    have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
-    admit.
-  }
+    specialize (EQ1 _ HLLt) as (stk & stk' & Eqstk & Eqstk' & ACC).
+    have ISA: is_Some (access1 stk AccessRead t (scs σt)).
+    { move : ACC. case access1; [by eexists|done]. }
+
+    destruct PRIV as [PB|[t' PRIV]]; last first.
+    { destruct (priv_pub_access_UB _ _ _ _ _ _ _ _ Eqstk ISA WSAT1 PRIV).
+      destruct t; [|done]. destruct AREL as [h Eqh].
+      apply (tmap_lookup_op_r_equiv_pub r_f.(rtm)) in Eqh as [h1 Eqh1];
+        [|apply VALID]. by exists (h1 ⋅ h). }
+
+    specialize (PB _ HLt) as [ss1 [Eqss1 AREL1]].
+    rewrite Eqss1 in HLs. simplify_eq. by apply arel_persistent. }
+
+  (* reestablishing WSAT *)
   exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), n. split; last split.
   { left. by constructor 1. }
   { rewrite cmra_assoc -CORE.
@@ -471,9 +463,8 @@ Proof.
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
     - intros t1 k h Eqt. specialize (PINV t1 k h Eqt) as [Lt PI]. simpl.
-      split; [done|]. intros l' s' Eqk'.
-      specialize (PI _ _ Eqk') as [? PI]. split; [done|].
-      intros stk' Eqstk'.
+      split; [done|]. intros l' s' Eqk' stk' Eqstk'.
+      specialize (PI _ _ Eqk') as PI.
       destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as (stk & Eqstk & SUB & ?).
       intros pm opro In' NDIS.
@@ -484,14 +475,14 @@ Proof.
       split; [done|].
       destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
         as [?|[MR _]]; [by subst|]. clear -In' MR HTOP Eqstk WFT NDIS.
-      destruct (access1 stk AccessRead (Tagged t) σt.(scs)) as [[n stk1]|] eqn:Eqstk';
+      destruct (access1 stk AccessRead t σt.(scs)) as [[n stk1]|] eqn:Eqstk';
         [|done]. simpl in MR. simplify_eq.
       destruct (state_wf_stack_item _ WFT _ _ Eqstk). move : Eqstk' HTOP.
       destruct k.
       + eapply access1_head_preserving; eauto.
       + eapply access1_active_SRO_preserving; eauto.
     - intros c cs Eqc. specialize (CINV _ _ Eqc). simpl.
-      clear -Eqα' CINV. destruct cs as [[T|]| |]; [|done..].
+      clear -Eqα' CINV. destruct cs as [[T1|]| |]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
       intros t1 InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
       intros k h Eqt l' Inh.
@@ -500,19 +491,17 @@ Proof.
         as [stk [Eqstk AS]].
       exists stk, pm'. split; last split; [done| |done]. by apply AS.
     - rewrite /srel /=. by destruct SREL as (?&?&?&?&?).
-    - intros l1 s1 t1. simpl. intros Eqs.
-      have HLF : ∀ i, (i < tsize Tt)%nat → l1 ≠ (l +ₗ i).
-      { intros i Lti Eq. subst l1.
-        move : Eqs. rewrite (SHR _ Lti).
-        intros Eq%Some_equiv_inj. inversion Eq. }
-      destruct (for_each_lookup _ _ _ _ _ Eqα') as [_ [_ EQt]].
-      rewrite (EQt _ HLF).
-      by specialize (LINV _ _ _ Eqs) as (?&?&Eqa1&Eqas&?). }
+    - intros l1 t1. simpl. intros Eqs.
+      specialize (LINV _ _ Eqs) as (LTi & Eqst & Eqhs).
+      split; [done|]. split; [|done].
+      admit.
+      (* destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
+        as (stk & Eqstk & SUB & ?). *) }
   left.
   apply: sim_body_result. intros.
   have VREL2: vrel (r ⋅ (core (r_f ⋅ r))) vs vt.
   { eapply vrel_mono; [done| |exact VREL']. apply cmra_included_r. }
-  apply POST; eauto.
+  eapply POST; eauto.
 Admitted.
 
 (** Write *)
