@@ -61,8 +61,8 @@ Proof.
   sim_apply sim_simple_deref=>l' t' ?. simplify_eq/=.
   (* Write unique. We need to drop to complex mode, to preserve some local state info. *)
   intros σs σt Hσs Hσt. 
-  sim_apply sim_body_write_unique; [solve_sim..|].
-  intros ???? Htop. simplify_eq/=.
+  sim_apply sim_body_write_unique_1; [solve_sim..|].
+  intros ?? Htop. simplify_eq/=.
   sim_apply sim_body_let. simplify_eq/=.
   (* Copy local (right) *)
   sim_apply_r sim_body_copy_local_r; [solve_sim..|].
@@ -70,7 +70,6 @@ Proof.
   (* Copy unique (right) *)
   sim_apply_r sim_body_deref_r. simpl.
   sim_apply_r sim_body_copy_unique_r; [try solve_sim..|].
-  { subst σt'. eapply steps_retag.tag_on_top_write; done. }
   { rewrite lookup_insert. done. }
   apply: sim_body_result=>_. simpl.
   apply: sim_body_let_r. simpl. (* FIXME: figure out why [sim_apply_r] does the wrong thing here *)

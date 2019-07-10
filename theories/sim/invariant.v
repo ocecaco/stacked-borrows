@@ -288,14 +288,32 @@ Proof.
   eauto using vrel_persistent.
 Qed.
 
-Lemma arel_res_mapsto_overwrite_1  r l t v1 v2 ss st :
-  arel (r ⋅ res_mapsto l [v1] t) ss st → arel (r ⋅ res_mapsto l [v2] t) ss st.
+Lemma vrel_length r vs vt :
+  vrel r vs vt → length vs = length vt.
+Proof. intros. eapply Forall2_length; eauto. Qed.
+
+Lemma vrel_tag_included r vs vt t:
+  vrel r vs vt → vs <<t t ↔ vt <<t t.
+Proof.
+  intros VREL.
+  split; intros IN l1 t1 [i Eqi]%elem_of_list_lookup;
+    [destruct (Forall2_lookup_r _ _ _ _ _ VREL Eqi) as (ss & Eqss & AREL)
+    |destruct (Forall2_lookup_l _ _ _ _ _ VREL Eqi) as (ss & Eqss & AREL)];
+    apply elem_of_list_lookup_2 in Eqss;
+    destruct ss as [| |ls ts|]; try done;
+    specialize (IN _ _ Eqss);
+    destruct t1, ts; try done; naive_solver.
+Qed.
+
+Lemma arel_res_tag_overwrite r t h1 h2 ss st :
+  arel (r ⋅ res_tag t tkUnique h1) ss st →
+  arel (r ⋅ res_tag t tkUnique h2) ss st.
 Proof.
   destruct ss as [| |? [t1|]|], st as [| |? []|]; simpl; auto; [|naive_solver].
   intros (?&?& h & Eqh). do 2 (split; [done|]).
   case (decide (t1 = t)) => ?; [subst t1|].
-  - exfalso. move : Eqh. rewrite lookup_op res_mapsto_tlookup.
+  - exfalso. move : Eqh. rewrite lookup_op res_tag_lookup.
     apply tagKindR_exclusive.
   - exists h. move : Eqh.
-    by do 2 (rewrite lookup_op res_mapsto_tlookup_ne; [|done]).
+    by do 2 (rewrite lookup_op res_tag_lookup_ne; [|done]).
 Qed.

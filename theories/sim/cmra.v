@@ -527,13 +527,13 @@ Proof.
   naive_solver.
 Qed.
 
+Lemma res_loc_lookup_1 l n t (LEN: (0 < n)%nat) :
+  ((res_loc l n t).(rlm) !! l : optionR tagR) ≡ Some (to_tagR t).
+Proof. rewrite /= lookup_fmap. destruct n; [lia|]. rewrite /= lookup_insert //. Qed.
+
 Lemma res_mapsto_llookup_1 l v t (LEN: (0 < length v)%nat) :
   ((res_mapsto l v t).(rlm) !! l : optionR tagR) ≡ Some (to_tagR t).
-Proof.
-  rewrite lookup_op /= lookup_empty right_id lookup_fmap.
-  destruct (length v); [lia|].
-  rewrite /= lookup_insert //.
-Qed.
+Proof. rewrite lookup_op res_loc_lookup_1 //. Qed.
 
 Lemma res_mapsto_tlookup l v (t: ptr_id) :
   (res_mapsto l v t).(rtm) !! t ≡

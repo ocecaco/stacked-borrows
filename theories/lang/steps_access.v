@@ -4,11 +4,13 @@ Set Default Proof Using "Type".
 
 Lemma access1_in_stack stk kind t cids n stk' :
    access1 stk kind t cids = Some (n, stk') →
-   ∃ it, it ∈ stk ∧ it.(tg) = t.
+   ∃ it, it ∈ stk ∧ it.(tg) = t ∧ it.(perm) ≠ Disabled.
 Proof.
   rewrite /access1. case find_granting as [gip|] eqn:Eq1; [|done].
-  apply fmap_Some in Eq1 as [[i it] [[IN [? Eq]]%list_find_Some EQ]].
-  intros ?. exists it. split; [|done]. by eapply elem_of_list_lookup_2.
+  apply fmap_Some in Eq1 as [[i it] [[IN [GR Eq]]%list_find_Some EQ]].
+  intros ?. exists it. split; last split; [|done|].
+  - by eapply elem_of_list_lookup_2.
+  - intros Eq1. by rewrite Eq1 in GR.
 Qed.
 
 Lemma access1_tagged_sublist stk kind bor cids n stk' :
