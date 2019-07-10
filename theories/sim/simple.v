@@ -325,7 +325,7 @@ Lemma sim_simple_alloc_public fs ft r n T css cst Φ :
     Φ (r ⋅ rt) n (PlaceR l (Tagged tg) T) css (PlaceR l (Tagged tg) T) cst) →
   r ⊨ˢ{n,fs,ft} (Alloc T, css) ≥ (Alloc T, cst) : Φ.
 Proof.
-  intros HH σs σt <-<-. apply sim_body_alloc_shared=>/=. exact: HH.
+  intros HH σs σt <-<-. apply sim_body_alloc_public=>/=. exact: HH.
 Qed.
 
 Lemma sim_simple_write_public fs ft r n (rs1 rs2 rt1 rt2: result) css cst Φ :
