@@ -372,7 +372,7 @@ Fixpoint write_local (l:loc) (n:nat) (t: ptr_id) (ls: lmap) : lmap :=
   | S n => <[l := t]>(write_local (l +ₗ 1) n t ls)
   end.
 
-Definition res_loc l n t : resUR := (ε, fmap to_tagR (write_local l n t ∅)).
+Definition res_loc l n t : resUR := (ε, to_tagR <$> (write_local l n t ∅)).
 
 Definition res_mapsto (l:loc) (v: value) (t: ptr_id) : resUR :=
   res_loc l (length v) t ⋅ res_tag t tkUnique (write_mem l v ∅).
@@ -387,6 +387,66 @@ Proof.
   apply alloc_singleton_local_update; [done|].
   split. by destruct k. apply to_heapR_valid.
 Qed.
+
+
+Lemma res_tag_unique_pub_local_update (r: resUR) t h
+  (NONE: r.(rtm) !! t = None) :
+  (r ⋅ res_tag t tkUnique h, res_tag t tkUnique h) ~l~>
+  (r ⋅ res_tag t tkPub ∅, res_tag t tkPub ∅).
+Proof.
+  destruct r as [[tm cm] lm].
+  apply prod_local_update_1, prod_local_update_1. rewrite /=.
+  do 2 rewrite (cmra_comm tm) -insert_singleton_op //.
+  rewrite -(insert_insert tm t (Cinr (), to_agree <$> ∅)
+                               (Cinl (Excl ()), to_agree <$> h)).
+  eapply (singleton_local_update (<[t := _]> tm : tmapUR)).
+  by rewrite lookup_insert.
+  apply exclusive_local_update. split; [done|apply to_heapR_valid].
+Qed.
+
+Lemma res_tag_insert_local_update (r: resUR) h1 h2 (t: ptr_id)
+  (NONE: r.(rtm) !! t = None):
+  (r ⋅ res_tag t tkUnique h1, res_tag t tkUnique h1) ~l~>
+  (r ⋅ res_tag t tkUnique h2, res_tag t tkUnique h2).
+Proof.
+  destruct r as [[tm cm] lm].
+  apply prod_local_update_1, prod_local_update_1. rewrite /=.
+  do 2 rewrite (cmra_comm tm) -insert_singleton_op //.
+  rewrite -(insert_insert tm t (_, to_agree <$> h2)
+                               (Cinl (Excl ()), to_agree <$> h1)).
+  eapply (singleton_local_update (<[t := _]> tm : tmapUR)).
+  by rewrite lookup_insert.
+  apply exclusive_local_update. split; [done|apply to_heapR_valid].
+Qed.
+
+Lemma res_tag_1_insert_local_update (r: resUR) (l: loc) s1 s2 (t: ptr_id)
+  (NONE: r.(rtm) !! t = None):
+  (r ⋅ res_tag t tkUnique {[l := s1]}, res_tag t tkUnique {[l := s1]}) ~l~>
+  (r ⋅ res_tag t tkUnique {[l := s2]}, res_tag t tkUnique {[l := s2]}).
+Proof. by apply res_tag_insert_local_update. Qed.
+
+Lemma res_tag_1_insert_local_update_r (r: resUR) r' (l: loc) s1 s2 (t: ptr_id)
+  (NONE: r.(rtm) !! t = None):
+  (r ⋅ res_tag t tkUnique {[l := s1]}, (ε, r') ⋅ res_tag t tkUnique {[l := s1]}) ~l~>
+  (r ⋅ res_tag t tkUnique {[l := s2]}, (ε, r') ⋅ res_tag t tkUnique {[l := s2]}).
+Proof.
+  destruct r as [[tm cm] lm].
+  apply prod_local_update_1, prod_local_update_1. rewrite /= 2!left_id.
+  do 2 rewrite (cmra_comm tm) -insert_singleton_op //.
+  rewrite -(insert_insert tm t (_, to_agree <$> {[l := s2]})
+                               (Cinl (Excl ()), to_agree <$> {[l := s1]})).
+  eapply (singleton_local_update (<[t := _]> tm : tmapUR)).
+  by rewrite lookup_insert.
+  apply exclusive_local_update. split; [done|apply to_heapR_valid].
+Qed.
+
+Lemma res_tag_lookup (k: tag_kind) (h: heaplet) (t: ptr_id) :
+  (res_tag t k h).(rtm) !! t ≡ Some (to_tagKindR k, to_agree <$> h).
+Proof. by rewrite lookup_insert. Qed.
+
+Lemma res_tag_lookup_ne (k: tag_kind) (h: heaplet) (t t': ptr_id) (NEQ: t' ≠ t) :
+  (res_tag t k h).(rtm) !! t' ≡ None.
+Proof. by rewrite lookup_insert_ne. Qed.
 
 (** res_mapsto *)
 Lemma write_local_lookup l n t ls :
@@ -507,7 +567,8 @@ Proof.
   rewrite /= 2!dom_insert IH //.
 Qed.
 
-Lemma write_local_res_local_update lsf l n t:
+(** allocating locals *)
+Lemma write_local_res_alloc_local_update lsf l n t:
   (∀ i, (i < n)%nat → lsf !! (l +ₗ i) = None) →
   (lsf, ε) ~l~>
   (lsf ⋅ (to_tagR <$> write_local l n t ∅) : lmapUR, to_tagR <$> write_local l n t ∅ : lmapUR).
@@ -533,7 +594,6 @@ Proof.
       by apply alloc_local_update.
 Qed.
 
-
 Lemma res_mapsto_local_alloc_local_update lsf l v t:
   lsf.(rtm) !! t = None →
   (∀ i, (i < length v)%nat → lsf.(rlm) !! (l +ₗ i) = None) →
@@ -543,22 +603,67 @@ Proof.
   rewrite /res_mapsto (cmra_comm (res_loc _ _ _)).
   etrans. by apply (res_tag_alloc_local_update _ t tkUnique (write_mem l v ∅)).
   rewrite !pair_op !right_id left_id /=. apply prod_local_update_2.
-  by apply write_local_res_local_update.
+  by apply write_local_res_alloc_local_update.
 Qed.
 
+(** deallocating locals *)
+Lemma write_local_res_dealloc_local_update (lsf: lmapUR) l n t:
+  (∀ i, (i < n)%nat → lsf !! (l +ₗ i) = None) →
+  (lsf ⋅ (to_tagR <$> write_local l n t ∅) : lmapUR, (to_tagR <$> write_local l n t ∅) : lmapUR) ~l~>
+  (lsf : lmapUR, ε : lmapUR).
+Proof.
+  revert l lsf.
+  induction n as [|n IH]; intros l lsf HL.
+  - rewrite /= fmap_empty right_id_L //.
+  - rewrite /= write_local_res_S.
+    rewrite (cmra_comm ({[l := to_tagR t]} : lmapUR) (to_tagR <$> write_local _ _ _ _)).
+    rewrite cmra_assoc.
+    have NEQ1: write_local (l +ₗ 1) n t ∅ !! l = None.
+    { rewrite {1}/write_local write_local_plus1 //. }
+    have ?: (lsf ⋅ (to_tagR <$> write_local (l +ₗ 1) n t ∅)) !! l = None.
+    { rewrite lookup_op lookup_fmap NEQ1 right_id_L.
+      specialize (HL O). rewrite shift_loc_0_nat in HL. apply HL. lia. }
+    etrans.
+    + rewrite 2!(cmra_comm _  {[l := _]}) -insert_singleton_op; [|done].
+      rewrite -insert_singleton_op; [|by rewrite lookup_fmap NEQ1].
+      eapply (delete_local_update_cancelable _ _ l); [|by rewrite lookup_insert..].
+      apply _.
+    + rewrite 2!delete_insert_delete delete_notin // delete_notin;
+        [|by rewrite lookup_fmap NEQ1].
+      apply (IH (l +ₗ 1)).
+      intros i Lt. rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
+      apply HL. lia.
+Qed.
+
+Lemma res_mapsto_res_tag_public (r: resUR) l v t
+  (NONE1: ∀ i, (i < length v)%nat → r.(rlm) !! (l +ₗ i) = None)
+  (NONE2: r.(rtm) !! t = None):
+  (r ⋅ res_mapsto l v t, res_mapsto l v t) ~l~>
+  (r ⋅ res_tag t tkPub ∅, res_tag t tkPub ∅).
+Proof.
+  rewrite /res_mapsto. destruct r as [[tm cm] lm].
+  rewrite (cmra_comm (res_loc _ _ _)) cmra_assoc. etrans.
+  - apply prod_local_update_2. rewrite /= right_id left_id.
+    by apply write_local_res_dealloc_local_update.
+  - rewrite !pair_op /= !right_id.
+    apply prod_local_update_1, prod_local_update_1. rewrite /=.
+    do 2 rewrite (cmra_comm tm) -insert_singleton_op //.
+    rewrite -(insert_insert tm t (Cinr (), to_agree <$> ∅)
+                                 (Cinl (Excl ()), to_agree <$> (write_mem l v ∅))).
+    eapply (singleton_local_update (<[t := _]> tm : tmapUR)).
+    by rewrite lookup_insert.
+    apply exclusive_local_update. split; [done|apply to_heapR_valid].
+Qed.
+
+(** updating locals *)
 Lemma res_mapsto_1_insert_local_update (r: resUR) (l: loc) s1 s2 (t: ptr_id)
   (NONE1: r.(rlm) !! l = None) (NONE2: r.(rtm) !! t = None):
   (r ⋅ res_mapsto l [s1] t, res_mapsto l [s1] t) ~l~>
   (r ⋅ res_mapsto l [s2] t, res_mapsto l [s2] t).
 Proof.
-  intros. destruct r as [[tm cm] lm].
-  rewrite !pair_op !right_id /= !left_id /=.
-  do 2 (rewrite (cmra_comm tm) -insert_singleton_op; [|done]). etrans.
-  - apply prod_local_update_1, prod_local_update_1.
-    rewrite /= left_id.
-    instantiate (1:= {[t := (Cinl (Excl ()), to_agree <$> <[l:=s2]> ∅)]}).
-    eapply (singleton_local_update (<[t := _]> tm : tmapUR)). by rewrite lookup_insert.
-    apply exclusive_local_update. split; [done|apply to_heapR_valid].
-  - rewrite /res_mapsto !right_id_L /= insert_insert /=.
-    rewrite /res_loc /res_tag /= pair_op left_id right_id //.
+  intros. rewrite /res_mapsto cmra_assoc. etrans.
+  - eapply res_tag_1_insert_local_update_r.
+    by rewrite lookup_op NONE2 /= lookup_empty right_id_L.
+  - rewrite -(cmra_assoc r) 2!(cmra_comm (res_loc _ _ _)) 2!cmra_assoc.
+    rewrite /= insert_empty //.
 Qed.

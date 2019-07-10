@@ -10,6 +10,14 @@ Lemma viewshift_frame_r r r1 r2 :
   r1 |==> r2 → (r1 ⋅ r) |==> (r2 ⋅ r).
 Proof. intros VS ???. rewrite (cmra_comm r1) (cmra_comm r2) 2!cmra_assoc. apply VS. Qed.
 
+Lemma viewshift_state_frame_l r r1 r2 σs σt :
+  r1 |={σs,σt}=> r2 → (r ⋅ r1) |={σs,σt}=> (r ⋅ r2).
+Proof. intros VS r_f. rewrite 2!cmra_assoc. apply VS. Qed.
+
+Lemma viewshift_state_frame_r r r1 r2 σs σt :
+  r1 |={σs,σt}=> r2 → (r1 ⋅ r) |={σs,σt}=> (r2 ⋅ r).
+Proof. intros VS ?. rewrite (cmra_comm r1) (cmra_comm r2) 2!cmra_assoc. apply VS. Qed.
+
 Lemma vs_call_empty_public c :
   res_callState c (csOwned ∅) |==> res_callState c csPub.
 Proof.
