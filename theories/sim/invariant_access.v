@@ -60,7 +60,7 @@ Proof.
   specialize (CINV _ InT) as [Ltt CIN].
   specialize (CIN _ _ Eqh _ Inl) as (stk1 & pm1 & Eqstk1 & In1 & NDIS1).
   rewrite Eqstk1 in Eql. simplify_eq.
-  specialize (PINV _ _ In1 NDIS1) as [Eqs1 HD].
+  specialize (PINV _ _ In1 NDIS1) as [Eqs1 [? HD]].
 
   destruct ACC as [[n stk'] ACC].
   apply (access1_incompatible_head_protector _ _ _ _ _ _ _ _ HD Ltc ACC).
@@ -139,10 +139,10 @@ Proof.
       apply Lt. by lia.
 Qed.
 
-Lemma unique_access_head r σ l stk kind n' stk' t s h :
+Lemma unique_access_head r σs σ l stk kind n' stk' t s h :
   σ.(sst) !! l = Some stk →
   access1 stk kind (Tagged t) σ.(scs) = Some (n', stk') →
-  tmap_inv r σ →
+  tmap_inv r σs σ →
   r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h) →
   h !! l ≡ Some $ to_agree s →
   ∃ it, it.(perm) = Unique ∧ it.(tg) = Tagged t ∧ is_stack_head it stk ∧
@@ -152,7 +152,7 @@ Proof.
   specialize (PINV _ _ _ HL) as [? PINV].
   specialize (PINV _ _ Eqs _ Eqstk).
   destruct (access1_in_stack _ _ _ _ _ _ ACC1) as (it & Init & Eqti & NDIS).
-  destruct (PINV it.(perm) it.(protector)) as [Eqss HD]; [|done|].
+  destruct (PINV it.(perm) it.(protector)) as [Eqss [? HD]]; [|done|].
   { rewrite -Eqti. by destruct it. }
   by exists (mkItem Unique (Tagged t) it.(protector)).
 Qed.

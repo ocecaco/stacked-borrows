@@ -74,7 +74,7 @@ Proof.
 
   specialize (PINV _ _ _ HLtrf) as [Lt PINV].
   specialize (PINV l s). rewrite lookup_fmap Eqs in PINV.
-  specialize (PINV ltac:(done) _ Eqstk Unique opro) as [Eqss HD].
+  specialize (PINV ltac:(done) _ Eqstk Unique opro) as [Eqss [? HD]].
   { destruct stk; [done|]. simpl in TOP. simplify_eq. by left. } { done. }
 
   destruct (tag_unique_head_access σt.(scs) stk (Tagged t) opro AccessRead)

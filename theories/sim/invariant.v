@@ -27,7 +27,7 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
   | _, _ => False
   end.
 
-Definition tmap_inv (r: resUR) (σ: state) : Prop :=
+Definition tmap_inv (r: resUR) (σs σ: state) : Prop :=
   ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tagKindR k, h) →
     (t < σ.(snp))%nat ∧
     ∀ (l: loc) (s: scalar),
@@ -37,6 +37,7 @@ Definition tmap_inv (r: resUR) (σ: state) : Prop :=
           (* as long as the tag [t] is in the stack [stk] (Disabled is
             considered not in), then its heaplet [h] agree with the state [σ] *)
           σ.(shp) !! l = Some s ∧
+          σs.(shp) !! l = Some s ∧ (* FIXME: this is a hack *)
           (* If [k] is Unique, then [t] must be Unique at the top of [stk].
             Otherwise if [k] is Pub, then [t] can be among the top SRO items. *)
           match k with
@@ -94,7 +95,7 @@ Definition wsat (r: resUR) (σs σt: state) : Prop :=
   (* Wellformedness *)
   Wf σs ∧ Wf σt ∧ ✓ r ∧
   (* Invariants *)
-  tmap_inv r σt ∧ cmap_inv r σt ∧ srel r σs σt ∧ lmap_inv r σs σt.
+  tmap_inv r σs σt ∧ cmap_inv r σt ∧ srel r σs σt ∧ lmap_inv r σs σt.
 
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)
@@ -198,9 +199,9 @@ Proof.
   - exists c, T. split; [|done]. by apply (cmap_lookup_op_unique_included r1.(rcm)).
 Qed.
 
-Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> iff) tmap_inv.
+Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) tmap_inv.
 Proof.
-  intros r1 r2 [[Eqt Eqc] Eqm] ? σ ?. subst. rewrite /tmap_inv.
+  intros r1 r2 [[Eqt Eqc] Eqm] ? σ ? ???. subst. rewrite /tmap_inv.
   by setoid_rewrite Eqt.
 Qed.
 

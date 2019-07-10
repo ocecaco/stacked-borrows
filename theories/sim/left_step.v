@@ -95,7 +95,7 @@ Proof.
   destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
   rewrite Eqst in Eqstk. rewrite Eqcs in ACC1.
 
-  destruct (unique_access_head _ _ _ _ _ _ _ _ s _ Eqstk ACC1 PINV HLtrf)
+  destruct (unique_access_head _ _ _ _ _ _ _ _ _ s _ Eqstk ACC1 PINV HLtrf)
     as (it & Eqpit & Eqti & HDi & Eqhp); [by rewrite lookup_fmap Eqs |].
 
   have ?: α' = σt.(sst).
@@ -117,7 +117,16 @@ Proof.
 
   (* we read s' from σs(l), we know [s] is in σt(l), now we have to prove that
     s' = s *)
-  assert (s' = s). { admit. } subst s'.
+  (* FIXME: this is a hack *)
+  assert (s' = s).
+  { specialize (PINV _ _ _ HLtrf) as [? PINV].
+    specialize (PINV l s). rewrite lookup_fmap Eqs in PINV.
+    specialize (PINV ltac:(done) _ Eqstk Unique it.(protector))
+      as (?&?&?&_); [|done|].
+    - destruct HDi as [? HDi]. rewrite HDi. rewrite -Eqpit -Eqti.
+      destruct it; by left.
+    - by simplify_eq. }
+  subst s'.
 
   have STEPSS: (Copy (Place l (Tagged t) T), σs) ~{fs}~>* (#[s]%E, σs)
     by apply rtc_once.
@@ -134,7 +143,7 @@ Proof.
       * eapply tc_rtc_l; eauto.
       * simplify_eq. by apply tc_once.
     + econstructor 2; eauto. by etrans.
-Admitted.
+Qed.
 
 Lemma sim_body_copy_local_l fs ft r r' n l tg ty s et σs σt Φ :
   tsize ty = 1%nat →

@@ -91,9 +91,10 @@ Proof.
         * subst l1. rewrite Eql1. rewrite repeat_length in Lti.
           rewrite (repeat_lookup_lt_length _ _ _ Lti) /=.
           intros ?%Some_equiv_inj%to_agree_inj. simplify_eq.
-          rewrite (HLst1 _ Lti) (HLmt1 _ Lti). intros stk ?. simplify_eq.
+          rewrite (HLst1 _ Lti) (HLmt1 _ Lti) (HLms1 _ Lti).
+          intros stk ?. simplify_eq.
           intros pm opro ?%elem_of_list_singleton ?. simplify_eq.
-          split; [done|]. destruct k1. by eexists. by inversion Eqk1.
+          do 2 (split; [done|]). destruct k1. by eexists. by inversion Eqk1.
         * rewrite Eql1 lookup_empty. inversion 1.
       + intros Eqh'.
         have Eqh1: (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tagKindR k1, h1).
@@ -102,7 +103,7 @@ Proof.
         intros l1 s1 Eqs1 stk Eqstk.
         destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
           as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
-        * rewrite (HLmt2 _ NEQl1). by apply PINV.
+        * rewrite (HLmt2 _ NEQl1) (HLms2 _ NEQl1). by apply PINV.
         * subst l1.
           have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
           have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2. simplify_eq.
@@ -240,7 +241,7 @@ Proof.
         intros l1 s1 Eqs1 stk Eqstk.
         destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
           as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
-        * rewrite (HLmt2 _ NEQl1). by apply PINV.
+        * rewrite (HLmt2 _ NEQl1) (HLms2 _ NEQl1). by apply PINV.
         * subst l1.
           have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
           have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2. simplify_eq.
@@ -385,10 +386,10 @@ Proof.
         as (stk & Eqstk & SUB & ?).
       intros pm opro In' NDIS.
       destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2 & NDIS2).
-      specialize (PI _ Eqstk it2.(perm) opro) as [Eql' HTOP].
+      specialize (PI _ Eqstk it2.(perm) opro) as [Eql' [? HTOP]].
       { simpl in *. rewrite /= Eqt2 Eqp2. by destruct it2. }
       { simpl in *. by rewrite (NDIS2 NDIS). }
-      split; [done|].
+      do 2 (split; [done|]).
       destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
         as [?|[MR _]]; [by subst|]. clear -In' MR HTOP Eqstk WFT NDIS.
       destruct (access1 stk AccessRead t σt.(scs)) as [[n stk1]|] eqn:Eqstk';
@@ -481,7 +482,10 @@ Proof.
           as [[i [Lti [Eqi Eqmi]]]|[NEql Eql]]; last first.
       { (* l1 is NOT written to *)
         destruct (for_each_lookup _ _ _ _ _ Eqα') as [_ [_ EQ]].
-        rewrite EQL in NEql. rewrite (EQ _ NEql) Eql. by apply PINV. }
+        rewrite EQL in NEql. rewrite (EQ _ NEql) Eql.
+        destruct (write_mem_lookup l v σs.(shp)) as [_ EQ2].
+        rewrite -EQL in NEql. rewrite (EQ2 _ NEql).
+        by apply PINV. }
       (* l1 is written to *)
       intros s1 Eqs1 stk1 Eqstk1 pm opro In1 NDIS. subst l1.
       destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk1)
@@ -489,7 +493,7 @@ Proof.
       destruct (SUB _ In1) as (it2 & In2 & Eqt2 & Eqp2 & NDIS2). simpl in *.
 
       (* invoke PINV for t *)
-      specialize (PINV _ _ Eqs1 _ Eqstk it2.(perm) opro) as [Eql' HTOP].
+      specialize (PINV _ _ Eqs1 _ Eqstk it2.(perm) opro) as [Eql' [? HTOP]].
       { rewrite /= Eqt2 Eqp2. by destruct it2. } { by rewrite (NDIS2 NDIS). }
       destruct k1.
       + (* if k1 is Unique ∧ Tagged t1 ≠ t, writing with t must have popped t1
@@ -654,7 +658,7 @@ Proof.
 
   destruct IS as [s' Eqs0].
 
-  destruct (unique_access_head _ _ _ _ _ _ _ _ s' _ Eqstk ACC1 PINV HLtrf)
+  destruct (unique_access_head _ _ _ _ _ _ _ _ _ s' _ Eqstk ACC1 PINV HLtrf)
     as (it & Eqpit & Eqti & HDi & Eqhp); [by rewrite lookup_fmap Eqs0 |].
 
   have ?: α' = σt.(sst).
@@ -682,6 +686,9 @@ Proof.
       eapply vrel_tag_included; [|eauto]. by constructor.
     - rewrite LenT //. }
 
+  have ?: ss = st.
+  { destruct CASE as [[]|]; [done|]. by eapply arel_eq. } subst ss.
+
   exists (#[☠])%V, σs', (r' ⋅ (r0 ⋅ res_tag t tkUnique (<[l:=st]> h0))), n.
   split; last split.
   { left. by constructor 1. }
@@ -707,13 +714,16 @@ Proof.
         * rewrite lookup_insert. intros Eq%Some_equiv_inj%to_agree_inj.
           symmetry in Eq.
           intros stk1 Eqstk1 pm opro In1 NDIS.
-          rewrite Eqstk1 in Eqstk. simplify_eq. split; [by rewrite lookup_insert|].
+          rewrite Eqstk1 in Eqstk. simplify_eq.
+          split; [by rewrite lookup_insert|].
+          split; [by rewrite lookup_insert|].
           specialize (PINV l s'). rewrite lookup_fmap Eqs0 in PINV.
-          specialize (PINV ltac:(done) _ Eqstk1 _ _ In1 NDIS) as [? PINV].
+          specialize (PINV ltac:(done) _ Eqstk1 _ _ In1 NDIS) as [? [? PINV]].
           destruct k1; [done|by inversion Eq1].
 
         * rewrite lookup_insert_ne // -lookup_fmap.
-          intros Eq. specialize (PINV _ _ Eq). setoid_rewrite lookup_insert_ne; [|done].
+          intros Eq. specialize (PINV _ _ Eq).
+          setoid_rewrite lookup_insert_ne; [|done..].
           destruct k1; [done|by inversion Eq1].
 
       + have HL': (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tagKindR k1, h1).
@@ -726,7 +736,7 @@ Proof.
           [subst l1; rewrite lookup_insert|rewrite lookup_insert_ne //].
         * rewrite Eqstk1 in Eqstk. simplify_eq.
           intros pm opro Instk NDIS.
-          specialize (PINV _ _ Eqs1 _ Eqstk1 _ _ Instk NDIS) as [Eqs' HD].
+          specialize (PINV _ _ Eqs1 _ Eqstk1 _ _ Instk NDIS) as [Eqs' [? HD]].
           (* t1 ≠ t, t is top of stack(l), t1 is top or SRO in stack (l).
             This cannot happen. *)
           exfalso.
@@ -737,7 +747,7 @@ Proof.
           { eapply (access1_write_remove_incompatible_active_SRO _ (Tagged t) t1 _ _ _ ND);
               eauto. }
 
-        * by apply PINV.
+        * setoid_rewrite lookup_insert_ne; [|done]. by apply PINV.
 
     (* cmap_inv *)
     - intros c cs. simpl. rewrite -EQrcm. intros Eqcm.
@@ -778,7 +788,7 @@ Proof.
           apply res_loc_lookup_1. simpl; lia.
         * (* Unique => Public *)
           left. intros st1. simpl. rewrite lookup_insert.
-          intros Eq. symmetry in Eq. simplify_eq. exists ss.
+          intros Eq. symmetry in Eq. simplify_eq. exists st.
           rewrite lookup_insert. split; [done|].
           eapply arel_mono; [apply VALID'|..|exact AREL].
           etrans; [apply cmra_included_r|]. rewrite cmra_assoc.
@@ -813,9 +823,7 @@ Proof.
       intros LINV l1 t1 Eq1. simpl. specialize (LINV l1 t1 Eq1) as (?&?&?).
       do 2 (split; [done|]).
       case (decide (l1 = l)) => [->|?];
-        [rewrite 2!lookup_insert //|rewrite lookup_insert_ne// lookup_insert_ne//].
-      destruct CASE as [[]|CASE]; [by subst st|].
-      f_equal. symmetry. by eapply arel_eq. }
+        [rewrite 2!lookup_insert //|rewrite lookup_insert_ne// lookup_insert_ne//]. }
 
   left. apply: sim_body_result.
   intros. simpl. by apply POST.
