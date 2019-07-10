@@ -4,6 +4,7 @@ Things in the "logical" side of the model that could be made better:
   To fix TagMapInv: kill the "value" part of LMAP.
   To fix LocMapInv: make it a `gmap loc tag` that all just have a singleton stack with that loc.
   Then we can also make PrivLoc handle fairly uniformly locations that are "privatized" by being protected or by being local.
+- heaplets need to map to *pairs of* scalars: left val, right val. Remove silly equality from LmapInv.
 - lmap needs to become `gmap tag (ex (gset loc))` so that we can make local locations public and know that this does not de-privatize any other location.
 - No need for (persistently) public call IDs.  Still need to be able to pass
   ownership of *all* tag protected by a call ID though, so
