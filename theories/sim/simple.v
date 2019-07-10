@@ -319,7 +319,7 @@ Proof.
 Admitted.
 
 (** * Memory: shared *)
-Lemma sim_simple_alloc_shared fs ft r n T css cst Φ :
+Lemma sim_simple_alloc_public fs ft r n T css cst Φ :
   (∀ (l: loc) (tg: nat),
     let rt := res_tag tg tkPub ∅ in
     Φ (r ⋅ rt) n (PlaceR l (Tagged tg) T) css (PlaceR l (Tagged tg) T) cst) →
@@ -327,7 +327,7 @@ Lemma sim_simple_alloc_shared fs ft r n T css cst Φ :
 Proof.
 Admitted.
 
-Lemma sim_simple_write_shared fs ft r n (rs1 rs2 rt1 rt2: result) css cst Φ :
+Lemma sim_simple_write_public fs ft r n (rs1 rs2 rt1 rt2: result) css cst Φ :
   rrel r rs1 rt1 →
   rrel r rs2 rt2 →
   Φ r n (ValR [☠%S]) css (ValR [☠%S]) cst →
@@ -339,7 +339,7 @@ Proof.
 Qed.
 
 
-Lemma sim_simple_copy_shared fs ft r n (rs rt: result) css cst Φ :
+Lemma sim_simple_copy_public fs ft r n (rs rt: result) css cst Φ :
   rrel r rs rt →
   (∀ r' (v1 v2: value),
     (* this post-condition is weak, we can return related values *)
@@ -351,7 +351,7 @@ Proof.
   eapply sim_body_copy_public; eauto.
 Qed.
 
-Lemma sim_simple_retag_shared fs ft r n (rs rt: result) k css cst Φ :
+Lemma sim_simple_retag_public fs ft r n (rs rt: result) k css cst Φ :
   rrel r rs rt →
   (Φ r n (ValR [☠%S]) css (ValR [☠%S]) cst) →
   r ⊨ˢ{n,fs,ft} (Retag rs k, css) ≥ (Retag rt k, cst) : Φ.

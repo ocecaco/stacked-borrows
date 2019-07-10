@@ -941,7 +941,7 @@ Proof.
 Qed.
 
 (** can probably be derived from [write_related_values]? *)
-Lemma sim_body_write_owned
+Lemma sim_body_write_unique
   fs ft (r r' r'' rs: resUR) h n l tg T s σs σt Φ:
   tsize T = 1%nat →
   r ≡ r' ⋅ res_tag tg tkUnique h →
