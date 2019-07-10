@@ -192,6 +192,19 @@ Lemma viewshift_sim_local_body r1 r2 n es σs et σt Φ :
   sim_local_body r2 n es σs et σt Φ → sim_local_body r1 n es σs et σt Φ.
 Proof. intros VS. apply viewshift_state_sim_local_body. intros ?. by apply VS. Qed.
 
+
+Definition viewshiftP r (P: A → state → state → Prop) (σs σt: state) :=
+  ∀ r_f, wsat (r_f ⋅ r) σs σt → P r σs σt.
+
+Lemma viewshiftP_sim_local_body r n es σs et σt Φ (P : A → state → state → Prop) :
+  viewshiftP r P σs σt →
+  (P r σs σt → sim_local_body r n es σs et σt Φ) →
+  sim_local_body r n es σs et σt Φ.
+Proof.
+  intros VS HP. pfold. intros NT r_f WSAT.
+  specialize (HP (VS _ WSAT)). punfold HP. apply sim_local_body_mono.
+Qed.
+
 End local.
 
 Hint Resolve sim_local_body_mono : paco.

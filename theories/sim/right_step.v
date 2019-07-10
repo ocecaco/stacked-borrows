@@ -53,17 +53,36 @@ Lemma sim_body_copy_unique_r
   (r ⊨{n,fs,ft} (es, σs) ≥ (#[s], σt) : Φ : Prop) →
   r ⊨{S n,fs,ft} (es, σs) ≥ (Copy (Place l (Tagged tg) T), σt) : Φ.
 Proof.
+  intros LenT TOP Eqr Eqs CONT.
 Admitted.
 
-(* should be a fairly direct consequence of the above. *)
-Lemma sim_body_copy_local_r fs ft r r' n l tg ty s es σs σt Φ :
+
+Lemma vsP_res_mapsto_tag_on_top (r: resUR) l t s σs σt :
+  (r ⋅ res_mapsto l [s] t) ={σs,σt}=> (λ _ _ σt, tag_on_top σt.(sst) l t : Prop).
+Proof.
+  intros r_f. rewrite cmra_assoc.
+  intros (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
+  have Hrf: ((r_f ⋅ r ⋅ res_mapsto l [s] t).(rlm) !! l : optionR tagR) ≡ Some (to_tagR t).
+  { move : (proj2 VALID l).
+    rewrite lookup_op (res_mapsto_llookup_1 l [s] t); [|simpl;lia].
+    intros Eq%(exclusive_Some_r (to_tagR t)). by rewrite Eq left_id. }
+  specialize (LINV _ _ Hrf) as (?& Eqst &?).
+  rewrite /tag_on_top Eqst /=. by eexists.
+Qed.
+
+Lemma sim_body_copy_local_r fs ft r r' n l t ty s es σs σt Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [s] tg →
+  r ≡ r' ⋅ res_mapsto l [s] t →
   (r ⊨{n,fs,ft} (es, σs) ≥ (#[s], σt) : Φ) →
   r ⊨{S n,fs,ft}
-    (es, σs) ≥ (Copy (Place l (Tagged tg) ty), σt)
+    (es, σs) ≥ (Copy (Place l (Tagged t) ty), σt)
   : Φ.
 Proof.
-Admitted.
+  intros Hty Hr. rewrite Hr. intros CONT.
+  eapply viewshiftP_sim_local_body; [apply vsP_res_mapsto_tag_on_top|].
+  simpl. intros TOP. move : CONT. rewrite cmra_assoc. intros CONT.
+  eapply sim_body_copy_unique_r; eauto.
+  by rewrite lookup_insert.
+Qed.
 
 End right.

@@ -464,21 +464,7 @@ Proof.
   (* unfolding rrel for place *)
   simpl in RRELp. destruct RRELp as [VREL _].
   inversion VREL as [|???? ARELp U]; subst; simplify_eq. clear U VREL.
-  destruct ARELp as (_ & _ & ARELp).
-
-  simpl in RRELv.
-  have SHR: ∀ l' t', priv_loc (r_f ⋅ r) l' t' →
-            ∀ i, (i < tsize T)%nat → l' ≠ (l +ₗ i).
-  { intros l' t' PV i Lt Eq. subst l'.
-    destruct (for_each_lookup_case_2 _ _ _ _ _ Eqα') as [EQ1 _].
-    specialize (EQ1 _ Lt) as (stk & stk' & Eqstk & Eqstk' & ACC).
-    move : ACC. case access1 as [[n' stk'1]|] eqn:ACC ; [|done].
-    simpl. intros. simplify_eq.
-    eapply (priv_pub_access_UB (r_f ⋅ r) (l +ₗ i) _ _ _ _ _ _ Eqstk);
-      [by eexists|exact WSAT1|exact PV|].
-    destruct t; [|done]. destruct ARELp as [h Eqh].
-    apply (tmap_lookup_op_r_equiv_pub r_f.(rtm)) in Eqh as [h1 Eqh1];
-      [|apply VALID]. by eexists _. }
+  destruct ARELp as (_ & _ & ARELp). simpl in RRELv.
 
   exists (#[☠])%V, σs', r, n. split; last split.
   { left. by constructor 1. }
@@ -822,7 +808,7 @@ Proof.
             - left. move : PB. done.
             - by right. }
 
-    (* lamp_inv *)
+    (* lmap_inv *)
     - move : LINV. rewrite Eqr 2!cmra_assoc.
       intros LINV l1 t1 Eq1. simpl. specialize (LINV l1 t1 Eq1) as (?&?&?).
       do 2 (split; [done|]).
