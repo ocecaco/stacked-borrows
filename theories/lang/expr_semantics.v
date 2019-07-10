@@ -283,10 +283,10 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
     pure_expr_step FNs h (Conc (Val v1) (Val v2))
                          SilentEvt (Val (v1 ++ v2))
 | RefBS l lbor T :
-    is_Some (h !! l) →
+    (* is_Some (h !! l) → *)
     pure_expr_step FNs h (Ref (Place l lbor T)) SilentEvt #[ScPtr l lbor]
 | DerefBS l lbor T
-    (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) :
+    (* (DEFINED: ∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) h) *) :
     pure_expr_step FNs h (Deref #[ScPtr l lbor] T) SilentEvt (Place l lbor T)
 (* | FieldBS l lbor T path off T'
     (FIELD: field_access T path = Some (off, T')) :

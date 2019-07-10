@@ -476,13 +476,13 @@ Qed.
 
 Lemma tstep_ref_inv (pl: result)  e' σ σ'
   (STEP: ((& pl)%E, σ) ~{fns}~> (e', σ')) :
-  ∃ l tg T, pl = PlaceR l tg T ∧ e' = #[ScPtr l tg]%E ∧ σ' = σ ∧ is_Some (σ.(shp) !! l).
+  ∃ l tg T, pl = PlaceR l tg T ∧ e' = #[ScPtr l tg]%E ∧ σ' = σ.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_ref_decompose _ _ _ Eq)
     as [[]|[K' [? Eq']]]; subst.
   - clear Eq. simpl in HS. inv_head_step.
-    have Eq1 := to_of_result pl. rewrite -H /to_result in Eq1. simplify_eq.
+    have Eq1 := to_of_result pl. rewrite -H0 /to_result in Eq1. simplify_eq.
     naive_solver.
   - apply result_head_stuck, (fill_not_result _ K') in HS.
     by rewrite Eq' to_of_result in HS.
@@ -502,8 +502,7 @@ Qed.
 
 Lemma tstep_deref_inv (rf: result) T e' σ σ'
   (STEP: ((Deref rf T)%E, σ) ~{fns}~> (e', σ')) :
-  ∃ l tg, rf = (ValR [ScPtr l tg])%R ∧ e' = Place l tg T ∧ σ' = σ ∧
-  (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σ.(shp)).
+  ∃ l tg, rf = (ValR [ScPtr l tg])%R ∧ e' = Place l tg T ∧ σ' = σ.
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_deref_decompose _ _ _ _ Eq)

@@ -191,19 +191,12 @@ Proof.
   intros NT r_f WSAT. split; [|done|].
   { right.
     destruct (NT (& pl)%E σs) as [[]|[es' [σs' STEPS]]]; [done..|].
-    destruct (tstep_ref_inv _ _ _ _ _ STEPS) as (l & tg & T & ? & ? & ? & IS).
-    simplify_eq.
-    have ?: is_Some (σt.(shp) !! l).
-    { clear -WSAT IS. move : IS.
-      by rewrite -2!(elem_of_dom (D:=gset loc)) -wsat_heap_dom. }
-    exists #[ScPtr l tg]%E, σt.
+    destruct (tstep_ref_inv _ _ _ _ _ STEPS) as (l & tg & T & ? & ? & ?).
+    simplify_eq. exists #[ScPtr l tg]%E, σt.
     eapply (head_step_fill_tstep _ []). by econstructor; econstructor. }
   constructor 1. intros.
-  destruct (tstep_ref_inv _ _ _ _ _ STEPT) as (l & tg & T & ? & ? & ? & IS).
+  destruct (tstep_ref_inv _ _ _ _ _ STEPT) as (l & tg & T & ? & ? & ?).
   simplify_eq.
-  have ?: is_Some (σs.(shp) !! l).
-  { clear -WSAT IS. move : IS.
-    by rewrite -2!(elem_of_dom (D:=gset loc)) wsat_heap_dom. }
   exists #[ScPtr l tg]%E, σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
@@ -222,17 +215,12 @@ Proof.
   intros NT r_f WSAT. split; [|done|].
   { right.
     destruct (NT (Deref rf T) σs) as [[]|[es' [σs' STEPS]]]; [done..|].
-    destruct (tstep_deref_inv _ _ _ _ _ _ STEPS) as (l & t & ? & ? & ? & IS).
-    subst.
-    have ?: (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σt.(shp)).
-    { clear -WSAT IS. by setoid_rewrite wsat_heap_dom. }
-    exists (Place l t T), σt.
+    destruct (tstep_deref_inv _ _ _ _ _ _ STEPS) as (l & t & ? & ? & ?).
+    subst. exists (Place l t T), σt.
     eapply (head_step_fill_tstep _ []). by econstructor; econstructor. }
   constructor 1. intros.
-  destruct (tstep_deref_inv _ _ _ _ _ _ STEPT) as (l & t & ? & ? & ? & IS).
+  destruct (tstep_deref_inv _ _ _ _ _ _ STEPT) as (l & t & ? & ? & ?).
   subst.
-  have ?: (∀ (i: nat), (i < tsize T)%nat → l +ₗ i ∈ dom (gset loc) σs.(shp)).
-  { clear -WSAT IS. by setoid_rewrite <- wsat_heap_dom. }
   exists (Place l t T), σs, r, n. split.
   { left. constructor 1. eapply (head_step_fill_tstep _ []).
     by econstructor; econstructor. }
