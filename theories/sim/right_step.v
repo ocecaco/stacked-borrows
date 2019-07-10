@@ -45,17 +45,61 @@ Proof.
 Qed.
 
 Lemma sim_body_copy_unique_r
-  fs ft (r r': resUR) (h: heaplet) n (l: loc) tg T (s: scalar) es σs σt Φ :
+  fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (s: scalar) es σs σt Φ :
   tsize T = 1%nat →
-  tag_on_top σt.(sst) l tg →
-  r ≡ r' ⋅ res_tag tg tkUnique h →
+  tag_on_top σt.(sst) l t →
+  r ≡ r' ⋅ res_tag t tkUnique h →
   h !! l = Some s →
   (r ⊨{n,fs,ft} (es, σs) ≥ (#[s], σt) : Φ : Prop) →
-  r ⊨{S n,fs,ft} (es, σs) ≥ (Copy (Place l (Tagged tg) T), σt) : Φ.
+  r ⊨{S n,fs,ft} (es, σs) ≥ (Copy (Place l (Tagged t) T), σt) : Φ.
 Proof.
-  intros LenT TOP Eqr Eqs CONT.
-Admitted.
+  intros LenT TOP Eqr Eqs CONT. pfold.
+  intros NT r_f WSAT. have WSAT1 := WSAT.
 
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
+
+  (* some lookup properties *)
+  have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
+  have HLtr: r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, to_agree <$> h).
+  { rewrite Eqr.
+    eapply tmap_lookup_op_unique_included;
+      [apply VALIDr|apply cmra_included_r|].
+    rewrite res_tag_lookup //. }
+  have HLtrf: (r_f ⋅ r).(rtm) !! t ≡ Some (to_tagKindR tkUnique, to_agree <$> h).
+  { apply tmap_lookup_op_r_unique_equiv; [apply VALID|done]. }
+
+  (* we can make the read in tgt because tag_on_top *)
+  destruct TOP as [opro TOP].
+  destruct (σt.(sst) !! l) as [stk|] eqn:Eqstk; [|done]. simpl in TOP.
+
+  specialize (PINV _ _ _ HLtrf) as [Lt PINV].
+  specialize (PINV l s). rewrite lookup_fmap Eqs in PINV.
+  specialize (PINV ltac:(done) _ Eqstk Unique opro) as [Eqss HD].
+  { destruct stk; [done|]. simpl in TOP. simplify_eq. by left. } { done. }
+
+  destruct (tag_unique_head_access σt.(scs) stk (Tagged t) opro AccessRead)
+      as [ns Eqstk']; [done|].
+
+  have Eqα : memory_read σt.(sst) σt.(scs) l (Tagged t) (tsize T) = Some σt.(sst).
+  { rewrite LenT /memory_read /= shift_loc_0_nat Eqstk /= Eqstk' /= insert_id //. }
+  have READ: read_mem l (tsize T) σt.(shp) = Some [s].
+  { rewrite LenT read_mem_equation_1 /= Eqss //. }
+
+  have STEPT: (Copy (Place l (Tagged t) T), σt) ~{ft}~> ((#[s])%E, σt).
+  { destruct σt.
+    eapply (head_step_fill_tstep _ []); eapply copy_head_step'; eauto. }
+
+  split; [right; by do 2 eexists|done|].
+  constructor 1. intros et' σt' STEPT'.
+  destruct (tstep_copy_inv _ (PlaceR _ _ _) _ _ _ STEPT')
+      as (l1&t1&T1& vs1 & α1 & EqH & ? & Eqvs & Eqα' & ?).
+  symmetry in EqH. simplify_eq.
+  have Eqσt: mkState σt.(shp) σt.(sst) σt.(scs) σt.(snp) σt.(snc) = σt
+    by destruct σt. rewrite Eqσt. rewrite Eqσt in STEPT'. clear Eqσt.
+  exists es, σs, r, n. split; last split; [|done|].
+  - right. split; [lia|done].
+  - by left.
+Qed.
 
 Lemma vsP_res_mapsto_tag_on_top (r: resUR) l t s σs σt :
   (r ⋅ res_mapsto l [s] t) ={σs,σt}=> (λ _ _ σt, tag_on_top σt.(sst) l t : Prop).
