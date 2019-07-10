@@ -854,7 +854,7 @@ Proof.
   - intros. rewrite insert_insert insert_empty. naive_solver.
 Qed.
 
-(** can probably be derived from [write_related_values]? *)
+(** Writing to owned (unique) location *)
 Lemma sim_body_write_unique_1
   fs ft (r r' r'' rs: resUR) n l h tg T s σs σt Φ:
   tsize T = 1%nat →
