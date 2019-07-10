@@ -350,6 +350,8 @@ Proof.
   eapply sim_simplify, expr_wf_soundness; done.
 Qed.
 
+Print Assumptions sim_mod_fun_refl.
+
 Lemma sim_mod_funs_refl prog :
   prog_wf prog →
   sim_mod_funs prog prog.

@@ -60,7 +60,7 @@ Proof.
   apply: sim_simple_result. simpl.
   sim_apply sim_simple_deref=>l' t' ?. simplify_eq/=.
   (* Write unique. We need to drop to complex mode, to preserve some local state info. *)
-  intros σs σt Hσs Hσt. 
+  intros σs σt Hσs Hσt.
   sim_apply sim_body_write_unique_1; [solve_sim..|].
   intros ?? Htop. simplify_eq/=.
   sim_apply sim_body_let. simplify_eq/=.
