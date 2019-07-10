@@ -6,10 +6,15 @@ Things in the "logical" side of the model that could be made better:
   Then we can also make PrivLoc handle fairly uniformly locations that are "privatized" by being protected or by being local.
 - heaplets need to map to *pairs of* scalars: left val, right val. Remove silly equality from LmapInv.
 - lmap needs to become `gmap tag (ex (gset loc))` so that we can make local locations public and know that this does not de-privatize any other location.
+  or maybe instead just make it a different state that a tag can be in? pub, uniq, local? Seems more reasonable at this point.
 - No need for (persistently) public call IDs.  Still need to be able to pass
   ownership of *all* tag protected by a call ID though, so
   `gmap call_id (ex (gmap tag loc))` seems reasonable, or else `gmap call_id (prod frac (gmap tag (ex loc)))`.
+- Free and Retag should be WF!
+
+More speculative:
 - Can the separate private/local things be better integrated to the notion of a "private location" for the purposes of stating lemmas about them?
+  Basically, can "protected" become another state of the tag? How can we make sure a call ID protects nothing when EndCall happens?
   Or will that just always be `own_local loc tag \/ (exists cid h, own_call_id cid h /\ h !! loc = Some tag)`?
 
 Things in the "model" side:
