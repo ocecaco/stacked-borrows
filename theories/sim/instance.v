@@ -9,6 +9,9 @@ Notation "r ⊨{ n , fs , ft } ( es , σs ) ≥ ( et , σt ) : Φ" :=
 
 Notation "r |==> r'" := (viewshift wsat r r') (at level 65, format "r  |==>  r'").
 
+Notation "r |={ σs , σt }=> r'" := (viewshift_state wsat r r' σs σt)
+  (at level 65, format "r  |={ σs , σt }=>  r'").
+
 Notation rrel := (rrel vrel).
 
 (** "modular" simulation relations dont make assumptions

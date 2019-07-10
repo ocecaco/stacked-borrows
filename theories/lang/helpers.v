@@ -235,3 +235,10 @@ Proof.
   simpl. rewrite Hfg. destruct (g y); last done.
   by f_equal.
 Qed.
+
+Lemma repeat_lookup_lt_length `{A: Type} (a: A) (n: nat) :
+  ∀ i, (i < n)%nat → repeat a n !! i = Some a.
+Proof.
+  induction n as [|n IH]; intros i Lt; [lia|]; simpl.
+  destruct i as [|i]; [done|]. simpl. apply IH. lia.
+Qed.
