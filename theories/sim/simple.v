@@ -358,7 +358,7 @@ Lemma sim_simple_retag_public fs ft r n (rs rt: result) k css cst Φ :
   r ⊨ˢ{n,fs,ft} (Retag rs k, css) ≥ (Retag rt k, cst) : Φ.
 Proof.
   intros [Hrel ?]%rrel_with_eq. simplify_eq.
-Admitted.
+Abort.
 
 (** * Pure *)
 Lemma sim_simple_let fs ft r n x (vs1 vt1: result) es1 et1 es2 et2 css cst Φ :
