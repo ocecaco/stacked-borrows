@@ -32,6 +32,7 @@ theories/sim/tactics.v
 theories/sim/instance.v
 theories/sim/body.v
 theories/sim/viewshift.v
+theories/sim/invariant_access.v
 theories/sim/refl_pure_step.v
 theories/sim/refl_mem_step.v
 theories/sim/refl_step.v
