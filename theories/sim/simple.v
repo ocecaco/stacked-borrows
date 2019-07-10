@@ -297,6 +297,7 @@ Proof.
 Qed.
 
 Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
+  (0 < tsize ty)%nat →
   r ≡ r' ⋅ res_mapsto l [s] tg →
   arel rs s' s →
   r' ≡ r'' ⋅ rs →
@@ -316,7 +317,8 @@ Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
     (Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default, cst)
   : Φ.
 Proof.
-Admitted.
+  intros ???? HH σs σt <- <-. eapply sim_body_retag_local_mut_ref; eauto.
+Qed.
 
 (** * Memory: shared *)
 Lemma sim_simple_alloc_public fs ft r n T css cst Φ :

@@ -960,7 +960,7 @@ Proof.
   destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPT)
       as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst et'.
   apply retag_ref_change in EqT as (li & to & Eqx' & Eqh' & Eqp' & RB); [|done..].
-  subst h' nxtp'. rewrite Eqhs in Eqx'. simplify_eq.
+  subst h' nxtp'. rewrite Eqhs in Eqx'. simplify_eq. simpl in RB.
   set tn := σt.(snp).
   set tk := tkUnique.
 
@@ -1011,9 +1011,8 @@ Proof.
     specialize (EQ1 O). rewrite Eqlv shift_loc_0_nat in EQ1.
     rewrite (EQ1 NZST). apply lookup_lt_is_Some_2. by rewrite Eqlv.
   - (* tag on top as result of retagging Unique *)
-    rewrite /tag_on_top.
-    admit.
-Abort.
+    eapply tag_on_top_reborrowN; [|eauto]. done.
+Admitted.
 
 
 (** InitCall *)
