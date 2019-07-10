@@ -327,7 +327,7 @@ Qed.
 
 (** Removing incompatible items *)
 
-Lemma find_granting_incompatible_head' stk kind t ti idx pm pmi oproi
+Lemma find_granting_incompatible_head stk kind t ti idx pm pmi oproi
   (HD: is_stack_head (mkItem pmi (Tagged t) oproi) stk)
   (NEQ: Tagged t ≠ ti) :
   find_granting stk kind ti = Some (idx, pm) →
@@ -338,13 +338,6 @@ Proof.
   case list_find => [[idx' pm'] /=|//]. intros . simplify_eq. simpl.
   by eexists.
 Qed.
-
-Lemma find_granting_incompatible_head stk kind t ti idx pm pmi oproi
-  (HD: is_stack_head (mkItem pmi (Tagged ti) oproi) stk)
-  (NEQ: t ≠ ti) :
-  find_granting stk kind (Tagged t) = Some (idx, pm) →
-  is_stack_head (mkItem pmi (Tagged ti) oproi) (take idx stk).
-Proof. apply find_granting_incompatible_head'; [done|naive_solver]. Qed.
 
 (* Writing *)
 Lemma find_first_write_incompatible_head stk pm idx t opro pmi
@@ -393,8 +386,8 @@ Qed.
 Lemma access1_write_remove_incompatible_head stk t ti cids n stk'
   (ND: stack_item_tagged_NoDup stk) :
   (∃ oproi, is_stack_head (mkItem Unique (Tagged ti) oproi) stk) →
-  access1 stk AccessWrite (Tagged t) cids = Some (n, stk') →
-  t ≠ ti →
+  access1 stk AccessWrite t cids = Some (n, stk') →
+  Tagged ti ≠ t →
   ∀ pm opro, (mkItem pm (Tagged ti) opro) ∈ stk' → False.
 Proof.
   intros HD. rewrite /access1.
@@ -455,8 +448,8 @@ Proof. intros ????. eapply (replace_check'_incompatible_items _ []); eauto. Qed.
 Lemma access1_read_replace_incompatible_head stk t ti cids n stk'
   (ND: stack_item_tagged_NoDup stk) :
   (∃ oproi, is_stack_head (mkItem Unique (Tagged ti) oproi) stk) →
-  access1 stk AccessRead (Tagged t) cids = Some (n, stk') →
-  t ≠ ti →
+  access1 stk AccessRead t cids = Some (n, stk') →
+  Tagged ti ≠ t →
   ∀ pm opro, (mkItem pm (Tagged ti) opro) ∈ stk' → pm = Disabled.
 Proof.
   intros HD. rewrite /access1.
@@ -495,14 +488,14 @@ Qed.
 
 Lemma find_granting_incompatible_active_SRO stk t ti idx pm
   (HD: ti ∈ active_SRO stk) :
-  find_granting stk AccessWrite (Tagged t) = Some (idx, pm) →
+  find_granting stk AccessWrite t = Some (idx, pm) →
   ti ∈ active_SRO (take idx stk).
 Proof.
   revert idx. induction stk as [|it stk IH]; simpl; intros idx; [set_solver|].
   move : HD. rewrite /find_granting /=.
   destruct it.(perm) eqn:Eqp; [set_solver..| |set_solver].
   rewrite decide_False; last (intros [PM _]; by rewrite Eqp in PM).
-  destruct (list_find (matched_grant AccessWrite (Tagged t)) stk)
+  destruct (list_find (matched_grant AccessWrite t) stk)
     as [[n' pm']|] eqn:Eql; [|done].
   simpl. intros IN ?. simplify_eq. rewrite /= Eqp. move : IN.
   destruct it.(tg) eqn:Eqt; simpl;
@@ -541,7 +534,7 @@ Qed.
 Lemma access1_write_remove_incompatible_active_SRO stk t ti cids n stk'
   (ND: stack_item_tagged_NoDup stk) :
   (ti ∈ active_SRO stk) →
-  access1 stk AccessWrite (Tagged t) cids = Some (n, stk') →
+  access1 stk AccessWrite t cids = Some (n, stk') →
   ∀ pm opro, (mkItem pm (Tagged ti) opro) ∈ stk' → False.
 Proof.
   intros HD. rewrite /access1.
@@ -569,11 +562,11 @@ Proof.
   destruct kind.
   - case replace_check as [stk1|] eqn:Eq; [|done].
     simpl. intros ?. simplify_eq.
-    have HD' := find_granting_incompatible_head' _ _ _ _ _ _ _ _ HD NEQ GRANT.
+    have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
     destruct HD' as [stk' Eqs].
     move : Eq.
     rewrite Eqs /replace_check /= /check_protector /= /is_active bool_decide_true //.
-  - have HD' := find_granting_incompatible_head' _ _ _ _ _ _ _ _ HD NEQ GRANT.
+  - have HD' := find_granting_incompatible_head _ _ _ _ _ _ _ _ HD NEQ GRANT.
     case find_first_write_incompatible as [idx|] eqn:INC; [|done]. simpl.
     have NONEZ: (0 < idx)%nat.
     { eapply (find_first_write_incompatible_head _ _ _ _ _ _ HD'); eauto. }
@@ -617,16 +610,16 @@ Abort.
 
 
 Lemma tag_unique_head_access cids stk t opro kind :
-  is_stack_head (mkItem Unique (Tagged t) opro) stk →
-  ∃ n, access1 stk kind (Tagged t) cids = Some (n, stk).
+  is_stack_head (mkItem Unique t opro) stk →
+  ∃ n, access1 stk kind t cids = Some (n, stk).
 Proof.
   intros [stk1 Eqstk]. 
   rewrite /access1.
-  have Eq1: list_find (matched_grant kind (Tagged t)) stk =
-    Some (O, mkItem Unique (Tagged t) opro).
+  have Eq1: list_find (matched_grant kind t) stk =
+    Some (O, mkItem Unique t opro).
   { apply list_find_Some_not_earlier. split; last split.
     rewrite Eqstk //. done. intros; lia. }
-  have Eq2: find_granting stk kind (Tagged t) = Some (O, Unique).
+  have Eq2: find_granting stk kind t = Some (O, Unique).
   { rewrite /= /find_granting Eq1 //. }
   rewrite Eq2 /=.
   exists O. by destruct kind.

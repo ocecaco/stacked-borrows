@@ -334,7 +334,9 @@ Lemma sim_simple_write_shared fs ft r n (rs1 rs2 rt1 rt2: result) css cst Φ :
   r ⊨ˢ{n,fs,ft} (rs1 <- rs2, css) ≥ (rt1 <- rt2, cst) : Φ.
 Proof.
   intros [Hrel1 ?]%rrel_with_eq [Hrel2 ?]%rrel_with_eq. simplify_eq.
-Admitted.
+  intros HH σs σt <-<-.
+  eapply sim_body_write_public; eauto.
+Qed.
 
 
 Lemma sim_simple_copy_shared fs ft r n (rs rt: result) css cst Φ :
