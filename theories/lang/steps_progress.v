@@ -1177,7 +1177,7 @@ Proof.
 Qed.
 
 Lemma retag_ref_change_1 h α cids c nxtp x rk mut T h' α' nxtp'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) :
   retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
   ∃ l otag, h !! x = Some (ScPtr l otag) ∧
   ∃ rk' new,
@@ -1195,8 +1195,9 @@ Qed.
 
 Lemma retag_ref_change_2
   h α cids c nxtp l otag rk (mut: mutability) T new α' nxtp'
-  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
-  let rk' := if mut then UniqueRef false else SharedRef in
+  (TS: (O < tsize T)%nat)
+  (FRZ: if mut is Immutable then is_freeze T else True) :
+  let rk' := if mut is Immutable then SharedRef else UniqueRef false in
   let opro := (adding_protector rk c) in
   retag_ref h α cids nxtp l otag T rk' opro = Some (new, α', nxtp') →
   nxtp' = S nxtp ∧ new = Tagged nxtp ∧
@@ -1209,7 +1210,8 @@ Proof.
 Qed.
 
 Lemma retag_ref_change h α cids c nxtp x rk mut T h' α' nxtp'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat)
+  (FRZ: if mut is Immutable then is_freeze T else True) :
   retag h α nxtp cids c x rk (Reference (RefPtr mut) T) = Some (h', α', nxtp') →
   ∃ l otag, h !! x = Some (ScPtr l otag) ∧
     h' = <[x := ScPtr l (Tagged nxtp)]>h ∧
@@ -1227,12 +1229,14 @@ Qed.
 
 Lemma retag_ref_reborrowN
   (h: mem) α t cids c x l otg T rk (mut: mutability) α'
-  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat) (FRZ: is_freeze T) :
+  (N2: rk ≠ TwoPhase) (TS: (O < tsize T)%nat)
+  (FRZ: if mut is Immutable then is_freeze T else True) :
   h !! x = Some (ScPtr l otg) →
   reborrowN α cids l (tsize T) otg (Tagged t)
      (if mut then Unique else SharedReadOnly) (adding_protector rk c) =
      Some α' →
-  retag h α t cids c x rk (Reference (RefPtr mut) T) = Some (<[x:=ScPtr l (Tagged t)]> h, α', S t).
+  retag h α t cids c x rk (Reference (RefPtr mut) T) =
+    Some (<[x:=ScPtr l (Tagged t)]> h, α', S t).
 Proof.
   intros Eqx RB. rewrite retag_equation_2 Eqx /= /retag_ref.
   destruct (tsize T) eqn:EqT; [lia|].
