@@ -303,7 +303,7 @@ Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty css cst Φ :
   (∀ l_inner tg_inner hplt,
     let s_new := ScPtr l_inner (Tagged tg_inner) in
 (*    let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
-    match m with 
+    match m with
     | Mutable => is_Some (hplt !! l_inner)
     | Immutable => if is_freeze ty then is_Some (hplt !! l_inner) else True
     end → *)

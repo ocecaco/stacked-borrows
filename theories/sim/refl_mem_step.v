@@ -878,32 +878,76 @@ Qed.
 
 (** Retag *)
 
-Lemma sim_body_retag_default fs ft r n x xtag mut T σs σt Φ
-  (TS: (O < tsize T)%nat) (FRZ: is_freeze T) (Eqx: σs.(shp) = σt.(shp)) :
-  let Tr := (Reference (RefPtr mut) T) in
-  (∀ c cids hs' αs' nps' ht' αt' npt' (STACK: σt.(scs) = c :: cids),
+Lemma sim_body_retag_local_mut_ref fs ft r r' r'' n x xt xs xs' rs T σs σt Φ :
+  (0 < tsize T)%nat →
+  (* owns local x with tag xt and value xs *)
+  r ≡ r' ⋅ res_mapsto x [xs] xt →
+  (* xs is supposed to be a Ptr(li,told), and, coming from the arguments, told
+    must be a public tag. *)
+  arel rs xs' xs →
+  r' ≡ r'' ⋅ rs →
+  let Tr := (Reference (RefPtr Mutable) T) in
+  (∀ li told,
+    xs = ScPtr li told →
+    ∀ tnew hplt c cids hs' αs' nps' ht' αt' npt' (STACK: σt.(scs) = c :: cids),
     retag σt.(shp) σt.(sst) σt.(snp) σt.(scs) c x Default Tr
       = Some (ht', αt', npt') →
     retag σs.(shp) σs.(sst) σs.(snp) σs.(scs) c x Default Tr
       = Some (hs', αs', nps') →
     let σs' := mkState hs' αs' σs.(scs) nps' σs.(snc) in
     let σt' := mkState ht' αt' σt.(scs) npt' σt.(snc) in
-      Φ r n (ValR [☠]%S) σs' (ValR [☠]%S) σt' : Prop) →
+    let s_new := ScPtr li (Tagged tnew) in
+    let tk := tkUnique in
+    is_Some (hplt !! li) →
+    tag_on_top αt' li tnew →
+    Φ (r'' ⋅ rs ⋅ res_mapsto x [s_new] xt ⋅ res_tag tnew tk hplt)
+      n (ValR [☠%S]) σs' (ValR [☠%S]) σt') →
   r ⊨{n,fs,ft}
-    (Retag (Place x xtag Tr) Default, σs) ≥
-    (Retag (Place x xtag Tr) Default, σt) : Φ.
+    (Retag (Place x (Tagged xt) Tr) Default, σs) ≥
+    (Retag (Place x (Tagged xt) Tr) Default, σt) : Φ.
 Proof.
-  intros Tr POST. pfold. intros NT. intros.
+  intros NZST Eqr PTag Eqr' Tr POST. pfold. intros NT. intros.
+  have WSAT1 := WSAT. (* back up *)
+
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
+  destruct SREL as (Eqsst & Eqnp & Eqcs & Eqnc & PUBP).
+  (* some lookup properties *)
+  have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
+  have HLxtr: r.(rtm) !! xt ≡ Some (to_tagKindR tkUnique, {[x := to_agree xs]}).
+  { rewrite Eqr. eapply tmap_lookup_op_unique_included;
+                  [apply VALIDr|apply cmra_included_r|].
+    rewrite res_mapsto_tlookup // fmap_insert fmap_empty //. }
+  have HLxtrf:
+    (r_f ⋅ r).(rtm) !! xt ≡ Some (to_tagKindR tkUnique, {[x := to_agree xs]}).
+  { apply tmap_lookup_op_r_unique_equiv; [apply VALID|done]. }
+  have HLNxt: (r_f ⋅ r'' ⋅ rs).(rtm) !! xt = None.
+  { destruct ((r_f ⋅ r'' ⋅ rs).(rtm) !! xt) as [ls|] eqn:Eqls; [|done].
+    exfalso. move : HLxtrf.
+    rewrite Eqr Eqr' cmra_assoc (cmra_assoc r_f) lookup_op Eqls res_mapsto_tlookup.
+    apply tagKindR_exclusive_heaplet. }
+  have HLxlr : (r.(rlm) !! x : optionR tagR) ≡ Some (to_tagR xt).
+  { rewrite Eqr. apply lmap_lookup_op_r; [apply VALIDr|].
+    rewrite (res_mapsto_llookup_1 x [xs]); [done|by simpl;lia]. }
+  have HLxlrf: ((r_f ⋅ r).(rlm) !! x : optionR tagR) ≡ Some (to_tagR xt).
+  { apply lmap_lookup_op_r; [apply VALID|done]. }
+
+  (* xt is the head of x's stack *)
+  destruct (LINV _ _ HLxlrf) as (Ltxt & Eqst & Eqhpl).
+  destruct (PINV _ _ _ HLxtrf) as [_ Pxt]. specialize (Pxt x xs).
+  rewrite lookup_insert in Pxt.
+  specialize (Pxt ltac:(done) _ Eqst Unique None) as (Eqhs & _ & HD).
+  { by rewrite elem_of_list_singleton. } { done. }
+
   split; [|done|].
-  { right.
+  { (* tgt reducible *)
+    right.
     edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
     (* inversion retag of src *)
     destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPS)
       as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst es'.
-    apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
-    subst h' nxtp'. destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
-    rewrite Eqx in Eqx'. rewrite Eqst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
+    apply retag_ref_change in EqT as (l & to & Eqx' & Eqh' & Eqp' & RB); [|done..].
+    subst h' nxtp'. rewrite Eqhs Eqx' in Eqhpl. simplify_eq.
+    rewrite Eqsst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
     (* retag of tgt *)
     exists (#[☠])%V,
       (mkState (<[x:=ScPtr l (Tagged σt.(snp))]> σt.(shp)) α' σt.(scs) (S σt.(snp)) σt.(snc)).
@@ -911,21 +955,66 @@ Proof.
     eapply retag_ref_reborrowN; eauto. }
   constructor 1.
   intros.
+
   (* inversion retag of tgt *)
   destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPT)
       as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst et'.
-  apply retag_ref_change in EqT as (l & otg & Eqx' & Eqh' & Eqp' & RB); [|done..].
-  subst h' nxtp'.
-  exists (#[☠])%V,
-      (mkState (<[x:=ScPtr l (Tagged σs.(snp))]> σs.(shp)) α' σs.(scs) (S σs.(snp)) σs.(snc)).
-  exists r, n. split; last split.
-  { left. apply tc_once.
-    destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc &?).
-    rewrite -Eqx in Eqx'. rewrite -Eqst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
-    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
-    eapply retag_ref_reborrowN; eauto. }
-  { split.
+  apply retag_ref_change in EqT as (li & to & Eqx' & Eqh' & Eqp' & RB); [|done..].
+  subst h' nxtp'. rewrite Eqhs in Eqx'. simplify_eq.
+  set tn := σt.(snp).
+  set tk := tkUnique.
+
+  (* new heaplet *)
+  have InDli: ∀ i, (i < tsize T)%nat → li +ₗ i ∈ dom (gset loc) σt.(shp).
+  { intros i Lti. rewrite (state_wf_dom _ WFT).
+    destruct (for_each_lookup_case_2 _ _ _ _ _ RB) as [EQ1 _].
+    specialize (EQ1 _ Lti) as (? & ? & In1 & _). by eapply elem_of_dom_2. }
+  assert (∃ vl, read_mem li (tsize T) σt.(shp) = Some vl) as [vl Eqvl]
+    by apply (read_mem_is_Some _ _ _ InDli).
+  set hplt : heaplet := write_mem li vl ∅.
+
+  set σs' :=
+    (mkState (<[x:=ScPtr li (Tagged σs.(snp))]> σs.(shp)) α' σs.(scs) (S σs.(snp)) σs.(snc)).
+
+  have RETAGt :
+    retag σt.(shp) σt.(sst) σt.(snp) σt.(scs) c x Default (&mut T) =
+      Some (<[x:=ScPtr li (Tagged σt.(snp))]> σt.(shp), α', S σt.(snp)).
+  { eapply retag_ref_reborrowN; eauto. }
+  have RETAGs :
+    retag σs.(shp) σs.(sst) σs.(snp) σs.(scs) c x Default (&mut T) =
+      Some (<[x:=ScPtr li (Tagged σs.(snp))]> σs.(shp), α', S σs.(snp)).
+  { rewrite -Eqsst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
+    eapply retag_ref_reborrowN; eauto. by rewrite -Eqhpl. }
+
+  (* src makes a step *)
+  have STEPS: (Retag (Place x (Tagged xt) Tr) Default, σs) ~{fs}~> ((#[☠])%V, σs').
+  { rewrite -Eqsst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
+    eapply (head_step_fill_tstep _ []), retag1_head_step'; eauto. }
+
+  exists (#[☠])%V, σs'.
+  exists (r'' ⋅ rs ⋅ res_mapsto x [ScPtr li (Tagged tn)] xt ⋅ res_tag tn tk hplt), n.
+  split; last split.
+  { left. by apply tc_once. }
+  { rewrite 2!cmra_assoc (cmra_assoc r_f).
+    split; last split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - admit.
+    - admit.
+    - admit.
+    - admit.
+    - admit. }
+
+  left. apply : sim_body_result. intros. simplify_eq. eapply POST; eauto.
+  - destruct (read_mem_values _ _ _ _ Eqvl) as [Eqlv Eqhp].
+    destruct (write_mem_lookup li vl ∅) as [EQ1 _].
+    specialize (EQ1 O). rewrite Eqlv shift_loc_0_nat in EQ1.
+    rewrite (EQ1 NZST). apply lookup_lt_is_Some_2. by rewrite Eqlv.
+  - (* tag on top as result of retagging Unique *)
+    rewrite /tag_on_top.
+    admit.
 Abort.
+
 
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
