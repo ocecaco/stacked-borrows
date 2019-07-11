@@ -177,9 +177,7 @@ Inductive scalar_eq h : scalar → scalar → Prop :=
    even if they are not.  Given that our `free` actually makes addresses
    re-usable, this may not be strictly necessary, but it is the most
    conservative choice that avoids UB (and we cannot use UB as this operation is
-   possible in safe Rust).  See
-   <https://internals.rust-lang.org/t/comparing-dangling-pointers/3019> for some
-   more background. *)
+   possible in safe Rust). *)
 | LocUnallocL l1 l2 tag1 tag2 :
     h !! l1 = None →
     scalar_eq h (ScPtr l1 tag1) (ScPtr l2 tag2)
