@@ -2,9 +2,9 @@
 
 ## Technical Appendix
 
-The technical appendix contains a complete coherent description of the Stacked
-Borrows semantics, as well as the definition of our key simulation relation that
-we used for the Coq formalization.
+The technical appendix in `appendix.pdf` contains a complete coherent
+description of the Stacked Borrows semantics, as well as the definition of our
+key simulation relation that we used for the Coq formalization.
 
 ## Coq Formalization
 
