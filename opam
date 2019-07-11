@@ -1,13 +1,11 @@
 opam-version: "1.2"
 name: "coq-stbor"
-maintainer: "Hoang-Hai Dang <haidang@mpi-sws.org>"
-authors: "The Stacked Borrows Team"
-homepage: "https://gitlab.mpi-sws.org/haidang/lambdarust-alias"
-bug-reports: "https://gitlab.mpi-sws.org/haidang/lambdarust-alias/issues"
-dev-repo: "https://gitlab.mpi-sws.org/haidang/lambdarust-alias.git"
+maintainer: "Anonymous"
+authors: "Anonymous"
+synopsis: "The Coq artifact for 'Stacked Borrows'"
+
 build: [make "-j%{jobs}%"]
 install: [make "install"]
-remove: [ "sh" "-c" "rm -rf '%{lib}%/coq/user-contrib/gpfsl'" ]
 depends: [
   "coq-iris" { (= "dev.2019-06-18.4.d07d8a4d") | (= "dev") }
   "coq-paco" { (= "3.0.0") }

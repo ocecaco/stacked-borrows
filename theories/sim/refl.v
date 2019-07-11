@@ -17,7 +17,7 @@ Defined by recursion to make sure we don't miss a case. *)
 Definition scalar_wf (a: scalar) : Prop :=
   match a with
   | ScPoison | ScInt _ | ScFnPtr _ => True
-  | ScnPtr => False
+  | ScnPtr => False (* literal pointers *)
   end.
 Definition value_wf (v: value) : Prop := Forall scalar_wf v.
 Fixpoint expr_wf (e: expr) : Prop :=
@@ -32,8 +32,8 @@ Fixpoint expr_wf (e: expr) : Prop :=
   | Proj e1 e2 | Conc e1 e2 | BinOp _ e1 e2 | Let _ e1 e2 | Write e1 e2 =>
     expr_wf e1 ∧ expr_wf e2
   (* Forbidden cases. *)
-  | InitCall e | EndCall e => False
-  | Place _ _ _ => False
+  | InitCall e | EndCall e => False (* administrative *)
+  | Place _ _ _ => False (* literal pointers *)
   | Free _ | Retag _ _ => False (* TODO: We'd like to support deallocation and retag! *)
   end.
 Definition prog_wf (prog: fn_env) :=
