@@ -684,3 +684,25 @@ Proof.
   simpl. intros. simplify_eq/=. eexists. rewrite lookup_insert.
   simpl. done.
 Qed.
+
+Lemma tag_on_top_grant_unique stk old it cids  stk'
+  (UNIQ: it.(perm) = Unique) :
+  grant stk old it cids = Some stk' → is_stack_head it stk'.
+Proof.
+  rewrite /grant.
+  case find_granting as [gip|]; [|done].
+  rewrite /= UNIQ /=. case access1 => [[n1 stk1]/=|//].
+  destruct stk1; [|case decide => ?]; intros; simplify_eq; by eexists.
+Qed.
+
+Lemma tag_on_top_reborrowN α cids l n to tn α' (NZST: (0 < n)%nat):
+  reborrowN α cids l n to (Tagged tn) Unique None = Some α' →
+  tag_on_top α' l tn.
+Proof.
+  intros RB.
+  destruct (for_each_lookup_case_2 _ _ _ _ _ RB) as [EQ _].
+  specialize (EQ O ltac:(lia)) as (stk & stk' & Eq & Eq' & GR).
+  rewrite shift_loc_0_nat in Eq, Eq'.
+  apply tag_on_top_grant_unique in GR as [stk1 Eq1]; [|done].
+  rewrite /tag_on_top Eq' Eq1 /=. by eexists.
+Qed.

@@ -47,7 +47,7 @@ Proof.
   destruct args as [|args args']; first by inversion AREL.
   apply Forall2_cons_inv in AREL as [AREL ATAIL].
   destruct args' as [|]; last by inversion ATAIL. clear ATAIL.
-  sim_apply sim_simple_retag_local; [solve_sim..|].
+  sim_apply sim_simple_retag_local; [simpl; lia|solve_sim..|].
   move=>l_i tg_i hplt /= Hl_i.
   (* Call *)
   sim_apply sim_simple_let=>/=.
