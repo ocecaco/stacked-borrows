@@ -16,7 +16,6 @@ theories/lang/steps_wf.v
 theories/lang/steps_progress.v
 theories/lang/steps_inversion.v
 theories/lang/steps_retag.v
-theories/lang/examples.v
 theories/lang/subst_map.v
 
 theories/sim/behavior.v
