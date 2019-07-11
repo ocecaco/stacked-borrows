@@ -15,6 +15,15 @@ formalizing these arguments in Coq. Our simulation framework is nearly done
 transformations (example1) on top of that framework. We expect the framework and
 the remaining proofs to be done very soon.
 
+## Rust Counterexamples and Miri
+
+You can run the counterexamples from the paper in Rust by clicking the following links, and then selecting "Run".
+You can also run them in Miri via "Tools" - "Miri", which will show a Stacked Borrows violation.
+
+* [`example1`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=18e6931728976779452f0d489f59a71c)
+* [`example2`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=85f368db00a789caa08e2b6960ebaf01)
+* [`example2_down`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=66c928ddf745a779272a73262b921a56)
+
 ### How to build
 
 #### Build dependencies (via opam)
