@@ -667,3 +667,13 @@ Proof.
   - rewrite -(cmra_assoc r) 2!(cmra_comm (res_loc _ _ _)) 2!cmra_assoc.
     rewrite /= insert_empty //.
 Qed.
+
+Lemma res_mapsto_tdom l v t:
+  dom (gset nat) (res_mapsto l v t).(rtm) ≡ {[t]}.
+Proof.
+  intros t1.
+  rewrite elem_of_dom /res_mapsto lookup_op /= left_id elem_of_singleton.
+  case (decide (t1 = t)) => ?.
+  - subst t1. rewrite lookup_insert. naive_solver.
+  - rewrite lookup_insert_ne // lookup_empty. split; [by destruct 1|done].
+Qed.
