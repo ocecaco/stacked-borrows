@@ -203,5 +203,5 @@ Proof.
   destruct (list_Forall_rrel_vrel_2 _ _ _ RREL VRELs) as (vs1 & vt & Eqvs1 & ? & FA & ?).
   subst. rewrite list_Forall_result_value_2 in FA.
   exists vt. split; [done|].
-  apply Inj_instance_6 in Eqvs1; [by subst|]. intros ??. by inversion 1.
+  apply fmap_inj in Eqvs1; [by subst|]. intros ??. by inversion 1.
 Qed.
