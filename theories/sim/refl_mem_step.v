@@ -1038,11 +1038,9 @@ Proof.
   { intros. rewrite lookup_op res_tag_lookup_ne; [|done].
     rewrite right_id lookup_op res_mapsto_tlookup_ne; [|done].
     by rewrite (lookup_op   _ (res_mapsto _ _ _).(rtm)) res_mapsto_tlookup_ne. }
-  SearchAbout tn lookup.
   have NEQxt: xt ≠ tn.
   { intros ?. subst xt. move : HLxtrf.
     rewrite Eqr Eqr' cmra_assoc (cmra_assoc r_f) HNtorf. inversion 1. }
-
 
   exists (#[☠])%V, σs'.
   exists (r'' ⋅ rs ⋅ res_mapsto x [ScPtr li (Tagged tn)] xt ⋅ res_tag tn tk hplt), n.
