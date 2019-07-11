@@ -1,3 +1,5 @@
+Change retag semantics! Don't prove anything about this crazy monster.
+
 Things in the "logical" side of the model that could be made better:
 - The invariant for one (sub-)resource should only talk about that resource.
   To fix CallMapInv: replace set T by `gmap loc tag` indicating which locations are protected.
