@@ -57,7 +57,12 @@ The actual proof of the example is in `theories/opt/ex1.v`.  The logical
 relation to establish the reflexivity of our simulation relation for well-formed
 programs is in `theories/sim/refl.v`.
 
+### Gaps in the proof
+
 The formalization is not entirely finished: our notion of well-formed
 expressions (`expr_wf`, a precondition for the reflexivity theorem) excludes not just
 programs containing literal locations and administrative instructions (which is
 standard), it also excludes deallocation and retagging.
+
+We also have one admitted lemma that gets used in the example proof:
+`sim_body_retag_local_mut_ref`, a proof rule for retagging.
