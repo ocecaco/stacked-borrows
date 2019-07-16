@@ -285,49 +285,42 @@ Proof.
 Qed.
 
 (** lmap *)
-(* Lemma lmap_lookup_op_r (lm1 lm2 : lmapUR) (VALID: ✓ (lm1 ⋅ lm2)) l ls :
-  lm2 !! l ≡ Some ls → ((lm1 ⋅ lm2) !! l : optionR tagR) ≡ Some ls.
+Lemma lmap_lookup_op_r (lm1 lm2 : lmapUR)
+  (VALID: ✓ (lm1 ⋅ lm2)) t ls :
+  lm2 !! t ≡ Some ls → (lm1 ⋅ lm2) !! t ≡ Some ls.
 Proof.
-  intros Eq. move : (VALID l). rewrite lookup_op Eq.
-  destruct (lm1 !! l) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
+  intros Eq. move : (VALID t). rewrite lookup_op Eq.
+  destruct (lm1 !! t) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
   rewrite -Some_op.
   destruct ls, ls2; simpl; try inversion 1.
 Qed.
 
-Lemma lmap_lookup_op_l (lm1 lm2 : lmapUR) (VALID: ✓ (lm1 ⋅ lm2)) l ls :
-  lm1 !! l ≡ Some ls → (lm1 ⋅ lm2) !! l ≡ Some ls.
+Lemma lmap_lookup_op_l (lm1 lm2 : lmapUR)
+  (VALID: ✓ (lm1 ⋅ lm2)) t ls :
+  lm1 !! t ≡ Some ls → (lm1 ⋅ lm2) !! t ≡ Some ls.
 Proof.
-  intros Eq. move : (VALID l). rewrite lookup_op Eq.
-  destruct (lm2 !! l) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite right_id].
+  intros Eq. move : (VALID t). rewrite lookup_op Eq.
+  destruct (lm2 !! t) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite right_id].
   rewrite -Some_op.
   destruct ls, ls2; simpl; try inversion 1.
 Qed.
 
-Lemma lmap_lookup_op_included (lm1 lm2 : lmapUR) (l: loc) (t: ptr_id)
+Lemma lmap_lookup_op_included (lm1 lm2 : lmapUR) t ls
   (VALID: ✓ lm2) (INCL: (lm1 : lmapUR) ≼ (lm2 : lmapUR)):
-  (lm1 !! l : optionR tagR) ≡ Some $ to_tagR t → (lm2 !! l : optionR tagR) ≡ Some $ to_tagR t.
+  lm1 !! t ≡ Some ls → lm2 !! t ≡ Some ls.
 Proof.
   destruct INCL as [cm' Eq]. rewrite Eq. apply lmap_lookup_op_l. by rewrite -Eq.
 Qed.
 
-Lemma lmap_exclusive_2 t1 t2 (c: tagR) :
-  Some c ⋅ Some (to_tagR t1) ≡ Some (to_tagR t2) → False.
-Proof.
-  rewrite -Some_op. intros Eq%Some_equiv_inj.
-  destruct c; inversion Eq.
-Qed.
-
-Lemma tagR_valid (ls: tagR) : valid ls → ∃ t, ls = to_tagR t.
-Proof. destruct ls as [t|]; simpl; [|done]. naive_solver. Qed.
-
-Lemma lmap_exclusive_eq_l t (c: tagR) (mb: optionR tagR) :
-  Some c ⋅ mb ≡ Some (to_tagR t) → c ≡ to_tagR t.
+Lemma lmap_exclusive_eq_l (tls: gset loc)
+  (c: (exclR (gsetO loc))) (mb: optionR (exclR (gsetO loc))) :
+  Some c ⋅ mb ≡ Some (Excl tls) → c ≡ Excl tls.
 Proof.
   intros Eq.
   have VALID: valid (Some c ⋅ mb) by rewrite Eq. move :Eq.
   destruct c, mb as [[]|]; simplify_eq; try done.
   rewrite right_id. by intros ?%Some_equiv_inj.
-Qed. *)
+Qed.
 
 (** The Core *)
 

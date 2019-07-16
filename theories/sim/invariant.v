@@ -69,9 +69,12 @@ Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
   ∃ h, r.(rtm) !! t ≡ Some (to_tgkR tkUnique, h) ∧
-  ((* local *) (∃ tls : gset loc, r.(rlm) !! t ≡ Some (Excl tls) ∧ l ∈ tls) ∨
-   (* protected *) ∃ (c: call_id) (T: gmap ptr_id (gset loc)) tls,
-      r.(rcm) !! c ≡ Some (Excl T) ∧ T !! t = Some tls ∧ l ∈ tls).
+    l ∈ dom (gset loc) h ∧
+    ((* local *)
+      (∃ tls : gset loc, r.(rlm) !! t ≡ Some (Excl tls) ∧ l ∈ tls) ∨
+     (* protector *)
+      (∃ (c: call_id) (T: gmap ptr_id (gset loc)) tls,
+        r.(rcm) !! c ≡ Some (Excl T) ∧ T !! t = Some tls ∧ l ∈ tls)).
 
 Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
   ∀ st, σt.(shp) !! l = Some st → ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st.
@@ -99,30 +102,35 @@ Definition end_call_sat (r: resUR) (c: call_id) : Prop :=
   r.(rcm) !! c ≡ Some (Excl ∅).
 
 Lemma res_end_call_sat r c :
-  ✓ r → res_callState c csPub ≼ r → end_call_sat r c.
+  ✓ r → res_cs c ∅ ≼ r → end_call_sat r c.
 Proof.
   intros Hval [r' EQ]. rewrite /end_call_sat EQ.
   destruct r' as [[tmap' cmap'] lmap'].
-  rewrite /res_callState. rewrite !pair_op /= /rcm /=.
-  apply cmap_lookup_op_l_equiv_pub; last by rewrite lookup_insert.
+  rewrite /res_cs !pair_op /= /rcm /= /to_cmUR fmap_insert fmap_empty insert_empty.
+  apply cmap_lookup_op_l_equiv; last by rewrite lookup_insert.
   destruct r as [[tmap cmap] lmap].
   destruct EQ as [[EQt EQc] EQl]. simplify_eq/=.
-  apply Hval.
+  move : Hval. rewrite /to_cmUR fmap_insert fmap_empty insert_empty.
+  intros Hval. apply Hval.
 Qed.
 
-Definition init_res : resUR := ((ε, {[O := to_callStateR csPub]}), ε).
+Definition init_res : resUR := res_cs O ∅.
+
 Lemma wsat_init_state : wsat init_res init_state init_state.
 Proof.
   split; last split; last split; last split; last split; last split.
   - apply wf_init_state.
   - apply wf_init_state.
-  - split; [|done]. split; [done|]. intros ?; simpl. destruct i.
+  - split; [|done]. split; [done|]. intros ?; simpl.
+    rewrite /to_cmUR lookup_fmap. destruct i.
     + rewrite lookup_singleton //.
     + rewrite lookup_singleton_ne //.
   - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
-  - intros ??. simpl. destruct c.
+  - intros ??. simpl. rewrite /rcm /init_res /= /to_cmUR lookup_fmap.
+    destruct c.
     + rewrite lookup_singleton. intros Eq%Some_equiv_inj.
-      destruct cs as [[]| |]; [..|lia|]; by inversion Eq.
+      destruct cs; inversion Eq. simplify_eq.
+      split; [by rewrite elem_of_list_singleton|]. intros ??. set_solver.
     + rewrite lookup_singleton_ne //. by inversion 1.
   - do 4 (split; [done|]). intros l. rewrite /= dom_empty. set_solver.
   - intros ?? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
@@ -181,14 +189,14 @@ Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qe
 Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ l t, priv_loc r1 l t → priv_loc r2 l t.
 Proof.
-  intros LE l t (h & Eqh & PRIV).
+  intros LE l t (h & Eqh & InD & PRIV).
   do 2 (apply prod_included in LE as [LE ]).
   do 2 (apply pair_valid in VAL as [VAL ]).
-  exists h. split.
-  { by apply (tmap_lookup_op_unique_included r1.(rtm)). }
-  destruct PRIV as [|(c & T & ? & ?)]; [left|right].
-  - by eapply lmap_lookup_op_included.
-  - exists c, T. split; [|done]. by apply (cmap_lookup_op_unique_included r1.(rcm)).
+  exists h. split; last split; [|done|].
+  { by apply (tmap_lookup_op_uniq_included r1.(rtm)). }
+  destruct PRIV as [(tls & ? & ?)|(c & T & tls & ? & ?)]; [left|right].
+  - exists tls. split; [|done]. by eapply lmap_lookup_op_included.
+  - exists c, T, tls. split; [|done]. by apply (cmap_lookup_op_unique_included r1.(rcm)).
 Qed.
 
 Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) tmap_inv.
@@ -201,9 +209,7 @@ Instance cmap_inv_proper : Proper ((≡) ==> (=) ==> iff) cmap_inv.
 Proof.
   intros r1 r2 [[Eqt Eqc] Eqm]  ? σ ?. subst. rewrite /cmap_inv.
   setoid_rewrite Eqc.
-  split; intros EQ ?? Eq; specialize (EQ _ _ Eq);
-    destruct cs as [[]| |]; eauto;
-    [by setoid_rewrite <- Eqt|by setoid_rewrite Eqt].
+  split; intros EQ ?? Eq; specialize (EQ _ _ Eq); destruct cs; eauto.
 Qed.
 
 Instance arel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) arel.
@@ -231,8 +237,7 @@ Lemma cinv_lookup_in (r: resUR) (σ: state) c cs:
   Wf σ → cmap_inv r σ → r.(rcm) !! c ≡ Some cs → (c < σ.(snc))%nat.
 Proof.
   intros WF CINV EQ. specialize (CINV c cs EQ).
-  destruct cs as [[]| |]; [|done..].
-  destruct CINV. by apply WF.
+  destruct cs; [|done..]. destruct CINV. by apply WF.
 Qed.
 
 Lemma cinv_lookup_in_eq (r: resUR) (σ: state) c cs:
