@@ -10,8 +10,6 @@ Proof.
   by rewrite !elem_of_dom Eq.
 Qed.
 
-(* TODO: define viewshift *)
-
 (** Public scalar relation *)
 Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
   match s1, s2 with
@@ -22,22 +20,22 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
       l1 = l2 ∧ tg1 = tg2 ∧
       match tg1 with
       | Untagged => True
-      | Tagged t => ∃ h, r.(rtm) !! t ≡ Some (to_tagKindR tkPub, h)
+      | Tagged t => ∃ h, r.(rtm) !! t ≡ Some (to_tgkR tkPub, h)
       end
   | _, _ => False
   end.
 
-Definition tmap_inv (r: resUR) (σs σ: state) : Prop :=
-  ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tagKindR k, h) →
-    (t < σ.(snp))%nat ∧
-    ∀ (l: loc) (s: scalar),
-      h !! l ≡ Some (to_agree s) →
-      ∀ (stk: stack), σ.(sst) !! l = Some stk →
+Definition tmap_inv (r: resUR) (σs σt: state) : Prop :=
+  ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tgkR k, h) →
+    (t < σt.(snp))%nat ∧
+    ∀ (l: loc) (ss st: scalar),
+      h !! l ≡ Some (to_agree (ss, st)) →
+      ∀ (stk: stack), σt.(sst) !! l = Some stk →
         ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk → pm ≠ Disabled →
           (* as long as the tag [t] is in the stack [stk] (Disabled is
             considered not in), then its heaplet [h] agree with the state [σ] *)
-          σ.(shp) !! l = Some s ∧
-          σs.(shp) !! l = Some s ∧ (* FIXME: this is a hack *)
+          σt.(shp) !! l = Some st ∧
+          σs.(shp) !! l = Some ss ∧
           (* If [k] is Unique, then [t] must be Unique at the top of [stk].
             Otherwise if [k] is Pub, then [t] can be among the top SRO items. *)
           match k with
@@ -49,37 +47,31 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   ∀ (c: call_id) (cs: callStateR), r.(rcm) !! c ≡ Some cs →
   match cs with
   (* if c is a private call id *)
-  | Cinl (Excl T) =>
+  | Excl T =>
       c ∈ σ.(scs) ∧
-      (* for any tag [t] owned by c *)
-      ∀ (t: ptr_id), t ∈ T →
+      (* for any tag [t] owned by [c] *)
+      ∀ (t: ptr_id) tls, T !! t = Some tls →
         (t < σ.(snp))%nat ∧
-        (* that protects the heaplet [h] *)
-        ∀ k h, r.(rtm) !! t ≡ Some (k, h) →
-          (* if [l] is in that heaplet [h] *)
-          ∀ (l: loc), l ∈ dom (gset loc) h →
-            (* then a c-protector must be in the stack of l *)
-            ∃ stk pm, σ.(sst) !! l = Some stk ∧
-              mkItem pm (Tagged t) (Some c) ∈ stk ∧ pm ≠ Disabled
-  (* if c is a public call id *)
-  | Cinr _ => (c < σ.(snc))%nat
+        (* and any [l] protected by [t] *)
+        ∀ l, l ∈ tls →
+        (* then a [c]-protector must be in the stack of [l] *)
+          ∃ stk pm, σ.(sst) !! l = Some stk ∧
+          mkItem pm (Tagged t) (Some c) ∈ stk ∧ pm ≠ Disabled
   | _ => False
   end.
 
 Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ (l: loc) t,
-    (r.(rlm) !! l: optionR tagR) ≡ Some (to_tagR t) →
+  ∀ t (tls: gset loc), r.(rlm) !! t ≡ Some (Excl tls) →
     (t < σt.(snp))%nat ∧
-    σt.(sst) !! l = Some (init_stack (Tagged t)) ∧
-    σt.(shp) !! l = σs.(shp) !! l.
+    (∀ l, l ∈ tls → σt.(sst) !! l = Some (init_stack (Tagged t))).
 
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
-  ∃ h, r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, h) ∧
-  ((* local *) (r.(rlm) !! l: optionR tagR) ≡ Some (to_tagR t) ∨
-   (* protected *) ∃ (c: call_id) (T: gset ptr_id),
-      r.(rcm) !! c ≡ Some (to_callStateR $ csOwned T) ∧ t ∈ T ∧ l ∈ dom (gset loc) h).
+  ∃ h, r.(rtm) !! t ≡ Some (to_tgkR tkUnique, h) ∧
+  ((* local *) (∃ tls : gset loc, r.(rlm) !! t ≡ Some (Excl tls) ∧ l ∈ tls) ∨
+   (* protected *) ∃ (c: call_id) (T: gmap ptr_id (gset loc)) tls,
+      r.(rcm) !! c ≡ Some (Excl T) ∧ T !! t = Some tls ∧ l ∈ tls).
 
 Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
   ∀ st, σt.(shp) !! l = Some st → ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st.
@@ -104,7 +96,7 @@ Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
 (** Condition for resource before EndCall *)
 (* The call id [c] to be end must not have any privately protected locations. *)
 Definition end_call_sat (r: resUR) (c: call_id) : Prop :=
-  r.(rcm) !! c ≡ Some (to_callStateR csPub).
+  r.(rcm) !! c ≡ Some (Excl ∅).
 
 Lemma res_end_call_sat r c :
   ✓ r → res_callState c csPub ≼ r → end_call_sat r c.
@@ -166,11 +158,11 @@ Proof.
   intros [Eql [Eqt PV]]. subst. repeat split.
   destruct t2 as [t2|]; [|done].
   destruct PV as [h HL].
-  have HL1: Some (to_tagKindR tkPub, h) ≼ r2.(rtm) !! t2.
+  have HL1: Some (to_tgkR tkPub, h) ≼ r2.(rtm) !! t2.
   { rewrite -HL. apply lookup_included, prod_included.
     by apply prod_included in Le as []. }
   apply option_included in HL1 as [?|[th1 [[tk2 h2] [? [Eq1 INCL]]]]]; [done|].
-  simplify_eq. exists h2. rewrite Eq1 (_: tk2 ≡ to_tagKindR tkPub) //.
+  simplify_eq. exists h2. rewrite Eq1 (_: tk2 ≡ to_tgkR tkPub) //.
   apply tag_kind_incl_eq; [done|].
   move : INCL => [[/=<- _//]|/prod_included [/= /csum_included Eq _]].
   - apply csum_included. naive_solver.
