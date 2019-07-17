@@ -53,11 +53,11 @@ Proof.
 Qed.
 
 Lemma sim_body_copy_unique_l
-  fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (s: scalar) et σs σt Φ :
+  fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (ss st: scalar) et σs σt Φ :
   tsize T = 1%nat →
   r ≡ r' ⋅ res_tag t tkUnique h →
-  h !! l = Some s →
-  (r ⊨{n,fs,ft} (#[s], σs) ≥ (et, σt) : Φ : Prop) →
+  h !! l = Some (ss,st) →
+  (r ⊨{n,fs,ft} (#[ss], σs) ≥ (et, σt) : Φ : Prop) →
   r ⊨{n,fs,ft} (Copy (Place l (Tagged t) T), σs) ≥ (et, σt) : Φ.
 Proof.
   intros LenT Eqr Eqs CONT. pfold. intros NT. intros.
@@ -77,13 +77,13 @@ Proof.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
   (* some lookup properties *)
   have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
-  have HLtr: r.(rtm) !! t ≡ Some (to_tagKindR tkUnique, to_agree <$> h).
+  have HLtr: r.(rtm) !! t ≡ Some (to_tgkR tkUnique, to_agree <$> h).
   { rewrite Eqr.
-    eapply tmap_lookup_op_unique_included;
+    eapply tmap_lookup_op_uniq_included;
       [apply VALIDr|apply cmra_included_r|].
     rewrite res_tag_lookup //. }
-  have HLtrf: (r_f ⋅ r).(rtm) !! t ≡ Some (to_tagKindR tkUnique, to_agree <$> h).
-  { apply tmap_lookup_op_r_unique_equiv; [apply VALID|done]. }
+  have HLtrf: (r_f ⋅ r).(rtm) !! t ≡ Some (to_tgkR tkUnique, to_agree <$> h).
+  { apply tmap_lookup_op_r_uniq_equiv; [apply VALID|done]. }
 
   (* Unique: stack unchanged *)
   destruct (for_each_lookup_case_2 _ _ _ _ _ Eqα') as [EQ1 _].
@@ -95,7 +95,7 @@ Proof.
   destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
   rewrite Eqst in Eqstk. rewrite Eqcs in ACC1.
 
-  destruct (unique_access_head _ _ _ _ _ _ _ _ _ s _ Eqstk ACC1 PINV HLtrf)
+  destruct (unique_access_head _ _ _ _ _ _ _ _ _ ss st _ Eqstk ACC1 PINV HLtrf)
     as (it & Eqpit & Eqti & HDi & Eqhp); [by rewrite lookup_fmap Eqs |].
 
   have ?: α' = σt.(sst).
@@ -115,20 +115,19 @@ Proof.
   rewrite (_: mkState σs.(shp) σt.(sst) σs.(scs) σs.(snp) σs.(snc) = σs) in STEPS;
     last first. { rewrite -Eqst. by destruct σs. }
 
-  (* we read s' from σs(l), we know [s] is in σt(l), now we have to prove that
-    s' = s *)
-  (* FIXME: this is a hack *)
-  assert (s' = s).
+  (* we read s' from σs(l), we know [ss] is in σs(l), now we have to prove that
+    s' = ss *)
+  assert (s' = ss).
   { specialize (PINV _ _ _ HLtrf) as [? PINV].
-    specialize (PINV l s). rewrite lookup_fmap Eqs in PINV.
+    specialize (PINV l ss st). rewrite lookup_fmap Eqs in PINV.
     specialize (PINV ltac:(done) _ Eqstk Unique it.(protector))
-      as (?&?&?&_); [|done|].
+      as (?&?&?&?); [|done|].
     - destruct HDi as [? HDi]. rewrite HDi. rewrite -Eqpit -Eqti.
       destruct it; by left.
     - by simplify_eq. }
   subst s'.
 
-  have STEPSS: (Copy (Place l (Tagged t) T), σs) ~{fs}~>* (#[s]%E, σs)
+  have STEPSS: (Copy (Place l (Tagged t) T), σs) ~{fs}~>* (#[ss]%E, σs)
     by apply rtc_once.
   have NT' := never_stuck_tstep_once _ _ _ _ _ STEPS NT.
   (* TODO: the following is the same in most proofs, generalize it *)
@@ -145,10 +144,10 @@ Proof.
     + econstructor 2; eauto. by etrans.
 Qed.
 
-Lemma sim_body_copy_local_l fs ft r r' n l tg ty s et σs σt Φ :
+Lemma sim_body_copy_local_l fs ft r r' n l tg ty ss st et σs σt Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [s] tg →
-  (r ⊨{n,fs,ft} (#[s], σs) ≥ (et, σt) : Φ) →
+  r ≡ r' ⋅ res_mapsto l [(ss,st)] tg →
+  (r ⊨{n,fs,ft} (#[ss], σs) ≥ (et, σt) : Φ) →
   r ⊨{n,fs,ft}
     (Copy (Place l (Tagged tg) ty), σs) ≥ (et, σt)
   : Φ.

@@ -362,6 +362,91 @@ Definition res_mapsto (l:loc) (v: list (scalar * scalar)) (t: ptr_id) : resUR :=
   res_loc l (length v) t ⋅ res_tag t tkUnique (write_hpl l v ∅).
 
 (** res_tag *)
+Lemma locs_seq_elem_of_equiv l n i :
+  (i < n)%nat ↔ l +ₗ i ∈ locs_seq l n.
+Proof.
+  revert l i. induction n as [|n IH]; intros l i.
+  { simpl. split; intros. lia. exfalso. by eapply not_elem_of_empty. }
+  rewrite /= elem_of_union elem_of_singleton.
+  destruct i as [|i]; simpl.
+  - rewrite shift_loc_0_nat. split; intros; [by left|lia].
+  - rewrite (_: l +ₗ S i = (l +ₗ 1) +ₗ i).
+    + rewrite -IH. split; intros CASE; [right; by lia|].
+      destruct CASE as [CASE|?]; [|lia]. exfalso.
+      move : CASE. rewrite shift_loc_assoc -{2}(shift_loc_0 l).
+      intros ?%shift_loc_inj. lia.
+    + rewrite shift_loc_assoc. f_equal. lia.
+Qed.
+
+Lemma locs_seq_elem_of l n i :
+  (i < n)%nat → l +ₗ i ∈ locs_seq l n.
+Proof. by intros; apply locs_seq_elem_of_equiv. Qed.
+
+Lemma locs_seq_elem_of_2 l n l' :
+  l' ∈ locs_seq l n → ∃ i : nat, l' = l +ₗ i ∧ (i < n)%nat.
+Proof.
+  revert l. induction n as [|n IH]; simpl; intros l.
+  { by intros ?%not_elem_of_empty. }
+  rewrite elem_of_union elem_of_singleton.
+  intros [?|[i [Eqi Lt]]%IH].
+  - subst l'. exists O. rewrite shift_loc_0_nat. split; [done|lia].
+  - exists (S i). split; [|lia].
+    rewrite (_: l +ₗ S i = l +ₗ 1 +ₗ i) //.
+    rewrite shift_loc_assoc. f_equal. lia.
+Qed.
+
+Lemma write_hplt_lookup l vl h :
+  (∀ (i: nat), (i < length vl)%nat → write_hpl l vl h !! (l +ₗ i) = vl !! i) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i) →
+    write_hpl l vl h !! l' = h !! l').
+Proof.
+  revert l h. induction vl as [|v vl IH]; move => l h; simpl;
+    [split; [intros ?; by lia|done]|].
+  destruct (IH (l +ₗ 1) (<[l:=v]> h)) as [IH1 IH2]. split.
+  - intros i Lt. destruct i as [|i].
+    + rewrite shift_loc_0_nat /=. rewrite IH2; [by rewrite lookup_insert|].
+      move => ? _.
+      rewrite shift_loc_assoc -{1}(shift_loc_0 l) => /shift_loc_inj ?. by lia.
+    + rewrite /= -IH1; [|lia].  by rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
+  - intros l' Lt. rewrite IH2.
+    + rewrite lookup_insert_ne; [done|].
+      move => ?. subst l'. apply (Lt O); [lia|by rewrite shift_loc_0_nat].
+    + move => i Lti. rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
+      apply Lt. by lia.
+Qed.
+
+Lemma write_hpl_lookup_case l vl h l' :
+  (∃ (i: nat), (i < length vl)%nat ∧ l' = l +ₗ i ∧ write_hpl l vl h !! (l +ₗ i) = vl !! i)
+  ∨ ((∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i) ∧ write_hpl l vl h !! l' = h !! l').
+Proof.
+  destruct (write_hplt_lookup l vl h) as [EQ1 EQ2].
+  case (decide (l'.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l'.2 < l.2 + length vl)) => [[Le Lt]|NIN]|].
+  - have Eql2: l' = l +ₗ Z.of_nat (Z.to_nat (l'.2 - l.2)). {
+      destruct l, l'. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    have Lt1: (Z.to_nat (l'.2 - l.2) < length vl)%nat
+      by rewrite -(Nat2Z.id (length _)) -Z2Nat.inj_lt; lia.
+    specialize (EQ1 _ Lt1).
+    rewrite -Eql2 in EQ1. left.
+    exists (Z.to_nat (l'.2 - l.2)). repeat split; [done..|by rewrite -Eql2].
+  - right.
+    have ?: (∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i).
+    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
+    split; [done|]. by apply EQ2.
+  - right.
+    have ?: (∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i).
+    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
+    split; [done|]. by apply EQ2.
+Qed.
+
+Lemma write_hpl_elem_of_dom l vl h i :
+  (i < length vl)%nat → l +ₗ i ∈ dom (gset loc) (write_hpl l vl h).
+Proof.
+  intros Lt. destruct (write_hplt_lookup l vl h) as [EQ _].
+  specialize (EQ _ Lt). by rewrite elem_of_dom EQ lookup_lt_is_Some.
+Qed.
+
 Lemma res_tag_alloc_local_update lsf t k h
   (FRESH: lsf.(rtm) !! t = None) :
   (lsf, ε) ~l~> (lsf ⋅ res_tag t k h, res_tag t k h).
@@ -432,6 +517,21 @@ Proof. rewrite /= lookup_fmap lookup_insert //. Qed.
 Lemma res_mapsto_llookup l v t :
   (res_mapsto l v t).(rlm) !! t ≡ Some (Excl $ locs_seq l (length v)).
 Proof. rewrite lookup_op res_loc_lookup //. Qed.
+
+Lemma res_mapsto_llookup_ne l v t t1 :
+  t1 ≠ t → (res_mapsto l v t).(rlm) !! t1 = None.
+Proof.
+  intros. rewrite /res_mapsto /= /to_lmUR right_id_L lookup_fmap lookup_insert_ne //.
+Qed.
+
+Lemma res_mapsto_llookup_eq l v t t1 ls1 :
+  (res_mapsto l v t).(rlm) !! t1 ≡ Some (Excl ls1) →
+  t1 = t ∧ ls1 = locs_seq l (length v).
+Proof.
+  case (decide (t1 = t)) => ?; [subst t1|].
+  - rewrite res_mapsto_llookup. intros. by simplify_eq.
+  - rewrite res_mapsto_llookup_ne //. by inversion 1.
+Qed.
 
 Lemma res_mapsto_tlookup l v (t: ptr_id) :
   (res_mapsto l v t).(rtm) !! t ≡
