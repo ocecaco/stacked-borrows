@@ -214,14 +214,6 @@ Proof.
   { have Eqrcm: (r_f ⋅ r ⋅ r').(rcm) ≡ (r_f ⋅ r).(rcm)
       by rewrite /rcm /= right_id.
     have Eqrlm: (r_f ⋅ r ⋅ r').(rlm) ≡ (r_f ⋅ r).(rlm) by rewrite /= right_id.
-    have HLF : ∀ i, (i < tsize T)%nat → (r_f ⋅ r).(rlm) !! (l +ₗ i) = None.
-    { intros i Lti.
-      destruct ((r_f ⋅ r).(rlm) !! (l +ₗ i)) as [ls|] eqn:Eql; [|done].
-      exfalso. move : (proj2 VALID (l +ₗ i)). rewrite Eql.
-      intros [t1 ?]%tagR_valid. subst ls.
-      specialize (LINV (l +ₗ i) t1) as (? & Eqs & ?); [by rewrite Eql|].
-      have InD: (l +ₗ i) ∈ dom (gset loc) σt.(sst) by eapply elem_of_dom_2.
-      rewrite <-(state_wf_dom _ WFT) in InD. by apply (is_fresh_block σt.(shp) i). }
     have VALID': ✓ (r_f ⋅ r ⋅ r').
     { apply (local_update_discrete_valid_frame _ ε r'); [by rewrite right_id|].
       rewrite /= right_id -cmra_assoc cmra_assoc.
@@ -240,12 +232,12 @@ Proof.
       + intros Eqh1. split; [simpl; lia|].
         move : Eqh1. rewrite HEQr'.
         intros [Eqk1 Eqh1]%Some_equiv_inj. simpl in Eqk1, Eqh1.
-        intros l1 s1. rewrite -Eqh1 lookup_fmap lookup_empty. by inversion 1.
+        intros l1 ss1 st1. rewrite -Eqh1 lookup_fmap lookup_empty. by inversion 1.
       + intros Eqh'.
         have Eqh1: (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tgkR k1, h1).
         { move : Eqh'. rewrite lookup_op res_tag_lookup_ne // right_id //. }
         specialize (PINV _ _ _ Eqh1) as [? PINV]. split; [simpl; lia|].
-        intros l1 s1 Eqs1 stk Eqstk.
+        intros l1 ss1 st1 Eqs1 stk Eqstk.
         destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
           as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
         * rewrite (HLmt2 _ NEQl1) (HLms2 _ NEQl1). by apply PINV.
@@ -254,13 +246,12 @@ Proof.
           have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2. simplify_eq.
           intros ?? ?%elem_of_list_singleton. simplify_eq.
     - intros c cs. subst σt'. rewrite Eqrcm /=. intros Eqc.
-      specialize (CINV _ _ Eqc). destruct cs as [[Tc|]| |]; [|done..].
+      specialize (CINV _ _ Eqc). destruct cs as [Tc|]; [|done..].
       destruct CINV as [IN CINV]. split; [done|].
-      intros t1 [Ltc Ht]%CINV. split; [lia|].
-      intros k h.
+      intros t1 tls1 [Ltc Ht]%CINV. split; [lia|].
+      intros l1 Inl1.
       case (decide (t1 = σt.(snp))) => ?; [subst t1|]; [lia|].
-      rewrite lookup_op res_tag_lookup_ne // right_id. intros Eqh1.
-      intros l1 InD1. specialize (Ht _ _ Eqh1 _ InD1) as (stk1 & pm1 & Eql1 & Eqp).
+      specialize (Ht _  Inl1) as (stk1 & pm1 & Eql1 & Eqp).
       destruct (init_stacks_lookup_case_2 _ l (tsize T) t _ _ Eql1)
         as [[EQ NEQ1]|(i & (? & Lti) & ? & EQ)].
       + rewrite EQ. clear -Eqp. naive_solver.
@@ -279,23 +270,24 @@ Proof.
           intros st1 Eqst1. destruct (PB _ Eqst1) as [ss [Eqss AREL]].
           exists ss. split; [done|]. eapply arel_mono; [done| |eauto].
           apply cmra_included_l.
-        * destruct PV as (h' & Eqh' & Eqt').
-          exists t', h'. setoid_rewrite Eqrcm. split.
-          { apply tmap_lookup_op_l_unique_equiv; [apply VALID'|done]. }
-          { destruct Eqt'; [left|by right].
+        * destruct PV as (h' & Eqh' & Inh' & Eqt').
+          exists t', h'. setoid_rewrite Eqrcm. split; last split; [|done|].
+          { apply tmap_lookup_op_l_uniq_equiv; [apply VALID'|done]. }
+          { destruct Eqt' as [[tls [? ?]]|]; [left|by right].
+            exists tls. split; [|done].
             apply lmap_lookup_op_l; [apply VALID'|done]. }
       + left. subst l1. intros st. simpl.
         have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
         specialize (HLmt1 _ Lti'). rewrite Z2Nat.id // in HLmt1.
         specialize (HLms1 _ Lti'). rewrite Z2Nat.id // in HLms1.
         rewrite HLmt1 HLms1. inversion 1. subst st. by exists ScPoison.
-    - intros l1 t1. rewrite Eqrlm. subst σt'. simpl. intros Eqt.
-      specialize (LINV _ _ Eqt) as (Lt1 & Eqstk1 & Eqhp1).
-      split; [lia|].
+    - intros t1 tls1. rewrite Eqrlm. subst σt'. simpl. intros Eqt.
+      specialize (LINV _ _ Eqt) as (Lt1 & LINV).
+      split; [lia|]. intros l1 Inl1. specialize (LINV _ Inl1).
       have NEQ: ∀ i, (i < tsize T)%nat → l1 ≠ l +ₗ i.
       { intros i Lt Eqi. subst l1. apply (is_fresh_block σt.(shp) i).
         rewrite (state_wf_dom _ WFT). by eapply elem_of_dom_2. }
-      rewrite (HLmt2 _ NEQ) (HLms2 _ NEQ) (HLst2 _ NEQ) //. }
+      rewrite (HLst2 _ NEQ) //. }
   left.
   apply: sim_body_result. intros.
   apply POST; eauto.
