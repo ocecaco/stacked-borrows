@@ -249,6 +249,15 @@ Proof.
   - intros _. exists (∅: gmap loc _). by rewrite 2!left_id HL.
 Qed.
 
+Lemma tmap_lookup_op_None_inv (pm1 pm2: tmapUR) t :
+  (pm1 ⋅ pm2) !! t = None →
+  pm1 !! t = None ∧ pm2 !! t = None.
+Proof.
+  rewrite lookup_op.
+  destruct (pm1 !! t) eqn:Eq1, (pm2 !! t) eqn:Eq2;
+    rewrite Eq1 Eq2; [inversion 1..|done].
+Qed.
+
 Lemma tmap_valid (r_f r: tmapUR) t h0 kh
   (Eqtg: r !! t = Some (to_tgkR tkUnique, h0)) (VN: ✓ kh) :
   ✓ (r_f ⋅ r) → ✓ (r_f ⋅ (<[t:= kh]> r)).
@@ -310,6 +319,15 @@ Lemma lmap_lookup_op_included (lm1 lm2 : lmapUR) t ls
   lm1 !! t ≡ Some ls → lm2 !! t ≡ Some ls.
 Proof.
   destruct INCL as [cm' Eq]. rewrite Eq. apply lmap_lookup_op_l. by rewrite -Eq.
+Qed.
+
+Lemma lmap_lookup_op_None_inv (lm1 lm2 : lmapUR) t :
+  (lm1 ⋅ lm2) !! t = None →
+  lm1 !! t = None ∧ lm2 !! t = None.
+Proof.
+  rewrite lookup_op.
+  destruct (lm1 !! t) eqn:Eq1, (lm2 !! t) eqn:Eq2;
+    rewrite Eq1 Eq2; [inversion 1..|done].
 Qed.
 
 Lemma lmap_exclusive_eq_l (tls: gset loc)

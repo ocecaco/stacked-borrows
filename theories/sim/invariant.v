@@ -303,9 +303,9 @@ Proof.
     destruct t1, ts; try done; naive_solver.
 Qed.
 
-Lemma arel_res_tag_overwrite r t h1 h2 ss st :
+Lemma arel_res_tag_overwrite r t h1 k2 h2 ss st :
   arel (r ⋅ res_tag t tkUnique h1) ss st →
-  arel (r ⋅ res_tag t tkUnique h2) ss st.
+  arel (r ⋅ res_tag t k2 h2) ss st.
 Proof.
   destruct ss as [| |? [t1|]|], st as [| |? []|]; simpl; auto; [|naive_solver].
   intros (?&?& h & Eqh). do 2 (split; [done|]).
@@ -314,4 +314,18 @@ Proof.
     apply tagKindR_exclusive.
   - exists h. move : Eqh.
     by do 2 (rewrite lookup_op res_tag_lookup_ne; [|done]).
+Qed.
+
+Lemma arel_res_mapsto_res_tag r l v t k2 h2 ss st :
+  arel (r ⋅ res_mapsto l v t) ss st →
+  arel (r ⋅ res_tag t k2 h2) ss st.
+Proof.
+  destruct ss as [| |? [t1|]|], st as [| |? []|]; simpl; auto; [|naive_solver].
+  intros (?&?& h & Eqh). do 2 (split; [done|]).
+  case (decide (t1 = t)) => ?; [subst t1|].
+  - exfalso. move : Eqh. rewrite lookup_op res_mapsto_tlookup.
+    apply tagKindR_exclusive.
+  - exists h. move : Eqh.
+    rewrite lookup_op res_mapsto_tlookup_ne //.
+    rewrite lookup_op  res_tag_lookup_ne //.
 Qed.

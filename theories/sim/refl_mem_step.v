@@ -177,6 +177,7 @@ Proof.
   apply POST; eauto.
 Qed.
 
+
 Lemma sim_body_alloc_public fs ft r n T σs σt Φ :
   let l := (fresh_block σt.(shp), 0) in
   let t := (Tagged σt.(snp)) in
