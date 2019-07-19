@@ -70,7 +70,7 @@ Tactic Notation "sim_bind" open_constr(efocs) open_constr(efoct) :=
         sim_body_bind_core Ks es Kt et
       )
     )
-  | |- _ ⊨ˢ{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+  | |- _ ⊨ˢ{_,_,_} ?es ≥ ?et : _ =>
     reshape_expr es ltac:(fun Ks es =>
       unify es efocs;
       reshape_expr et ltac:(fun Kt et =>
@@ -89,7 +89,7 @@ Tactic Notation "sim_apply" open_constr(lem) :=
         apply: lem
       )
     )
-  | |- _ ⊨ˢ{_,_,_} (?es, _) ≥ (?et, _) : _ =>
+  | |- _ ⊨ˢ{_,_,_} ?es ≥ ?et : _ =>
     reshape_expr es ltac:(fun Ks es =>
       reshape_expr et ltac:(fun Kt et =>
         sim_simple_bind_core Ks es Kt et;
