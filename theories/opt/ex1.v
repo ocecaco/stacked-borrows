@@ -29,10 +29,8 @@ Definition ex1_opt : function :=
 Lemma ex1_sim_body :
   ⊨ᶠ ex1_unopt ≥ ex1_opt.
 Proof.
-  apply (sim_fun_simple1 10)=>// fs ft rarg es css et cs args argt LOOK AREL ??.
+  apply (sim_fun_simple1 10)=>// fs ft rarg es et args argt c LOOK AREL ??.
   simplify_eq/=.
-  (* InitCall *)
-  apply sim_simple_init_call=> c /= {css}.
   (* Alloc local *)
   sim_apply sim_simple_alloc_local=> l t /=.
   sim_apply sim_simple_let=>/=.
@@ -60,7 +58,7 @@ Proof.
   apply: sim_simple_result. simpl.
   sim_apply sim_simple_deref=>l' t' ?. simplify_eq/=.
   (* Write unique. We need to drop to complex mode, to preserve some local state info. *)
-  intros σs σt Hσs Hσt.
+  intros σs σt.
   sim_apply sim_body_write_unique_1; [solve_sim..|].
   intros ?? Htop. simplify_eq/=.
   sim_apply sim_body_let. simplify_eq/=.
@@ -74,15 +72,15 @@ Proof.
   apply: sim_body_result=>_. simpl.
   apply: sim_body_let_r. simpl. (* FIXME: figure out why [sim_apply_r] does the wrong thing here *)
   (* We can go back to simple mode! *)
-  eapply sim_simplify. { intros ?????? HH. exact HH. }
-  simplify_eq/=. rewrite Hσs Hσt. clear- AREL FREL LOOK.
+  eapply sim_simplify. { by eauto. }
+  simplify_eq/=. clear- AREL FREL LOOK.
   (* Call *)
   sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
   intros rf' frs' frt' ??? ? _ _ FREL'. simplify_eq/=.
   apply: sim_simple_result. simpl.
   sim_apply sim_simple_let=>/=.
   (* Copy local (left). We drop to complex just because simple does not support this yet. *)
-  intros σs σt Hσs Hσt.
+  intros σs σt.
   sim_apply_l sim_body_copy_local_l; [solve_sim..|].
   apply: sim_body_result=>_. simpl.
   (* Copy unique (left) *)
@@ -92,9 +90,8 @@ Proof.
   (* Finishing up. *)
   eapply sim_body_viewshift.
   { do 5 eapply viewshift_frame_r. eapply vs_call_empty_public. }
-  apply: sim_body_result=>Hval. simpl. split.
-  - eexists. split; first done. eapply res_end_call_sat; first done.
-    solve_res.
+  apply: sim_body_result=>Hval. do 2 (split; first done). split.
+  - solve_res.
   - constructor; simpl; auto.
 Qed.
 

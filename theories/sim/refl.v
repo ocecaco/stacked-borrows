@@ -42,7 +42,6 @@ Definition prog_wf (prog: fn_env) :=
 
 Section sem.
 Context (fs ft: fn_env) `{!sim_local_funs_lookup fs ft}.
-Context (css cst: call_id_stack).
 
 (** Well-formed two-substitutions. *)
 Definition srel (r: resUR) (xs: gmap string (result * result)) : Prop :=
@@ -103,16 +102,16 @@ Local Hint Extern 50 (_ ≼ _) => solve_res : core.
 (** We define a "semantic well-formedness", in some context. *)
 Definition sem_steps := 10%nat.
 
-Definition sem_post (r: resUR) (n: nat) rs css' rt cst': Prop :=
-  n = sem_steps ∧ css' = css ∧ cst' = cst ∧ rrel r rs rt.
+Definition sem_post (r: resUR) (n: nat) rs rt: Prop :=
+  n = sem_steps ∧ rrel r rs rt.
 
 Definition sem_wf (r: resUR) es et :=
   ∀ xs : gmap string (result * result),
     srel r xs →
     r ⊨ˢ{sem_steps,fs,ft}
-      (subst_map (fst <$> xs) es, css)
+      subst_map (fst <$> xs) es
     ≥
-      (subst_map (snd <$> xs) et, cst)
+      subst_map (snd <$> xs) et
     : sem_post.
 
 Lemma value_wf_soundness r v :
@@ -126,15 +125,15 @@ Proof.
 Qed.
 
 Lemma sim_simple_call_args' r r' (el1 el2: list expr) (rs rt: result) Φ :
-  Forall2 (λ e1 e2, core r ⊨ˢ{sem_steps,fs,ft} (e1, css) ≥ (e2, cst) : sem_post) el1 el2 →
+  Forall2 (λ e1 e2, core r ⊨ˢ{sem_steps,fs,ft} e1 ≥ e2 : sem_post) el1 el2 →
   (∀ r' (vs vt: list result),
     Forall2 (rrel r') vs vt →
     core r ⋅ r' ⊨ˢ{sem_steps,fs,ft}
-      (Call rs (of_result <$> vs), css) ≥ (Call rt (of_result <$> vt), cst)
+      Call rs (of_result <$> vs) ≥ Call rt (of_result <$> vt)
     : Φ ) →
   ∀ vs vt, Forall2 (rrel r') vs vt →
   core r ⋅ r' ⊨ˢ{sem_steps,fs,ft}
-    (Call rs ((of_result <$> vs) ++ el1), css) ≥ (Call rt ((of_result <$> vt) ++ el2), cst)
+    Call rs ((of_result <$> vs) ++ el1) ≥ Call rt ((of_result <$> vt) ++ el2)
   : Φ.
 Proof.
   intros He Hcont. revert r'. induction He; intros r'.
@@ -144,7 +143,7 @@ Proof.
   rewrite cmra_core_dup -assoc.
   eapply sim_simple_frame_r.
   eapply sim_simple_post_mono, H.
-  intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+  intros r'' n' rs' rt' (-> & [Hrel ?]%rrel_with_eq).
   simplify_eq/=.
   rewrite !cons_middle !assoc.
   change [rt']%E with (of_result <$> [rt']).
@@ -157,13 +156,13 @@ Proof.
 Qed.
 
 Lemma sim_simple_call_args r r' (el1 el2: list expr) (rs rt: result) Φ :
-  Forall2 (λ e1 e2, core r ⊨ˢ{sem_steps,fs,ft} (e1, css) ≥ (e2, cst) : sem_post) el1 el2 →
+  Forall2 (λ e1 e2, core r ⊨ˢ{sem_steps,fs,ft} e1 ≥ e2 : sem_post) el1 el2 →
   (∀ r' (vs vt: list result),
     Forall2 (rrel r') vs vt →
     core r ⋅ r' ⊨ˢ{sem_steps,fs,ft}
-      (Call rs (of_result <$> vs), css) ≥ (Call rt (of_result <$> vt), cst)
+      Call rs (of_result <$> vs) ≥ Call rt (of_result <$> vt)
     : Φ ) →
-  core r ⋅ r' ⊨ˢ{sem_steps,fs,ft} (Call rs el1, css) ≥ (Call rt el2, cst) : Φ.
+  core r ⋅ r' ⊨ˢ{sem_steps,fs,ft} Call rs el1 ≥ Call rt el2 : Φ.
 Proof.
   intros He Hcont.
   eapply sim_simple_call_args' with (vs:=[]) (vt:=[]); auto.
@@ -176,22 +175,20 @@ Proof using Type*.
   - (* Value *)
     move=>Hwf _ _ /=.
     apply: sim_simple_result.
-    do 3 (split; first done).
+    split; first done.
     apply value_wf_soundness. done.
   - (* Variable *)
     move=>_ xs Hxswf /=.
     rewrite !lookup_fmap. specialize (Hxswf x).
     destruct (xs !! x); simplify_eq/=.
-    + destruct p as [rs rt].
-      intros σs σt ??. apply: sim_body_result.
-      do 3 (split; first done).
-      eapply (Hxswf (rs, rt)). done.
+    + destruct p as [rs rt]. apply: sim_simple_result.
+      split; first done. eapply (Hxswf (rs, rt)). done.
     + simpl. apply sim_simple_var.
   - (* Call *)
     move=>[Hwf1 /Forall_id Hwf2] xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval. simpl.
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq) Hval. simpl.
     eapply sim_simple_call_args.
     { induction Hwf2; simpl; first by auto.
       destruct (Forall_cons_1 _ _ _ H) as [IHx IHl]. constructor.
@@ -202,21 +199,21 @@ Proof using Type*.
     eapply sim_simple_call; [by auto..|].
     intros rret vs vt vls vlt ? ??? Hrel''. simplify_eq.
     apply: sim_simple_result=>Hval'.
-    do 3 (split; first done). auto.
+    split; first done. auto.
   - (* InitCall: can't happen *) done.
   - (* EndCall: can't happen *) done.
   - (* Proj *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe1; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq) Hval.
     simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
     eapply sim_simple_frame_more_core.
     eapply sim_simple_post_mono, IHe2; [|by auto..].
-    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    intros r'' n' rs' rt' (-> & [Hrel' ?]%rrel_with_eq) Hval'.
     simplify_eq/=. eapply sim_simple_proj; [done..|].
     intros vi vv idx ?? Hidx ?. simplify_eq.
-    do 3 (split; first done).
+    split; first done.
     move:Hrel=>/= /Forall2_lookup=>Hrel.
     specialize (Hrel (Z.to_nat idx)).
     rewrite Hidx in Hrel. inversion Hrel. simplify_eq/=.
@@ -225,27 +222,27 @@ Proof using Type*.
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe1; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq) Hval.
     simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
     eapply sim_simple_frame_more_core.
     eapply sim_simple_post_mono, IHe2; [|by auto..].
-    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    intros r'' n' rs' rt' (-> & [Hrel' ?]%rrel_with_eq) Hval'.
     simplify_eq/=. eapply sim_simple_conc; [done..|].
     intros v1 v2 ??. simplify_eq/=.
-    do 3 (split; first done). simpl.
+    split; first done. simpl.
     apply Forall2_app; auto.
   - (* BinOp *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe1; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq) Hval.
     simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
     eapply sim_simple_frame_more_core.
     eapply sim_simple_post_mono, IHe2; [|by auto..].
-    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    intros r'' n' rs' rt' (-> & [Hrel' ?]%rrel_with_eq) Hval'.
     simplify_eq/=. eapply sim_simple_bin_op; [done..|].
     intros v1 v2 s ? ?? Heval. simplify_eq/=.
-    do 3 (split; first done). constructor; last done.
+    split; first done. constructor; last done.
     assert (arel (core r ⋅ core r' ⋅ r'') v1 v1) as Hrel_v1.
     { apply Forall2_cons_inv in Hrel as [??]. auto. }
     inversion Heval; simpl; auto; []. do 2 (split; first done).
@@ -254,39 +251,39 @@ Proof using Type*.
   - (* Deref *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq).
     simplify_eq/=. apply: sim_simple_deref=>l t ?. simplify_eq/=.
-    do 3 (split; first done). done.
+    split; first done. done.
   - (* Ref *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq).
     simplify_eq/=. eapply sim_simple_ref=>l t ??. simplify_eq/=.
-    do 3 (split; first done). apply Hrel.
+    split; first done. apply Hrel.
   - (* Copy *)
     move=>Hwf xs Hxswf /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq).
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq).
     eapply sim_simple_valid_post.
     eapply sim_simple_copy_public; [by auto..|].
     intros r'' v1 v2 Hrel'' Hval. simplify_eq/=.
-    do 3 (split; first done). auto.
+    split; first done. auto.
   - (* Write *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe1; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq) Hval.
     simplify_eq/=. sim_bind (subst_map _ e2) (subst_map _ e2).
     eapply sim_simple_frame_more_core.
     eapply sim_simple_post_mono, IHe2; [|by auto..].
-    intros r'' n' rs' css' rt' cst' (-> & -> & -> & [Hrel' ?]%rrel_with_eq) Hval'.
+    intros r'' n' rs' rt' (-> & [Hrel' ?]%rrel_with_eq) Hval'.
     simplify_eq/=. eapply sim_simple_write_public; [auto..|].
-    do 3 (split; first done). constructor; done.
+    split; first done. constructor; done.
   - (* Alloc *)
     move=>Hwf xs Hxswf /=.
     eapply sim_simple_valid_post.
     eapply sim_simple_alloc_public=>l tg /= Hval.
-    do 3 (split; first done).
+    split; first done.
     simpl. split; last done. constructor; last done.
     eapply arel_mono, arel_ptr; auto.
   - (* Free: can't happen *) done.
@@ -295,7 +292,7 @@ Proof using Type*.
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe1; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & Hrel) Hval. simpl.
+    intros r' n' rs rt (-> & Hrel) Hval. simpl.
     eapply sim_simple_let; [destruct rs, rt; by eauto..|].
     rewrite !subst'_subst_map.
     change rs with (fst (rs, rt)). change rt with (snd (rs, rt)) at 2.
@@ -308,7 +305,7 @@ Proof using Type*.
     move=>[Hwf1 /Forall_id Hwf2] xs Hxs /=. sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_frame_core.
     eapply sim_simple_post_mono, IHe; [|by auto..].
-    intros r' n' rs css' rt cst' (-> & -> & -> & [Hrel ?]%rrel_with_eq) Hval.
+    intros r' n' rs rt (-> & [Hrel ?]%rrel_with_eq) Hval.
     simplify_eq/=. eapply sim_simple_case.
     { rewrite !fmap_length //. }
     intros es et ??. rewrite !list_lookup_fmap.
@@ -325,24 +322,17 @@ Theorem sim_mod_fun_refl f :
   expr_wf f.(fun_body) →
   ⊨ᶠ f ≥ f.
 Proof.
-  intros Hwf fs ft Hlk r es et.
-  intros vs vt σs σt Hrel Hsubst1 Hsubst2. exists sem_steps.
-  apply sim_body_init_call=>/=.
-  set css := snc σs :: scs σs. set cst := snc σt :: scs σt. move=>Hstacks.
-  eapply sim_body_viewshift.
+  intros Hwf. eapply (sim_fun_simple sem_steps); first done.
+  intros fs ft r es et vs vt c Hlk Hrel Hsubst1 Hsubst2.
+  eapply sim_simple_viewshift.
   { eapply viewshift_frame_l. eapply vs_call_empty_public. }
-  eapply sim_body_frame_r.
-  eapply sim_local_body_post_mono with
-    (Φ:=(λ r n vs' σs' vt' σt', sem_post css cst r n vs' σs'.(scs) vt' σt'.(scs))).
-  { intros r' n' rs css' rt cst' (-> & Hcss & Hcst & Hrrel) Hval. simplify_eq.
-    split.
-    - eexists. split; first by rewrite Hcst.
-      apply: res_end_call_sat; first done. exact: cmra_included_r.
-    - eapply rrel_mono; [done| |done]. exact: cmra_included_l.
-  }
+  eapply sim_simple_frame_r.
   destruct (subst_l_map _ _ _ _ _ _ _ (rrel r) Hsubst1 Hsubst2) as (map & -> & -> & Hmap).
   { clear -Hrel. induction Hrel; eauto using Forall2. }
-  eapply sim_simplify, expr_wf_soundness; done.
+  eapply sim_simple_post_mono; last exact: expr_wf_soundness.
+  intros rr n rs rt [??] Hval. split.
+  - solve_res.
+  - eapply rrel_mono; [done| |done]. solve_res.
 Qed.
 
 Print Assumptions sim_mod_fun_refl.
