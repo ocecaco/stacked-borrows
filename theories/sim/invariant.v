@@ -25,56 +25,61 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
   | _, _ => False
   end.
 
-Definition tmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tgkR k, h) →
-    (t < σt.(snp))%nat ∧
-    ∀ (l: loc) (ss st: scalar),
-      h !! l ≡ Some (to_agree (ss, st)) →
-      ∀ (stk: stack), σt.(sst) !! l = Some stk →
-        ∀ pm opro, mkItem pm (Tagged t) opro ∈ stk → pm ≠ Disabled →
-          (* as long as the tag [t] is in the stack [stk] (Disabled is
-            considered not in), then its heaplet [h] agree with the state [σ] *)
-          σt.(shp) !! l = Some st ∧
-          σs.(shp) !! l = Some ss ∧
-          (* If [k] is Unique, then [t] must be Unique at the top of [stk].
-            Otherwise if [k] is Pub, then [t] can be among the top SRO items. *)
-          match k with
-          | tkUnique => ∃ stk', stk = mkItem Unique (Tagged t) opro :: stk'
-          | tkPub => t ∈ active_SRO stk
-          end.
-
-Definition cmap_inv (r: resUR) (σ: state) : Prop :=
-  ∀ (c: call_id) (cs: callStateR), r.(rcm) !! c ≡ Some cs →
-  match cs with
-  (* if c is a private call id *)
-  | Excl T =>
-      c ∈ σ.(scs) ∧
-      (* for any tag [t] owned by [c] *)
-      ∀ (t: ptr_id) tls, T !! t = Some tls →
-        (t < σ.(snp))%nat ∧
-        (* and any [l] protected by [t] *)
-        ∀ l, l ∈ tls →
-        (* then a [c]-protector must be in the stack of [l] *)
-          ∃ stk pm, σ.(sst) !! l = Some stk ∧
-          mkItem pm (Tagged t) (Some c) ∈ stk ∧ pm ≠ Disabled
-  | _ => False
+Definition tmap_inv_pre (k: tag_kind) (t: ptr_id) (l: loc) (σt: state) : Prop :=
+  match k with
+  | tkLocal => True
+  | _ =>
+    ∃ stk pm opro, σt.(sst) !! l = Some stk ∧
+      mkItem pm (Tagged t) opro ∈ stk ∧ pm ≠ Disabled
   end.
 
-Definition lmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ t (tls: gset loc), r.(rlm) !! t ≡ Some (Excl tls) →
-    (t < σt.(snp))%nat ∧
-    (∀ l, l ∈ tls → σt.(sst) !! l = Some (init_stack (Tagged t))).
+Definition tmap_inv_post (k: tag_kind) (t: ptr_id) (l: loc) (σt: state) : Prop :=
+  match k with
+  | tkLocal =>
+      σt.(sst) !! l = Some (init_stack (Tagged t))
+  | tkUnique =>
+      ∃ stk stk' opro, σt.(sst) !! l = Some stk ∧
+        stk = mkItem Unique (Tagged t) opro :: stk'
+  | tkPub =>
+      ∃ stk, σt.(sst) !! l = Some stk ∧ t ∈ active_SRO stk
+  end.
+
+Definition tmap_inv (r: resUR) (σs σt: state) : Prop :=
+  ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tgkR k, h) →
+  (t < σt.(snp))%nat ∧
+  ∀ (l: loc) (ss st: scalar),
+    h !! l ≡ Some (to_agree (ss, st)) →
+    tmap_inv_pre k t l σt →
+    (* as long as the tag [t] is in the stack [stk] (Disabled is
+      considered not in), then its heaplet [h] agree with the state [σ] *)
+    σt.(shp) !! l = Some st ∧
+    σs.(shp) !! l = Some ss ∧
+    (* If [k] ls Local, then the stack is a singleton.
+      If [k] is Unique, then [t] must be Unique at the top of [stk].
+      Otherwise if [k] is Pub, then [t] can be among the top SRO items. *)
+    tmap_inv_post  k t l σt.
+
+Definition cmap_inv (r: resUR) (σ: state) : Prop :=
+  ∀ (c: call_id) (T: tag_locs), r.(rcm) !! c ≡ Excl' T →
+  c ∈ σ.(scs) ∧
+  (* for any tag [t] owned by [c] *)
+  ∀ (t: ptr_id) (L : gset loc), T !! t = Some L →
+    (t  < σ.(snp))%nat ∧
+    (* and any [l] protected by [t] *)
+    ∀ l, l ∈ L →
+    (* then a [c]-protector must be in the stack of [l] *)
+      ∃ stk pm, σ.(sst) !! l = Some stk ∧
+      mkItem pm (Tagged t) (Some c) ∈ stk ∧ pm ≠ Disabled.
 
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
-  ∃ h, r.(rtm) !! t ≡ Some (to_tgkR tkUnique, h) ∧
-    l ∈ dom (gset loc) h ∧
-    ((* local *)
-      (∃ tls : gset loc, r.(rlm) !! t ≡ Some (Excl tls) ∧ l ∈ tls) ∨
-     (* protector *)
-      (∃ (c: call_id) (T: gmap ptr_id (gset loc)) tls,
-        r.(rcm) !! c ≡ Some (Excl T) ∧ T !! t = Some tls ∧ l ∈ tls)).
+  ∃ k h, r.(rtm) !! t ≡ Some (to_tgkR k, h) ∧
+  ((* local *)
+    k = tkLocal ∨
+   (* protector *)
+    (k = tkUnique ∧ ∃ (c: call_id) T L,
+        r.(rcm) !! c ≡ Excl' T ∧ T !! t = Some L ∧ l ∈ L)).
 
 Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
   ∀ st, σt.(shp) !! l = Some st → ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st.
@@ -90,7 +95,7 @@ Definition wsat (r: resUR) (σs σt: state) : Prop :=
   (* Wellformedness *)
   Wf σs ∧ Wf σt ∧ ✓ r ∧
   (* Invariants *)
-  tmap_inv r σs σt ∧ cmap_inv r σt ∧ srel r σs σt ∧ lmap_inv r σs σt.
+  tmap_inv r σs σt ∧ cmap_inv r σt ∧ srel r σs σt.
 
 (** Value relation for function arguments/return values *)
 (* Values passed among functions are public *)
@@ -108,8 +113,8 @@ Proof.
   destruct r' as [[tmap' cmap'] lmap'].
   rewrite /res_cs !pair_op /= /rcm /= /to_cmUR fmap_insert fmap_empty insert_empty.
   apply cmap_lookup_op_l_equiv; last by rewrite lookup_insert.
-  destruct r as [[tmap cmap] lmap].
-  destruct EQ as [[EQt EQc] EQl]. simplify_eq/=.
+  destruct r as [tmap cmap].
+  destruct EQ as [EQt EQc]. simplify_eq/=.
   move : Hval. rewrite /to_cmUR fmap_insert fmap_empty insert_empty.
   intros Hval. apply Hval.
 Qed.
@@ -118,22 +123,20 @@ Definition init_res : resUR := res_cs O ∅.
 
 Lemma wsat_init_state : wsat init_res init_state init_state.
 Proof.
-  split; last split; last split; last split; last split; last split.
+  split; last split; last split; last split; last split.
   - apply wf_init_state.
   - apply wf_init_state.
-  - split; [|done]. split; [done|]. intros ?; simpl.
+  - split; [done|]. intros ?; simpl.
     rewrite /to_cmUR lookup_fmap. destruct i.
     + rewrite lookup_singleton //.
     + rewrite lookup_singleton_ne //.
   - intros ??? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
   - intros ??. simpl. rewrite /rcm /init_res /= /to_cmUR lookup_fmap.
     destruct c.
-    + rewrite lookup_singleton. intros Eq%Some_equiv_inj.
-      destruct cs; inversion Eq. simplify_eq.
+    + rewrite lookup_singleton. intros Eq%Some_equiv_inj. simplify_eq.
       split; [by rewrite elem_of_list_singleton|]. intros ??. set_solver.
     + rewrite lookup_singleton_ne //. by inversion 1.
   - do 4 (split; [done|]). intros l. rewrite /= dom_empty. set_solver.
-  - intros ?? HL. exfalso. move : HL. rewrite /= lookup_empty. by inversion 1.
 Qed.
 
 Lemma arel_ptr l tg :
@@ -167,19 +170,23 @@ Proof.
   destruct t2 as [t2|]; [|done].
   destruct PV as [h HL].
   have HL1: Some (to_tgkR tkPub, h) ≼ r2.(rtm) !! t2.
-  { rewrite -HL. apply lookup_included, prod_included.
-    by apply prod_included in Le as []. }
+  { rewrite -HL. by apply lookup_included, prod_included. }
   apply option_included in HL1 as [?|[th1 [[tk2 h2] [? [Eq1 INCL]]]]]; [done|].
   simplify_eq. exists h2. rewrite Eq1 (_: tk2 ≡ to_tgkR tkPub) //.
-  apply tag_kind_incl_eq; [done|].
+  apply tagKindR_incl_eq; [done|].
   move : INCL => [[/=<- _//]|/prod_included [/= /csum_included Eq _]].
-  - apply csum_included. naive_solver.
+  - apply csum_included. right. right. exists (Cinr ()), (Cinr ()).
+    do 2 (split; [done|]). apply csum_included. naive_solver.
   - have VL2: ✓ tk2.
     { apply (pair_valid tk2 h2). rewrite -pair_valid.
       apply (lookup_valid_Some r2.(rtm) t2); [apply VAL|]. by rewrite Eq1. }
     destruct Eq as [|[|Eq]]; [by subst|naive_solver|].
-    destruct Eq as [?[[][? [? ?]]]]. simplify_eq.
-    apply csum_included. naive_solver.
+    destruct Eq as [b [[|[]|] [? [? Eq%csum_included]]]]; simplify_eq;
+      [naive_solver| |done].
+    destruct Eq as [|[|Eq]]; [by subst|naive_solver|].
+    apply csum_included.
+    right. right. exists (Cinr ()), (Cinr ()).
+    do 2 (split; [done|]). apply csum_included. naive_solver.
 Qed.
 
 Lemma vrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
@@ -189,27 +196,30 @@ Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qe
 Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ l t, priv_loc r1 l t → priv_loc r2 l t.
 Proof.
-  intros LE l t (h & Eqh & InD & PRIV).
-  do 2 (apply prod_included in LE as [LE ]).
-  do 2 (apply pair_valid in VAL as [VAL ]).
-  exists h. split; last split; [|done|].
-  { by apply (tmap_lookup_op_uniq_included r1.(rtm)). }
-  destruct PRIV as [(tls & ? & ?)|(c & T & tls & ? & ?)]; [left|right].
-  - exists tls. split; [|done]. by eapply lmap_lookup_op_included.
-  - exists c, T, tls. split; [|done]. by apply (cmap_lookup_op_unique_included r1.(rcm)).
+  intros LE l t (k & h & Eqh & PRIV).
+  apply prod_included in LE as [LE ].
+  apply pair_valid in VAL as [VAL ].
+  exists k, h. split.
+  { destruct PRIV as [|[]]; subst k.
+    - by apply (tmap_lookup_op_local_included r1.(rtm)).
+    - by apply (tmap_lookup_op_uniq_included r1.(rtm)). }
+  destruct PRIV as [|(? & c & T & L & ? & ?)]; [by left|right].
+  subst k. split; [done|].
+  exists c, T, L. split; [|done].
+  by apply (cmap_lookup_op_unique_included r1.(rcm)).
 Qed.
 
 Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) tmap_inv.
 Proof.
-  intros r1 r2 [[Eqt Eqc] Eqm] ? σ ? ???. subst. rewrite /tmap_inv.
+  intros r1 r2 [Eqt Eqc] ? σ ? ???. subst. rewrite /tmap_inv.
   by setoid_rewrite Eqt.
 Qed.
 
 Instance cmap_inv_proper : Proper ((≡) ==> (=) ==> iff) cmap_inv.
 Proof.
-  intros r1 r2 [[Eqt Eqc] Eqm]  ? σ ?. subst. rewrite /cmap_inv.
+  intros r1 r2 [Eqt Eqc]  ? σ ?. subst. rewrite /cmap_inv.
   setoid_rewrite Eqc.
-  split; intros EQ ?? Eq; specialize (EQ _ _ Eq); destruct cs; eauto.
+  split; intros EQ ?? Eq; specialize (EQ _ _ Eq); eauto.
 Qed.
 
 Instance arel_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) arel.
@@ -227,21 +237,18 @@ Proof.
   split; move => [-> [-> [-> [->]]]]; by setoid_rewrite Eqr.
 Qed.
 
-Instance lmap_inv_proper  : Proper ((≡) ==> (=) ==> (=) ==> iff) lmap_inv.
-Proof. intros r1 r2 Eqr ??????. subst. rewrite /lmap_inv. by setoid_rewrite Eqr. Qed.
-
 Instance wsat_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
 Proof. solve_proper. Qed.
 
-Lemma cinv_lookup_in (r: resUR) (σ: state) c cs:
-  Wf σ → cmap_inv r σ → r.(rcm) !! c ≡ Some cs → (c < σ.(snc))%nat.
+Lemma cinv_lookup_in (r: resUR) (σ: state) c T:
+  Wf σ → cmap_inv r σ → r.(rcm) !! c ≡ Excl' T → (c < σ.(snc))%nat.
 Proof.
-  intros WF CINV EQ. specialize (CINV c cs EQ).
-  destruct cs; [|done..]. destruct CINV. by apply WF.
+  intros WF CINV EQ. specialize (CINV c T EQ).
+  destruct CINV. by apply WF.
 Qed.
 
-Lemma cinv_lookup_in_eq (r: resUR) (σ: state) c cs:
-  Wf σ → cmap_inv r σ → r.(rcm) !! c = Some cs → (c < σ.(snc))%nat.
+Lemma cinv_lookup_in_eq (r: resUR) (σ: state) c T:
+  Wf σ → cmap_inv r σ → r.(rcm) !! c = Excl' T → (c < σ.(snc))%nat.
 Proof.
   intros WF CINV EQ. eapply cinv_lookup_in; eauto. by rewrite EQ.
 Qed.
@@ -265,8 +272,8 @@ Proof.
   intros (<- & <- & [h Hlk]).
   split; first done. split; first done.
   exists (core h). move: Hlk.
-  destruct r as [[tmap cmap] lmap].
-  change (core (tmap, cmap, lmap)) with (core tmap, core cmap, core lmap).
+  destruct r as [tmap cmap].
+  change (core (tmap, cmap)) with (core tmap, core cmap).
   rewrite /rtm /=. rewrite lookup_core=>->.
   rewrite /core /core' /=.
   rewrite {1}/pcore /cmra_pcore /=. rewrite /prod_pcore //.
@@ -307,11 +314,11 @@ Lemma arel_res_tag_overwrite r t h1 k2 h2 ss st :
   arel (r ⋅ res_tag t tkUnique h1) ss st →
   arel (r ⋅ res_tag t k2 h2) ss st.
 Proof.
-  destruct ss as [| |? [t1|]|], st as [| |? []|]; simpl; auto; [|naive_solver].
+  destruct ss as [| |? [t1|]|], st as [| |? []|]; auto; [|naive_solver].
   intros (?&?& h & Eqh). do 2 (split; [done|]).
   case (decide (t1 = t)) => ?; [subst t1|].
   - exfalso. move : Eqh. rewrite lookup_op res_tag_lookup.
-    apply tagKindR_exclusive.
+    apply tagKindR_uniq_exclusive_l.
   - exists h. move : Eqh.
     by do 2 (rewrite lookup_op res_tag_lookup_ne; [|done]).
 Qed.

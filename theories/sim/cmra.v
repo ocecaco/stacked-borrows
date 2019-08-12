@@ -6,12 +6,16 @@ From stbor.lang Require Export lang.
 Set Default Proof Using "Type".
 
 (** Tag map that connect tags to the heaplet that they govern *)
-Inductive tag_kind := tkUnique | tkPub.
-(* Ex() + Ag() *)
-Definition tagKindR := csumR (exclR unitO) unitR.
+Inductive tag_kind := tkLocal | tkUnique | tkPub.
+(* Ex() + Ex() + () *)
+Definition tagKindR := csumR (exclR unitO) (csumR (exclR unitO) unitR).
 
 Definition to_tgkR (tk: tag_kind) : tagKindR :=
-  match tk with tkUnique => Cinl (Excl ()) | tkPub => Cinr () end.
+  match tk with
+  | tkLocal => Cinl (Excl ())
+  | tkUnique => Cinr (Cinl (Excl ()))
+  | tkPub => Cinr (Cinr ())
+  end.
 
 Definition heaplet := gmap loc (scalar * scalar).
 Definition tmap := gmap ptr_id (tag_kind * heaplet).
@@ -34,22 +38,15 @@ Definition cmap := gmap call_id tag_locs.
 Definition cmapUR := gmapUR call_id callStateR.
 Definition to_cmUR (cm: cmap) : cmapUR := fmap Excl cm.
 
-(** Local map that protects tags and their associated heaplet *)
-Definition lmapUR := gmapUR ptr_id (exclR (gsetO loc)).
-Definition to_lmUR (lm: tag_locs) : lmapUR := fmap Excl lm.
+Definition res := (tmap * cmap)%type.
+Definition resUR := prodUR tmapUR cmapUR.
 
-Definition res := (tmap * cmap * tag_locs)%type.
-Definition resUR := prodUR (prodUR tmapUR cmapUR) lmapUR.
-
-Definition rtm (r: resUR) : tmapUR := r.1.1.
-Definition rcm (r: resUR) : cmapUR := r.1.2.
-Definition rlm (r: resUR) : lmapUR := r.2.
+Definition rtm (r: resUR) : tmapUR := r.1.
+Definition rcm (r: resUR) : cmapUR := r.2.
 
 Instance rtm_proper : Proper ((≡) ==> (≡)) rtm.
 Proof. solve_proper. Qed.
 Instance rcm_proper : Proper ((≡) ==> (≡)) rcm.
-Proof. solve_proper. Qed.
-Instance rlm_proper : Proper ((≡) ==> (≡)) rlm.
 Proof. solve_proper. Qed.
 
 Lemma local_update_discrete_valid_frame `{CmraDiscrete A} (r_f r r' : A) :
@@ -63,30 +60,42 @@ Qed.
 Lemma to_tgkR_valid k : valid (to_tgkR k).
 Proof. by destruct k. Qed.
 
-Lemma tag_kind_incl_eq (k1 k2: tagKindR):
+Lemma tagKindR_incl_eq (k1 k2: tagKindR):
   ✓ k2 → k1 ≼ k2 → k1 ≡ k2.
 Proof.
-  move => VAL /csum_included [? |[[? [? [? [? Eq]]]]|[[] [[] [? [? LE]]]]]];
-    subst; [done|..|done].
-  exfalso. eapply exclusive_included; [..|apply Eq|apply VAL]. apply _.
+  move => VAL /csum_included
+    [?|[[? [? [? [? INCL]]]]|[x1 [x2 [? [? INCL]]]]]]; subst; [done|..].
+  - exfalso. eapply exclusive_included; [..|apply INCL|apply VAL]; apply _.
+  - move : INCL => /csum_included
+      [? |[[? [? [? [? INCL]]]]|[[] [[] [? [? LE]]]]]]; subst; [done|..|done].
+    exfalso. eapply exclusive_included; [..|apply INCL|apply VAL]; apply _.
 Qed.
 
-Lemma tagKindR_exclusive (h0 h: heapletR) mb :
+Lemma tagKindR_uniq_exclusive_l (h0 h: heapletR) mb :
   mb ⋅ Some (to_tgkR tkUnique, h0) ≡ Some (to_tgkR tkPub, h) → False.
 Proof.
   destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
     intros [Eq _]%Some_equiv_inj.
-  - destruct k as [[]| |]; inversion Eq.
-  - inversion Eq.
+  - destruct k as [[]|[]|]; simplify_eq.
+  - simplify_eq.
 Qed.
 
-Lemma tagKindR_exclusive_2 (h0 h: heapletR) mb :
+Lemma tagKindR_uniq_exclusive_r (h0 h: heapletR) mb :
   mb ⋅ Some (to_tgkR tkPub, h0) ≡ Some (to_tgkR tkUnique, h) → False.
 Proof.
   destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
     intros [Eq _]%Some_equiv_inj.
-  - destruct k as [[]| |]; inversion Eq.
-  - inversion Eq.
+  - destruct k as [[]|[]|]; simplify_eq.
+  - simplify_eq.
+Qed.
+
+Lemma tagKindR_local_exclusive_l (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tgkR tkLocal, h0) ≡ Some (to_tgkR tkPub, h) → False.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq _]%Some_equiv_inj.
+  - destruct k as [[]|[]|]; simplify_eq.
+  - simplify_eq.
 Qed.
 
 Lemma tagKindR_exclusive_heaplet' (h0 h: heapletR) mb k1 :
@@ -95,21 +104,22 @@ Lemma tagKindR_exclusive_heaplet' (h0 h: heapletR) mb k1 :
 Proof.
   destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
     intros [Eq1 Eq2]%Some_equiv_inj.
-  - destruct k as [[[]|]| |], k1 ; inversion Eq1; simplify_eq.
-  - destruct k1; by inversion Eq1.
+  - destruct k as [[]|[]|], k1; simplify_eq.
+  - by destruct k1; simplify_eq.
 Qed.
 
 Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
   Some mb ⋅ Some (to_tgkR tkUnique, h0) ≡ Some (to_tgkR tkUnique, h) → False.
 Proof.
   destruct mb as [c ]. rewrite -Some_op pair_op. intros [Eq _]%Some_equiv_inj.
-  destruct c; inversion Eq; simpl in *; simplify_eq.
+  destruct c as [[]|[]|]; inversion Eq; simpl in *; simplify_eq.
 Qed.
 
 Lemma tagKindR_valid (k: tagKindR) :
   valid k → ∃ k', k = to_tgkR k'.
 Proof.
-  destruct k as [[[]|]|[]|]; [|done|..|done]; intros VAL.
+  destruct k as [[[]|]|[[[]|]|[]|]|]; [|done|..|done| |done|done]; intros VAL.
+  - by exists tkLocal.
   - by exists tkUnique.
   - by exists tkPub.
 Qed.
@@ -182,7 +192,7 @@ Proof.
 Qed.
 
 (** tmap properties *)
-Lemma tmap_insert_op_r (pm1 pm2: tmapUR) t h0 kh
+Lemma tmap_insert_op_uniq_r (pm1 pm2: tmapUR) t h0 kh
   (VALID: ✓ (pm1 ⋅ pm2)) :
   pm2 !! t = Some (to_tgkR tkUnique, h0) →
   pm1 ⋅ <[t:=kh]> pm2 = <[t:=kh]> (pm1 ⋅ pm2).
@@ -197,7 +207,7 @@ Proof.
     + do 2 (rewrite lookup_insert_ne //). by rewrite lookup_op.
 Qed.
 
-Lemma tmap_lookup_op_r (pm1 pm2: tmapUR) t h0
+Lemma tmap_lookup_op_uniq_r (pm1 pm2: tmapUR) t h0
   (VALID: ✓ (pm1 ⋅ pm2)) :
   pm2 !! t = Some (to_tgkR tkUnique, h0) →
   (pm1 ⋅ pm2) !! t = Some (to_tgkR tkUnique, h0).
@@ -236,6 +246,35 @@ Proof.
 Qed.
 
 
+Lemma tmap_lookup_op_l_local_equiv (pm1 pm2: tmapUR) t h0
+  (VALID: ✓ (pm1 ⋅ pm2)):
+  pm1 !! t ≡ Some (to_tgkR tkLocal, h0) →
+  (pm1 ⋅ pm2) !! t ≡ Some (to_tgkR tkLocal, h0).
+Proof.
+  intros HL. move : (VALID t). rewrite lookup_op HL.
+  destruct (pm2 !! t) as [[k2 h2]|] eqn:Eqt; rewrite Eqt; [|done].
+  rewrite -Some_op pair_op. intros [?%exclusive_l]; [done|apply _].
+Qed.
+
+Lemma tmap_lookup_op_local_included (pm1 pm2: tmapUR) t h0
+  (VALID: ✓ pm2) (INCL: pm1 ≼ pm2):
+  pm1 !! t ≡ Some (to_tgkR tkLocal, h0) →
+  pm2 !! t ≡ Some (to_tgkR tkLocal, h0).
+Proof.
+  destruct INCL as [cm' Eq]. rewrite Eq. apply tmap_lookup_op_l_local_equiv.
+  by rewrite -Eq.
+Qed.
+
+Lemma tmap_lookup_op_r_local_equiv (pm1 pm2: tmapUR) t h0
+  (VALID: ✓ (pm1 ⋅ pm2)) :
+  pm2 !! t ≡ Some (to_tgkR tkLocal, h0) →
+  (pm1 ⋅ pm2) !! t ≡ Some (to_tgkR tkLocal, h0).
+Proof.
+  intros HL. eapply tmap_lookup_op_local_included; [done|..|exact HL].
+  by apply cmra_included_r.
+Qed.
+
+
 Lemma tmap_lookup_op_r_equiv_pub (pm1 pm2: tmapUR) t h2
   (VALID: ✓ (pm1 ⋅ pm2)):
   pm2 !! t ≡ Some (to_tgkR tkPub, h2) →
@@ -245,7 +284,7 @@ Proof.
   destruct (pm1 !! t) as [[k1 h1]|] eqn:Eqt; rewrite Eqt; rewrite -> HL.
   - rewrite -Some_op pair_op. move => [ VL1 ?]. exists h1. simpl in VL1.
     rewrite HL -Some_op pair_op.
-    by rewrite -(tag_kind_incl_eq (to_tgkR tkPub) _ VL1 (cmra_included_r _ _)).
+    by rewrite -(tagKindR_incl_eq (to_tgkR tkPub) _ VL1 (cmra_included_r _ _)).
   - intros _. exists (∅: gmap loc _). by rewrite 2!left_id HL.
 Qed.
 
@@ -264,11 +303,11 @@ Lemma tmap_valid (r_f r: tmapUR) t h0 kh
 Proof.
   intros VALID.
   apply (local_update_discrete_valid_frame _ _ _ VALID).
-  have EQ := (tmap_insert_op_r _ _ _ _ kh VALID Eqtg). rewrite EQ.
+  have EQ := (tmap_insert_op_uniq_r _ _ _ _ kh VALID Eqtg). rewrite EQ.
   eapply (insert_local_update _ _ _
           (to_tgkR tkUnique, h0) (to_tgkR tkUnique, h0));
           [|exact Eqtg|by apply exclusive_local_update].
-  by rewrite (tmap_lookup_op_r _ _ _ _ VALID Eqtg).
+  by rewrite (tmap_lookup_op_uniq_r _ _ _ _ VALID Eqtg).
 Qed.
 
 (** heaplet *)
@@ -294,7 +333,7 @@ Proof.
 Qed.
 
 (** lmap *)
-Lemma lmap_lookup_op_r (lm1 lm2 : lmapUR)
+(* Lemma lmap_lookup_op_r (lm1 lm2 : lmapUR)
   (VALID: ✓ (lm1 ⋅ lm2)) t ls :
   lm2 !! t ≡ Some ls → (lm1 ⋅ lm2) !! t ≡ Some ls.
 Proof.
@@ -338,7 +377,7 @@ Proof.
   have VALID: valid (Some c ⋅ mb) by rewrite Eq. move :Eq.
   destruct c, mb as [[]|]; simplify_eq; try done.
   rewrite right_id. by intros ?%Some_equiv_inj.
-Qed.
+Qed. *)
 
 (** The Core *)
 
@@ -357,10 +396,10 @@ Proof. intros Eq. rewrite lookup_core Eq /core /= core_id //. Qed.
 (** Resources that we own. *)
 
 Definition res_tag tg tk (h: heaplet) : resUR :=
-  ({[tg := (to_tgkR tk, to_agree <$> h)]}, ε, ε).
+  ({[tg := (to_tgkR tk, to_agree <$> h)]}, ε).
 
 Definition res_cs (c: call_id) (cs: tag_locs) : resUR :=
-  (ε, to_cmUR {[c := cs]}, ε).
+  (ε, to_cmUR {[c := cs]}).
 
 Fixpoint locs_seq (l:loc) (n:nat) : gset loc :=
   match n with
@@ -368,16 +407,14 @@ Fixpoint locs_seq (l:loc) (n:nat) : gset loc :=
   | S n => {[l]} ∪ locs_seq (l +ₗ 1) n
   end.
 
-Definition res_loc l n t : resUR := (ε, to_lmUR {[t := locs_seq l n]}).
-
 Fixpoint write_hpl l (v: list (scalar * scalar)) (h: heaplet) : heaplet :=
   match v with
   | [] => h
   | sst :: v' => write_hpl (l +ₗ 1) v' (<[l:=sst]> h)
   end.
 
-Definition res_mapsto (l:loc) (v: list (scalar * scalar)) (t: ptr_id) : resUR :=
-  res_loc l (length v) t ⋅ res_tag t tkUnique (write_hpl l v ∅).
+(* Definition res_mapsto (l:loc) (v: list (scalar * scalar)) (t: ptr_id) : resUR :=
+  res_loc l (length v) t ⋅ res_tag t tkUnique (write_hpl l v ∅). *)
 
 (** res_tag *)
 Lemma locs_seq_elem_of_equiv l n i :
@@ -469,8 +506,8 @@ Lemma res_tag_alloc_local_update lsf t k h
   (FRESH: lsf.(rtm) !! t = None) :
   (lsf, ε) ~l~> (lsf ⋅ res_tag t k h, res_tag t k h).
 Proof.
-  destruct lsf as [[tm cm] lm]. rewrite 2!pair_op right_id right_id.
-  apply prod_local_update_1, prod_local_update_1.
+  destruct lsf as [[tm cm] lm]. rewrite pair_op right_id.
+  apply prod_local_update_1.
   rewrite cmra_comm -insert_singleton_op //.
   apply alloc_singleton_local_update; [done|].
   split. by destruct k. apply to_hplR_valid.
@@ -485,7 +522,7 @@ Proof.
   intros.
   do 2 rewrite (cmra_comm tm) -insert_singleton_op //.
   rewrite -(insert_insert tm t (_, to_agree <$> h2)
-                               (Cinl (Excl ()), to_agree <$> h1)).
+                               (to_tgkR tkUnique, to_agree <$> h1)).
   eapply (singleton_local_update (<[t := _]> tm : tmapUR)).
   - by rewrite lookup_insert.
   - apply exclusive_local_update.
@@ -497,8 +534,8 @@ Lemma res_tag_uniq_local_update (r: resUR) t h k' h'
   (r ⋅ res_tag t tkUnique h, res_tag t tkUnique h) ~l~>
   (r ⋅ res_tag t k' h', res_tag t k' h').
 Proof.
-  destruct r as [[tm cm] lm].
-  apply prod_local_update_1, prod_local_update_1. rewrite /=.
+  destruct r as [tm cm].
+  apply prod_local_update_1. rewrite /=.
   by apply res_tag_uniq_insert_local_update_inner.
 Qed.
 
@@ -514,7 +551,7 @@ Lemma res_tag_1_insert_local_update_r (r: resUR) r' (l: loc) s1 s2 (t: ptr_id)
   (r ⋅ res_tag t tkUnique {[l := s2]}, (ε, r') ⋅ res_tag t tkUnique {[l := s2]}).
 Proof.
   destruct r as [[tm cm] lm].
-  apply prod_local_update_1, prod_local_update_1. rewrite /= 2!left_id.
+  apply prod_local_update_1. rewrite /= 2!left_id.
   by apply (res_tag_uniq_insert_local_update_inner _ _ tkUnique).
 Qed.
 
@@ -527,7 +564,7 @@ Lemma res_tag_lookup_ne (k: tag_kind) (h: heaplet) (t t': ptr_id) (NEQ: t' ≠ t
 Proof. by rewrite lookup_insert_ne. Qed.
 
 (** res_mapsto *)
-
+(*
 Lemma res_loc_lookup l n t :
   (res_loc l n t).(rlm) !! t ≡ Some (Excl $ locs_seq l n).
 Proof. rewrite /= lookup_fmap lookup_insert //. Qed.
@@ -646,4 +683,4 @@ Proof.
   case (decide (t1 = t)) => ?.
   - subst t1. rewrite lookup_insert. naive_solver.
   - rewrite lookup_insert_ne // lookup_empty. split; [by destruct 1|done].
-Qed.
+Qed. *)
