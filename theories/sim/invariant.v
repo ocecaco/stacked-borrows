@@ -74,7 +74,7 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
-  ∃ k h, r.(rtm) !! t ≡ Some (to_tgkR k, h) ∧
+  ∃ k h, r.(rtm) !! t ≡ Some (to_tgkR k, h) ∧ is_Some (h !! l) ∧
   ((* local *)
     k = tkLocal ∨
    (* protector *)
@@ -196,10 +196,10 @@ Proof. intros Le v1 v2 VREL. by apply (Forall2_impl _ _ _ _ VREL), arel_mono. Qe
 Lemma priv_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
   r1 ≼ r2 → ∀ l t, priv_loc r1 l t → priv_loc r2 l t.
 Proof.
-  intros LE l t (k & h & Eqh & PRIV).
+  intros LE l t (k & h & Eqh & Inl & PRIV).
   apply prod_included in LE as [LE ].
   apply pair_valid in VAL as [VAL ].
-  exists k, h. split.
+  exists k, h. split; last split; [|done|].
   { destruct PRIV as [|[]]; subst k.
     - by apply (tmap_lookup_op_local_included r1.(rtm)).
     - by apply (tmap_lookup_op_uniq_included r1.(rtm)). }
@@ -321,18 +321,4 @@ Proof.
     apply tagKindR_uniq_exclusive_l.
   - exists h. move : Eqh.
     by do 2 (rewrite lookup_op res_tag_lookup_ne; [|done]).
-Qed.
-
-Lemma arel_res_mapsto_res_tag r l v t k2 h2 ss st :
-  arel (r ⋅ res_mapsto l v t) ss st →
-  arel (r ⋅ res_tag t k2 h2) ss st.
-Proof.
-  destruct ss as [| |? [t1|]|], st as [| |? []|]; simpl; auto; [|naive_solver].
-  intros (?&?& h & Eqh). do 2 (split; [done|]).
-  case (decide (t1 = t)) => ?; [subst t1|].
-  - exfalso. move : Eqh. rewrite lookup_op res_mapsto_tlookup.
-    apply tagKindR_exclusive.
-  - exists h. move : Eqh.
-    rewrite lookup_op res_mapsto_tlookup_ne //.
-    rewrite lookup_op  res_tag_lookup_ne //.
 Qed.

@@ -16,28 +16,78 @@ Lemma priv_loc_not_public r l t t' :
   (∃ (h: heapletR), r.(rtm) !! t' ≡ Some (to_tgkR tkPub, h)) →
   t ≠ t'.
 Proof.
-  intros [h1 [Eqh1 ?]] [h2 Eqh2] ?. subst t'. move : Eqh2. rewrite Eqh1.
-  intros [Eq1 ?]%Some_equiv_inj. by inversion Eq1.
+  intros [k1 [h1 [Eqh1 [Inl Eqk]]]] [h2 Eqh2] ?. subst t'. move : Eqh2. rewrite Eqh1.
+  intros [Eq1 ?]%Some_equiv_inj. simpl in *.
+  destruct Eqk as [|[]]; subst k1.
+  - inversion Eq1.
+  - apply Cinr_inj in Eq1. inversion Eq1.
 Qed.
 
-Lemma local_access_eq r l tls t t' stk n stk' kind σs σt :
+Lemma local_access_eq r l (h: heapletR) t t' stk n stk' kind σs σt :
   σt.(sst) !! l = Some stk →
   access1 stk kind t' σt.(scs) = Some (n, stk') →
   wsat r σs σt →
-  r.(rlm) !! t ≡ Some (Excl tls) →
-  l ∈ tls →
+  r.(rtm) !! t ≡ Some (to_tgkR tkLocal, h) →
+  is_Some (h !! l) →
   t' = Tagged t ∧ stk' = stk.
 Proof.
   intros Eql Eqstk WSAT Eqt' Inl.
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
-  specialize (LINV _ _ Eqt') as [? Eqs]. specialize (Eqs _ Inl).
-  rewrite Eql in Eqs. simplify_eq.
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  specialize (PINV _ _ _ Eqt') as [? Eqs].
+  destruct Inl as [sst' Eqsst'].
+  have VLh: ✓ h.
+  { apply (pair_valid (to_tgkR tkLocal) h).
+    rewrite -pair_valid -Some_valid -Eqt'. apply VALID. }
+  have VLsst: ✓ sst'.
+  { change (✓ (Some sst')). rewrite -Eqsst'. apply VLh. }
+  apply to_agree_uninj in VLsst as [[ss st] VLsst].
+  specialize (Eqs l ss st). rewrite Eqsst' in Eqs.
+  destruct Eqs as [Eqh1 [Eqh2 Eqs]]; [by rewrite VLsst|done|].
+  rewrite /= Eql in Eqs. simplify_eq.
   destruct (access1_in_stack _ _ _ _ _ _ Eqstk)
     as [it [?%elem_of_list_singleton [Eqt ?]]].
   subst. split; [done|].
   destruct (tag_unique_head_access σt.(scs) (init_stack (Tagged t)) (Tagged t) None kind)
     as [stk1 Eq1]; [by exists []|].
   rewrite Eq1 in Eqstk. by simplify_eq.
+Qed.
+
+Lemma protector_access_eq r l (h: heapletR) t t' stk n stk' kind σs σt :
+  σt.(sst) !! l = Some stk →
+  access1 stk kind t' σt.(scs) = Some (n, stk') →
+  wsat r σs σt →
+  r.(rtm) !! t ≡ Some (to_tgkR tkUnique, h) →
+  is_Some (h !! l) →
+  (∃ (c: call_id) T L, r.(rcm) !! c ≡ Excl' T ∧ T !! t = Some L ∧ l ∈ L) →
+  t' = Tagged t.
+Proof.
+  intros Eql Eqstk WSAT Eqh Inl PRO.
+  destruct PRO as (c & T & tls & Eqc & EqT & Intls).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+
+  destruct Inl as [sa Eqs].
+  move : (proj1 VALID t). rewrite Eqh. intros [_ VALh].
+  specialize (VALh l). rewrite Eqs in VALh.
+  apply to_agree_uninj in VALh as [[ss st] Eqsa].
+  have Eqss : h !! l ≡ Some (to_agree (ss, st)) by rewrite Eqsa Eqs.
+  specialize (PINV _ _ _ Eqh) as [? PINV].
+  specialize (PINV _ _ _ Eqss).
+
+  specialize (CINV _ _ Eqc) as [Ltc CINV].
+  specialize (CINV _ _ EqT) as [Ltt CINV].
+  specialize (CINV _ Intls) as (stk1 & pm1 & Eqstk1 & In1 & NDIS1).
+  rewrite Eqstk1 in Eql. simplify_eq.
+  destruct PINV as [Eqs1 [Eqs2 HD]]; [by do 3 eexists|].
+  destruct HD as (stk1 & stk2 & opro & Eq1 & Eq2).
+  rewrite Eq1 in Eqstk1.
+  simplify_eq.
+  have ?: opro = Some c.
+  { destruct (state_wf_stack_item _ WFT _ _ Eq1) as [_ ND].
+    have Eq :=
+      stack_item_tagged_NoDup_eq _ _ (mkItem Unique (Tagged t) opro) t ND In1
+        ltac:(by left) eq_refl eq_refl.
+    by inversion Eq. } subst opro.
+  eapply (access1_incompatible_head_protector _ _ _ _ _ _ _ _ ltac:(by eexists) Ltc); eauto.
 Qed.
 
 Lemma priv_loc_UB_access_eq r l kind σs σt t t' stk :
@@ -47,25 +97,9 @@ Lemma priv_loc_UB_access_eq r l kind σs σt t t' stk :
   priv_loc r l t →
   t' = Tagged t.
 Proof.
-  intros Eql ACC WSAT (h & Eqh & Inl & [[tls []]|PRO]).
-  { destruct ACC as [[]]. eapply local_access_eq; eauto. }
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
-  specialize (PINV _ _ _ Eqh) as [Lt PINV].
-  destruct PRO as (c & T & tls & Eqc & EqT & Intls). have Inl' := Inl.
-  move : Inl'. rewrite elem_of_dom. intros [sa Eqs].
-  move : (proj1 (proj1 VALID) t). rewrite Eqh. intros [_ VALh].
-  specialize (VALh l). rewrite Eqs in VALh.
-  apply to_agree_uninj in VALh as [[ss st] Eqsa].
-  have Eqss : h !! l ≡ Some (to_agree (ss, st)) by rewrite Eqsa Eqs.
-  specialize (PINV _ _ _ Eqss stk Eql).
-  specialize (CINV _ _ Eqc) as [Ltc CINV].
-  specialize (CINV _ _ EqT) as [Ltt CINV].
-  specialize (CINV _ Intls) as (stk1 & pm1 & Eqstk1 & In1 & NDIS1).
-  rewrite Eqstk1 in Eql. simplify_eq.
-  specialize (PINV _ _ In1 NDIS1) as [Eqs1 [? HD]].
-
-  destruct ACC as [[n stk'] ACC].
-  apply (access1_incompatible_head_protector _ _ _ _ _ _ _ _ HD Ltc ACC).
+  intros Eql [[]] WSAT (k & h & Eqh & Inl & [|[? PRO]]); subst k.
+  - eapply local_access_eq; eauto.
+  - eapply protector_access_eq; eauto.
 Qed.
 
 Lemma priv_pub_access_UB (r: resUR) l kind σs σt t t' stk :
@@ -121,7 +155,8 @@ Proof.
       apply Lt. by lia.
 Qed.
 
-Lemma unique_access_head r σs σt l stk kind n' stk' t ss st h :
+Lemma unique_access_head r σs (σt: state) l stk kind n' stk' t ss st h
+  (WFT: Wf σt) :
   σt.(sst) !! l = Some stk →
   access1 stk kind (Tagged t) σt.(scs) = Some (n', stk') →
   tmap_inv r σs σt →
@@ -132,9 +167,19 @@ Lemma unique_access_head r σs σt l stk kind n' stk' t ss st h :
 Proof.
   intros Eqstk ACC1 PINV HL Eqs.
   specialize (PINV _ _ _ HL) as [? PINV].
-  specialize (PINV _ _ _ Eqs _ Eqstk).
+  specialize (PINV _ _ _ Eqs).
   destruct (access1_in_stack _ _ _ _ _ _ ACC1) as (it & Init & Eqti & NDIS).
-  destruct (PINV it.(perm) it.(protector)) as [Eqss [? HD]]; [|done|].
-  { rewrite -Eqti. by destruct it. }
-  by exists (mkItem Unique (Tagged t) it.(protector)).
+  destruct PINV as [Eqss [? HD]].
+  { rewrite /= -Eqti. exists stk, it.(perm), it.(protector).
+    repeat split; [done| |done]. by destruct it. }
+  exists (mkItem Unique (Tagged t) it.(protector)).
+  repeat split; [|done..]. destruct HD as (stk1&stk2&opro&Eq1& HD).
+  rewrite Eq1 in Eqstk. simplify_eq.
+  have ?: opro = it.(protector).
+  { destruct (state_wf_stack_item _ WFT _ _ Eq1) as [_ ND].
+    have Eq :=
+      stack_item_tagged_NoDup_eq _ _ (mkItem Unique (Tagged t) opro) t ND Init
+        ltac:(by left) Eqti eq_refl.
+    by inversion Eq. } subst opro.
+  by eexists.
 Qed.
