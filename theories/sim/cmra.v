@@ -450,7 +450,7 @@ Proof.
     rewrite shift_loc_assoc. f_equal. lia.
 Qed.
 
-Lemma write_hplt_lookup l vl h :
+Lemma write_hpl_lookup l vl h :
   (∀ (i: nat), (i < length vl)%nat → write_hpl l vl h !! (l +ₗ i) = vl !! i) ∧
   (∀ (l': loc), (∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i) →
     write_hpl l vl h !! l' = h !! l').
@@ -474,7 +474,7 @@ Lemma write_hpl_lookup_case l vl h l' :
   (∃ (i: nat), (i < length vl)%nat ∧ l' = l +ₗ i ∧ write_hpl l vl h !! (l +ₗ i) = vl !! i)
   ∨ ((∀ (i: nat), (i < length vl)%nat → l' ≠ l +ₗ i) ∧ write_hpl l vl h !! l' = h !! l').
 Proof.
-  destruct (write_hplt_lookup l vl h) as [EQ1 EQ2].
+  destruct (write_hpl_lookup l vl h) as [EQ1 EQ2].
   case (decide (l'.1 = l.1)) => [Eql|NEql];
     [case (decide (l.2 ≤ l'.2 < l.2 + length vl)) => [[Le Lt]|NIN]|].
   - have Eql2: l' = l +ₗ Z.of_nat (Z.to_nat (l'.2 - l.2)). {
@@ -498,8 +498,15 @@ Qed.
 Lemma write_hpl_elem_of_dom l vl h i :
   (i < length vl)%nat → l +ₗ i ∈ dom (gset loc) (write_hpl l vl h).
 Proof.
-  intros Lt. destruct (write_hplt_lookup l vl h) as [EQ _].
+  intros Lt. destruct (write_hpl_lookup l vl h) as [EQ _].
   specialize (EQ _ Lt). by rewrite elem_of_dom EQ lookup_lt_is_Some.
+Qed.
+
+Lemma write_hpl_is_Some l vl h i :
+  (i < length vl)%nat → is_Some (write_hpl l vl h !! (l +ₗ i)).
+Proof.
+  intros Lt. destruct (write_hpl_lookup l vl h) as [EQ _].
+  specialize (EQ _ Lt). by rewrite EQ lookup_lt_is_Some.
 Qed.
 
 Lemma res_tag_alloc_local_update lsf t k h

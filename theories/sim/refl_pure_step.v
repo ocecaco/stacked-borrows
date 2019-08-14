@@ -51,8 +51,8 @@ Proof.
   intros r' ? ? σs' σt' VR WSAT' STACK.
   destruct (CONT r' fid vls vlt v_src v_tgt σs' σt') as [n' ?];
     [by apply vrel_rrel| |done..|exists n'; by left].
-  destruct WSAT as (?&?&?&?&?&SREL&?). destruct SREL as (?&?&?Eqcss&?).
-  destruct WSAT' as (?&?&?&?&?&SREL'&?). destruct SREL' as (?&?&?Eqcss'&?).
+  destruct WSAT as (?&?&?&?&?&SREL). destruct SREL as (?&?&?Eqcss&?).
+  destruct WSAT' as (?&?&?&?&?&SREL'). destruct SREL' as (?&?&?Eqcss'&?).
   by rewrite Eqcss' Eqcss.
 Qed.
 
