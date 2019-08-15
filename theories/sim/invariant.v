@@ -38,7 +38,7 @@ Definition tmap_inv_post (k: tag_kind) (t: ptr_id) (l: loc) (σt: state) : Prop 
   | tkLocal =>
       σt.(sst) !! l = Some (init_stack (Tagged t))
   | tkUnique =>
-      ∃ stk stk' opro, σt.(sst) !! l = Some stk ∧
+      ∃ stk, σt.(sst) !! l = Some stk ∧ ∃ opro stk',
         stk = mkItem Unique (Tagged t) opro :: stk'
   | tkPub =>
       ∃ stk, σt.(sst) !! l = Some stk ∧ t ∈ active_SRO stk

@@ -369,45 +369,68 @@ Proof.
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
     - intros t1 k h Eqt. specialize (PINV t1 k h Eqt) as [Lt PI]. simpl.
-      split; [done|]. intros l' ss' st' Eqk'. stk' Eqstk'.
-      specialize (PI _ _ Eqk') as PI.
-      destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
-        as (stk & Eqstk & SUB & ?).
-      intros pm opro In' NDIS.
-      destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2 & NDIS2).
-      specialize (PI _ Eqstk it2.(perm) opro) as [Eql' [? HTOP]].
-      { simpl in *. rewrite /= Eqt2 Eqp2. by destruct it2. }
-      { simpl in *. by rewrite (NDIS2 NDIS). }
-      do 2 (split; [done|]).
-      destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk Eqstk')
-        as [?|[MR _]]; [by subst|]. clear -In' MR HTOP Eqstk WFT NDIS.
-      destruct (access1 stk AccessRead t σt.(scs)) as [[n stk1]|] eqn:Eqstk';
-        [|done]. simpl in MR. simplify_eq.
-      destruct (state_wf_stack_item _ WFT _ _ Eqstk). move : Eqstk' HTOP.
-      destruct k.
-      + eapply access1_head_preserving; eauto.
-      + eapply access1_active_SRO_preserving; eauto.
+      split; [done|]. intros l' ss' st' Eqh TPRE.
+      have SUB := for_each_access1 _ _ _ _ _ _ _ Eqα'.
+      specialize (PI _ _ _ Eqh) as [Eql' [? HTOP]].
+      { move : TPRE.
+        destruct k; [done|..];
+          intros (stk' & pm & opro & Eqstk' & In' & NDIS);
+          specialize (SUB _ _ Eqstk') as (stk & Eqstk & SUB & ?);
+          destruct (SUB _ In') as (it2 & In2 & Eqt2 & Eqp2 & NDIS2);
+          simpl in *; exists stk, pm, opro.
+        - split; last split; [done| |done].
+          rewrite /= Eqt2 Eqp2 -NDIS2 //. by destruct it2.
+        - split; last split; [done| |done].
+          rewrite Eqt2 Eqp2 -NDIS2 //. by destruct it2. }
+      do 2 (split; [done|]). move : TPRE.
+      destruct k; simpl.
+      + intros _.
+        destruct (for_each_access1_lookup_inv _ _ _ _ _ _ _ Eqα' _ _ HTOP)
+        as (stk2 & Eq2 & LOR).
+        destruct LOR as [[n' ACC1]|LOR]; [|by rewrite LOR].
+        destruct (local_access_eq _ _ _ _ _ _ _ _ _ _ _ HTOP ACC1 WSAT1 Eqt)
+          as [? Eqstk2].
+        { destruct (h !! l') eqn:Eql2; rewrite Eql2; [by eexists|].
+          by inversion Eqh. }
+        { by rewrite Eq2 Eqstk2. }
+      + intros (stk' & pm & opro & Eqstk' & In' & NDIS).
+        exists stk'. split; [done|].
+        specialize (SUB _ _ Eqstk') as (stk & Eqstk & SUB & _).
+        destruct HTOP as (stk1 & Eqstk1 & HTOP).
+        rewrite Eqstk1 in Eqstk. simplify_eq.
+        destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk1 Eqstk')
+          as [?|[MR _]]; [by subst|].
+        clear -In' MR HTOP Eqstk1 WFT NDIS.
+        destruct (access1 stk AccessRead t σt.(scs)) as [[n stk1]|] eqn:Eqstk';
+          [|done]. simpl in MR. simplify_eq.
+        destruct (state_wf_stack_item _ WFT _ _ Eqstk1) as [? ND].
+        destruct HTOP as [opro1 HTOP].
+        exists opro1. eapply access1_head_preserving; eauto.
+        admit.
+      + intros (stk' & pm & opro & Eqstk' & In' & NDIS).
+        exists stk'. split; [done|].
+        specialize (SUB _ _ Eqstk') as (stk & Eqstk & SUB & _).
+        destruct HTOP as (stk1 & Eqstk1 & HTOP).
+        rewrite Eqstk1 in Eqstk. simplify_eq.
+        destruct (for_each_lookup_case _ _ _ _ _ Eqα' _ _ _ Eqstk1 Eqstk')
+          as [?|[MR _]]; [by subst|].
+        clear -In' MR HTOP Eqstk1 WFT NDIS.
+        destruct (access1 stk AccessRead t σt.(scs)) as [[n stk1]|] eqn:Eqstk';
+          [|done]. simpl in MR. simplify_eq.
+        destruct (state_wf_stack_item _ WFT _ _ Eqstk1).
+        move : Eqstk' HTOP. eapply access1_active_SRO_preserving; eauto.
     - intros c cs Eqc. specialize (CINV _ _ Eqc). simpl.
-      clear -Eqα' CINV. destruct cs as [[T1|]| |]; [|done..].
-      destruct CINV as [IN CINV]. split; [done|].
-      intros t1 InT. specialize (CINV _ InT) as [? CINV]. split; [done|].
-      intros k h Eqt l' Inh.
-      destruct (CINV _ _ Eqt _ Inh) as (stk' & pm' & Eqstk' & Instk' & NDIS).
+      clear -Eqα' CINV. destruct CINV as [IN CINV]. split; [done|].
+      intros t1 L EqL. specialize (CINV _ _ EqL) as [? CINV]. split; [done|].
+      intros l' InL.
+      specialize (CINV _ InL) as (stk' & pm' & Eqstk' & Instk' & NDIS).
       destruct (for_each_access1_active_preserving _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as [stk [Eqstk AS]].
       exists stk, pm'. split; last split; [done| |done]. by apply AS.
-    - rewrite /srel /=. by destruct SREL as (?&?&?&?&?).
-    - intros l1 t1. simpl. intros Eqs.
-      specialize (LINV _ _ Eqs) as (LTi & Eqst & Eqhs).
-      split; [done|]. split; [|done].
-      destruct (for_each_access1_lookup_inv _ _ _ _ _ _ _ Eqα' _ _ Eqst)
-        as (stk2 & Eq2 & LOR).
-      destruct LOR as [[n' ACC1]|LOR]; [|by rewrite LOR].
-      destruct (local_access_eq _ _ _ _ _ _ _ _ _ _ Eqst ACC1 WSAT1 Eqs)
-        as [? Eqstk2]. by rewrite Eq2 Eqstk2. }
+    - rewrite /srel /=. by destruct SREL as (?&?&?&?&?). }
   left.
   apply: sim_body_result. intros. eapply POST; eauto.
-Qed.
+Abort.
 
 (** Write *)
 

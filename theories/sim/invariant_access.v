@@ -78,7 +78,7 @@ Proof.
   specialize (CINV _ Intls) as (stk1 & pm1 & Eqstk1 & In1 & NDIS1).
   rewrite Eqstk1 in Eql. simplify_eq.
   destruct PINV as [Eqs1 [Eqs2 HD]]; [by do 3 eexists|].
-  destruct HD as (stk1 & stk2 & opro & Eq1 & Eq2).
+  destruct HD as (stk1 & Eq1 & opro & stk2 & Eq2).
   rewrite Eq1 in Eqstk1.
   simplify_eq.
   have ?: opro = Some c.
@@ -178,7 +178,7 @@ Proof.
   destruct LU; subst k.
   - rewrite /= Eqstk in HD. simplify_eq. apply elem_of_list_singleton in Init.
     subst it. simpl. by eexists.
-  - destruct HD as (stk1&stk2&opro&Eq1& HD).
+  - destruct HD as (stk1&Eq1&opro& stk2&HD).
     rewrite Eq1 in Eqstk. simplify_eq.
     have ?: opro = it.(protector).
     { destruct (state_wf_stack_item _ WFT _ _ Eq1) as [_ ND].
