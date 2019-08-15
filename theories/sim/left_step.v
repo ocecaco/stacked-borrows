@@ -52,10 +52,11 @@ Proof.
   move : STEPT. rewrite <-into_result. by rewrite to_of_result.
 Qed.
 
-Lemma sim_body_copy_unique_l
-  fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (ss st: scalar) et σs σt Φ :
+Lemma sim_body_copy_local_unique_l
+  fs ft (r r': resUR) (h: heaplet) n (l: loc) t k T (ss st: scalar) et σs σt Φ
+  (LU: k = tkLocal ∨ k = tkUnique) :
   tsize T = 1%nat →
-  r ≡ r' ⋅ res_tag t tkUnique h →
+  r ≡ r' ⋅ res_tag t k h →
   h !! l = Some (ss,st) →
   (r ⊨{n,fs,ft} (#[ss], σs) ≥ (et, σt) : Φ : Prop) →
   r ⊨{n,fs,ft} (Copy (Place l (Tagged t) T), σs) ≥ (et, σt) : Φ.
@@ -74,16 +75,20 @@ Proof.
   destruct (σs.(shp) !! l) as [s'|] eqn:Eqs'; [|done].
   simpl in Eqvs. simplify_eq.
 
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   (* some lookup properties *)
   have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
-  have HLtr: r.(rtm) !! t ≡ Some (to_tgkR tkUnique, to_agree <$> h).
+  have HLtr: r.(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
   { rewrite Eqr.
-    eapply tmap_lookup_op_uniq_included;
-      [apply VALIDr|apply cmra_included_r|].
-    rewrite res_tag_lookup //. }
-  have HLtrf: (r_f ⋅ r).(rtm) !! t ≡ Some (to_tgkR tkUnique, to_agree <$> h).
-  { apply tmap_lookup_op_r_uniq_equiv; [apply VALID|done]. }
+    destruct LU; subst k.
+    - eapply tmap_lookup_op_local_included; [apply VALIDr|apply cmra_included_r|].
+      rewrite res_tag_lookup //.
+    - eapply tmap_lookup_op_uniq_included; [apply VALIDr|apply cmra_included_r|].
+      rewrite res_tag_lookup //. }
+  have HLtrf: (r_f ⋅ r).(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
+  { destruct LU; subst k.
+    - apply tmap_lookup_op_r_local_equiv; [apply VALID|done].
+    - apply tmap_lookup_op_r_uniq_equiv; [apply VALID|done]. }
 
   (* Unique: stack unchanged *)
   destruct (for_each_lookup_case_2 _ _ _ _ _ Eqα') as [EQ1 _].
@@ -95,7 +100,7 @@ Proof.
   destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
   rewrite Eqst in Eqstk. rewrite Eqcs in ACC1.
 
-  destruct (unique_access_head _ _ _ _ _ _ _ _ _ ss st _ Eqstk ACC1 PINV HLtrf)
+  destruct (local_unique_access_head _ _ _ _ _ _ _ _ _ ss st _ _ WFT LU Eqstk ACC1 PINV HLtrf)
     as (it & Eqpit & Eqti & HDi & Eqhp); [by rewrite lookup_fmap Eqs |].
 
   have ?: α' = σt.(sst).
@@ -120,9 +125,10 @@ Proof.
   assert (s' = ss).
   { specialize (PINV _ _ _ HLtrf) as [? PINV].
     specialize (PINV l ss st). rewrite lookup_fmap Eqs in PINV.
-    specialize (PINV ltac:(done) _ Eqstk Unique it.(protector))
-      as (?&?&?&?); [|done|].
-    - destruct HDi as [? HDi]. rewrite HDi. rewrite -Eqpit -Eqti.
+    specialize (PINV ltac:(done)) as (?&?&?).
+    - destruct LU; subst k; [done|].
+      exists stk, Unique, it.(protector). split; last split; [done| |done].
+      destruct HDi as [? HDi]. rewrite HDi. rewrite -Eqpit -Eqti.
       destruct it; by left.
     - by simplify_eq. }
   subst s'.
@@ -144,16 +150,24 @@ Proof.
     + econstructor 2; eauto. by etrans.
 Qed.
 
+Lemma sim_body_copy_unique_l
+  fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (ss st: scalar) et σs σt Φ :
+  tsize T = 1%nat →
+  r ≡ r' ⋅ res_tag t tkUnique h →
+  h !! l = Some (ss,st) →
+  (r ⊨{n,fs,ft} (#[ss], σs) ≥ (et, σt) : Φ : Prop) →
+  r ⊨{n,fs,ft} (Copy (Place l (Tagged t) T), σs) ≥ (et, σt) : Φ.
+Proof. apply sim_body_copy_local_unique_l. by right. Qed.
+
 Lemma sim_body_copy_local_l fs ft r r' n l tg ty ss st et σs σt Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [(ss,st)] tg →
+  r ≡ r' ⋅ res_loc l [(ss,st)] tg →
   (r ⊨{n,fs,ft} (#[ss], σs) ≥ (et, σt) : Φ) →
   r ⊨{n,fs,ft}
     (Copy (Place l (Tagged tg) ty), σs) ≥ (et, σt)
   : Φ.
 Proof.
-  intros Hty Hr. rewrite Hr cmra_assoc. intros CONT.
-  eapply sim_body_copy_unique_l; eauto.
+  intros Hty Hr. eapply sim_body_copy_local_unique_l; [by left|..]; eauto.
   by rewrite lookup_insert.
 Qed.
 

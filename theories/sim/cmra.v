@@ -413,6 +413,9 @@ Fixpoint write_hpl l (v: list (scalar * scalar)) (h: heaplet) : heaplet :=
   | sst :: v' => write_hpl (l +ₗ 1) v' (<[l:=sst]> h)
   end.
 
+Definition res_loc l (v: list (scalar * scalar)) (t: ptr_id) : resUR :=
+  res_tag t tkLocal (write_hpl l v ∅).
+
 (* Definition res_mapsto (l:loc) (v: list (scalar * scalar)) (t: ptr_id) : resUR :=
   res_loc l (length v) t ⋅ res_tag t tkUnique (write_hpl l v ∅). *)
 

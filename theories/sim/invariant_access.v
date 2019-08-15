@@ -155,12 +155,12 @@ Proof.
       apply Lt. by lia.
 Qed.
 
-Lemma unique_access_head r σs (σt: state) l stk kind n' stk' t ss st h
-  (WFT: Wf σt) :
+Lemma local_unique_access_head r σs (σt: state) l stk kind n' stk' t ss st k h
+  (WFT: Wf σt) (LU: k = tkLocal ∨ k = tkUnique):
   σt.(sst) !! l = Some stk →
   access1 stk kind (Tagged t) σt.(scs) = Some (n', stk') →
   tmap_inv r σs σt →
-  r.(rtm) !! t ≡ Some (to_tgkR tkUnique, h) →
+  r.(rtm) !! t ≡ Some (to_tgkR k, h) →
   h !! l ≡ Some $ to_agree (ss,st) →
   ∃ it, it.(perm) = Unique ∧ it.(tg) = Tagged t ∧ is_stack_head it stk ∧
     σt.(shp) !! l = Some st ∧ σs.(shp) !! l = Some ss.
@@ -170,16 +170,21 @@ Proof.
   specialize (PINV _ _ _ Eqs).
   destruct (access1_in_stack _ _ _ _ _ _ ACC1) as (it & Init & Eqti & NDIS).
   destruct PINV as [Eqss [? HD]].
-  { rewrite /= -Eqti. exists stk, it.(perm), it.(protector).
+  { destruct LU; subst k; [done|].
+    rewrite /= -Eqti. exists stk, it.(perm), it.(protector).
     repeat split; [done| |done]. by destruct it. }
   exists (mkItem Unique (Tagged t) it.(protector)).
-  repeat split; [|done..]. destruct HD as (stk1&stk2&opro&Eq1& HD).
-  rewrite Eq1 in Eqstk. simplify_eq.
-  have ?: opro = it.(protector).
-  { destruct (state_wf_stack_item _ WFT _ _ Eq1) as [_ ND].
-    have Eq :=
-      stack_item_tagged_NoDup_eq _ _ (mkItem Unique (Tagged t) opro) t ND Init
-        ltac:(by left) Eqti eq_refl.
-    by inversion Eq. } subst opro.
-  by eexists.
+  repeat split; [|done..].
+  destruct LU; subst k.
+  - rewrite /= Eqstk in HD. simplify_eq. apply elem_of_list_singleton in Init.
+    subst it. simpl. by eexists.
+  - destruct HD as (stk1&stk2&opro&Eq1& HD).
+    rewrite Eq1 in Eqstk. simplify_eq.
+    have ?: opro = it.(protector).
+    { destruct (state_wf_stack_item _ WFT _ _ Eq1) as [_ ND].
+      have Eq :=
+        stack_item_tagged_NoDup_eq _ _ (mkItem Unique (Tagged t) opro) t ND Init
+          ltac:(by left) Eqti eq_refl.
+      by inversion Eq. } subst opro.
+    by eexists.
 Qed.

@@ -31,7 +31,7 @@ Lemma sim_body_alloc_local fs ft r n T σs σt Φ :
                      (init_stacks σt.(sst) l (tsize T) t) σt.(scs)
                      (S σt.(snp)) σt.(snc) in
   let vst := repeat (☠%S, ☠%S) (tsize T) in
-  let r' : resUR := res_tag σt.(snp) tkLocal (write_hpl l vst ∅) in
+  let r' : resUR := res_loc l vst σt.(snp) in
   Φ (r ⋅ r') n (PlaceR l t T) σs' (PlaceR l t T) σt' →
   r ⊨{n,fs,ft} (Alloc T, σs) ≥ (Alloc T, σt) : Φ.
 Proof.
@@ -67,8 +67,6 @@ Proof.
     destruct (init_mem_lookup l (tsize T) σs.(shp)) as [HLms1 HLms2].
     destruct (init_stacks_lookup σt.(sst) l (tsize T) t) as [HLst1 HLst2].
     destruct (init_stacks_lookup σs.(sst) l (tsize T) t) as [HLss1 HLss2].
-    (* have EQ1 := res_mapsto_llookup l vst σt.(snp).
-    rewrite repeat_length in EQ1. *)
     split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
@@ -84,25 +82,42 @@ Proof.
         * subst l1. rewrite Eql1. rewrite repeat_length in Lti.
           rewrite (repeat_lookup_lt_length _ _ _ Lti) /=.
           intros ?%Some_equiv_inj%to_agree_inj. simplify_eq.
-          admit.
-          (* rewrite (HLst1 _ Lti) (HLmt1 _ Lti) (HLms1 _ Lti).
-          intros stk ?. simplify_eq.
-          intros pm opro ?%elem_of_list_singleton ?. simplify_eq.
-          do 2 (split; [done|]). destruct k1. by eexists. by inversion Eqk1. *)
+          rewrite (HLmt1 _ Lti) (HLms1 _ Lti).
+          intros INVPR. do 2 (split; [done|]). destruct k1.
+          { by rewrite /= (HLst1 _ Lti). }
+          { move : INVPR. simpl. naive_solver. }
+          { by inversion Eqk1. }
         * rewrite Eql1 lookup_empty. inversion 1.
       + intros Eqh'.
         have Eqh1: (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tgkR k1, h1).
         { move : Eqh'. rewrite lookup_op lookup_insert_ne // right_id //. }
         specialize (PINV _ _ _ Eqh1) as [? PINV]. split; [simpl; lia|].
-        intros l1 ss1 st1 Eqs1 Eqstk.
-        admit.
-        (* destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
-          as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
-        * rewrite (HLmt2 _ NEQl1) (HLms2 _ NEQl1). by apply PINV.
-        * subst l1.
-          have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
-          have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2. simplify_eq.
-          intros ?? ?%elem_of_list_singleton. simplify_eq. *)
+        intros l1 ss1 st1 Eqs1. specialize (PINV _ _ _ Eqs1).
+        destruct k1.
+        { intros _. specialize (PINV I) as (Eqss1 & Eqst1 & IP).
+          have NEQl1 : ∀ i : nat, (i < tsize T)%nat → l1 ≠ l +ₗ i.
+          { intros i Lt Eql1. subst l1.
+            apply (is_fresh_block σt.(shp) i). by eapply elem_of_dom_2. }
+          by rewrite /= (HLmt2 _ NEQl1) (HLms2 _ NEQl1) (HLst2 _ NEQl1). }
+        { intros (stk & pm & opro & Eqstk & Instk & ND).
+          destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
+            as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
+          - rewrite /= (HLmt2 _ NEQl1) (HLms2 _ NEQl1) (HLst2 _ NEQl1).
+            apply PINV. by exists stk, pm, opro.
+          - subst l1.
+            have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
+            have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2.
+            simplify_eq. apply elem_of_list_singleton in Instk. simplify_eq. }
+        (* TODO: duplicated proof *)
+        { intros (stk & pm & opro & Eqstk & Instk & ND).
+          destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
+            as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
+          - rewrite /= (HLmt2 _ NEQl1) (HLms2 _ NEQl1) (HLst2 _ NEQl1).
+            apply PINV. by exists stk, pm, opro.
+          - subst l1.
+            have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
+            have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2.
+            simplify_eq. apply elem_of_list_singleton in Instk. simplify_eq. }
     - intros c cs. subst σt'. rewrite Eqrcm /=. intros Eqc.
       specialize (CINV _ _ Eqc) as [IN CINV]. split; [done|].
       intros t1 tls1 [Ltc Ht]%CINV. split; [lia|].
@@ -143,8 +158,7 @@ Proof.
   left.
   apply: sim_body_result. intros.
   apply POST; eauto.
-Admitted.
-
+Qed.
 
 Lemma sim_body_alloc_public fs ft r n T σs σt Φ :
   let l := (fresh_block σt.(shp), 0) in
@@ -204,15 +218,32 @@ Proof.
         have Eqh1: (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tgkR k1, h1).
         { move : Eqh'. rewrite lookup_op lookup_insert_ne // right_id //. }
         specialize (PINV _ _ _ Eqh1) as [? PINV]. split; [simpl; lia|].
-        intros l1 ss1 st1 Eqs1 Eqstk.
-        admit.
-        (* destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
-          as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
-        * rewrite (HLmt2 _ NEQl1) (HLms2 _ NEQl1). by apply PINV.
-        * subst l1.
-          have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
-          have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2. simplify_eq.
-          intros ?? ?%elem_of_list_singleton. simplify_eq. *)
+        intros l1 ss1 st1 Eqs1.
+        specialize (PINV _ _ _ Eqs1). destruct k1.
+        { intros _. specialize (PINV I) as (Eqss1 & Eqst1 & IP).
+          have NEQl1 : ∀ i : nat, (i < tsize T)%nat → l1 ≠ l +ₗ i.
+          { intros i Lt Eql1. subst l1.
+            apply (is_fresh_block σt.(shp) i). by eapply elem_of_dom_2. }
+          by rewrite /= (HLmt2 _ NEQl1) (HLms2 _ NEQl1) (HLst2 _ NEQl1). }
+        { intros (stk & pm & opro & Eqstk & Instk & ND).
+          destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
+            as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
+          - rewrite /= (HLmt2 _ NEQl1) (HLms2 _ NEQl1) (HLst2 _ NEQl1).
+            apply PINV. by exists stk, pm, opro.
+          - subst l1.
+            have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
+            have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2.
+            simplify_eq. apply elem_of_list_singleton in Instk. simplify_eq. }
+        (* TODO: duplicated proof *)
+        { intros (stk & pm & opro & Eqstk & Instk & ND).
+          destruct (init_stacks_lookup_case _ _ _ _ _ _ Eqstk)
+            as [[Eql1 NEQl1]|(i & (? & Lti) & Eql1)].
+          - rewrite /= (HLmt2 _ NEQl1) (HLms2 _ NEQl1) (HLst2 _ NEQl1).
+            apply PINV. by exists stk, pm, opro.
+          - subst l1.
+            have Lti': (Z.to_nat i < tsize T)%nat by rewrite Nat2Z.inj_lt Z2Nat.id.
+            have Eq2 := HLst1 _ Lti'. rewrite Z2Nat.id // Eqstk in Eq2.
+            simplify_eq. apply elem_of_list_singleton in Instk. simplify_eq. }
     - intros c cs. subst σt'. rewrite Eqrcm /=. intros Eqc.
       specialize (CINV _ _ Eqc) as [IN CINV]. split; [done|].
       intros t1 tls1 [Ltc Ht]%CINV. split; [lia|].
@@ -250,7 +281,7 @@ Proof.
   left.
   apply: sim_body_result. intros.
   apply POST; eauto.
-Admitted.
+Qed.
 
 (** Copy *)
 Lemma sim_body_copy_public fs ft r n (pl: result) σs σt Φ
@@ -269,7 +300,7 @@ Proof.
   have WSAT1 := WSAT. (* backup *)
 
   (* making a step *)
-  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   split; [|done|].
   { right.
     destruct (NT (Copy pl) σs) as [[]|[es' [σs' STEPS]]];
@@ -333,12 +364,12 @@ Proof.
   exists (Val vs), σs', (r ⋅ (core (r_f ⋅ r))), n. split; last split.
   { left. by constructor 1. }
   { rewrite cmra_assoc -CORE.
-    split; last split; last split; last split; last split; last split.
+    split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - done.
     - intros t1 k h Eqt. specialize (PINV t1 k h Eqt) as [Lt PI]. simpl.
-      split; [done|]. intros l' s' Eqk' stk' Eqstk'.
+      split; [done|]. intros l' ss' st' Eqk'. stk' Eqstk'.
       specialize (PI _ _ Eqk') as PI.
       destruct (for_each_access1 _ _ _ _ _ _ _ Eqα' _ _ Eqstk')
         as (stk & Eqstk & SUB & ?).
