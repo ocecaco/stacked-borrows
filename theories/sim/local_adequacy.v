@@ -139,7 +139,7 @@ Proof.
             σt.(scs) = c2 :: cids2 ∧
             σs2 = mkState σs.(shp) σs.(sst) cids1 σs.(snp) σs.(snc) ∧
             σt2 = mkState σt.(shp) σt.(sst) cids2 σt.(snp) σt.(snc) ∧
-            r2 = r'.
+            r2 = (r'.1, delete c2 r'.2).
       have SIMEND : r' ⊨{idx,fns,fnt} (EndCall vs', σs) ≥ (EndCall v, σt) : Φ.
       { apply sim_body_end_call; auto; [naive_solver|].
         intros. rewrite /Φ. simpl. split; last naive_solver. done. }

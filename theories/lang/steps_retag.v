@@ -212,7 +212,6 @@ Proof.
     eapply sublist_head_preserving; eauto. done.
 Qed.
 
-
 (** active_SRO preserving *)
 Lemma active_SRO_cons_elem_of t it stk :
   t ∈ active_SRO (it :: stk) ↔

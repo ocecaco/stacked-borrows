@@ -98,6 +98,15 @@ Proof.
   - simplify_eq.
 Qed.
 
+Lemma tagKindR_local_exclusive_r (h0 h: heapletR) mb :
+  mb ⋅ Some (to_tgkR tkPub, h0) ≡ Some (to_tgkR tkLocal, h) → False.
+Proof.
+  destruct mb as [[k ?]|]; [rewrite -Some_op pair_op|rewrite left_id];
+    intros [Eq _]%Some_equiv_inj.
+  - destruct k as [[]|[]|]; simplify_eq.
+  - simplify_eq.
+Qed.
+
 Lemma tagKindR_exclusive_heaplet' (h0 h: heapletR) mb k1 :
   mb ⋅ Some (to_tgkR tkUnique, h0) ≡ Some (to_tgkR k1, h) →
   h0 ≡ h ∧ k1 = tkUnique.
@@ -110,6 +119,13 @@ Qed.
 
 Lemma tagKindR_exclusive_heaplet (h0 h: heapletR) mb :
   Some mb ⋅ Some (to_tgkR tkUnique, h0) ≡ Some (to_tgkR tkUnique, h) → False.
+Proof.
+  destruct mb as [c ]. rewrite -Some_op pair_op. intros [Eq _]%Some_equiv_inj.
+  destruct c as [[]|[]|]; inversion Eq; simpl in *; simplify_eq.
+Qed.
+
+Lemma tagKindR_exclusive_local_heaplet (h0 h: heapletR) mb :
+  Some mb ⋅ Some (to_tgkR tkLocal, h0) ≡ Some (to_tgkR tkLocal, h) → False.
 Proof.
   destruct mb as [c ]. rewrite -Some_op pair_op. intros [Eq _]%Some_equiv_inj.
   destruct c as [[]|[]|]; inversion Eq; simpl in *; simplify_eq.

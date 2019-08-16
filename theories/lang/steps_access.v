@@ -96,6 +96,33 @@ Proof.
     apply remove_check_stack_item_tagged_NoDup_2.
 Qed.
 
+Lemma access1_read_eq it1 it2 stk tag t cids n stk':
+  stack_item_tagged_NoDup stk →
+  access1 stk AccessRead tag cids = Some (n, stk') →
+  it1 ∈ stk → it2 ∈ stk' →
+  it2.(perm) ≠ Disabled →
+  it1.(tg) = Tagged t → it2.(tg) = Tagged t → it1 = it2.
+Proof.
+  intros ND ACC.
+  have ND' := access1_stack_item_tagged_NoDup _ _ _ _ _ _ ACC ND.
+  move : ACC. rewrite /= /access1 /=.
+  case find_granting as [[idx pm]|] eqn:Eq1; [|done]. simpl.
+  case replace_check as [stk1|] eqn:Eq2; [|done].
+  simpl. intros ?. simplify_eq. intros In1.
+  have SUB:= replace_check_tagged_sublist _ _ _ Eq2.
+  rewrite elem_of_app. intros In2 ND2.
+  destruct In2 as [In2|In2].
+  - specialize (SUB _ In2) as (it3 & In3 & Eqt3 & Eqp3 & ND3).
+    specialize (ND3 ND2).
+    have ?: it3 = it2.
+    { destruct it2, it3. simpl in *. by simplify_eq. }
+    subst it3.
+    apply (stack_item_tagged_NoDup_eq _ _ _ _ ND); [done|].
+    rewrite -{1}(take_drop n stk) elem_of_app. by left.
+  - apply (stack_item_tagged_NoDup_eq _ _ _ _ ND); [done|].
+    rewrite -{1}(take_drop n stk) elem_of_app. by right.
+Qed.
+
 Lemma for_each_access1_stack_item α nxtc cids nxtp l n tg kind α' :
   for_each α l n false
           (λ stk, nstk' ← access1 stk kind tg cids; Some nstk'.2) = Some α' →
