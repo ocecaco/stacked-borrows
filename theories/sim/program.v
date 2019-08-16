@@ -36,7 +36,8 @@ Proof.
     { eapply rrel_mono; [done|apply cmra_included_r|exact VRET]. }
     split; [|done].
     exists O. split; [by rewrite -STACKT|].
-    apply cmap_lookup_op_l_equiv_pub; [apply VALID|].
-    by rewrite /= lookup_singleton.
+    rewrite /end_call_sat /=.
+    apply cmap_lookup_op_l_equiv; [apply VALID|].
+    by rewrite /to_cmUR fmap_insert lookup_insert.
   - instantiate (1:=ε). rewrite right_id left_id. apply wsat_init_state.
 Qed.

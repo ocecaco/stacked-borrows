@@ -37,7 +37,7 @@ Proof.
   (* Write local *)
   rewrite (vrel_eq _ _ _ AREL).
   sim_apply sim_simple_write_local; [solve_sim..|].
-  intros arg ->. simpl.
+  intros sarg targ ??. simplify_eq.
   sim_apply sim_simple_let=>/=.
   apply: sim_simple_result.
   (* Retag local *)
@@ -88,8 +88,8 @@ Proof.
   sim_apply_l sim_body_copy_unique_l; [try solve_sim..|].
   { rewrite lookup_insert. done. }
   (* Finishing up. *)
-  eapply sim_body_viewshift.
-  { do 5 eapply viewshift_frame_r. eapply vs_call_empty_public. }
+  (* eapply sim_body_viewshift.
+  { do 5 eapply viewshift_frame_r. eapply vs_call_empty_public. } *)
   apply: sim_body_result=>Hval. do 2 (split; first done). split.
   - solve_res.
   - constructor; simpl; auto.

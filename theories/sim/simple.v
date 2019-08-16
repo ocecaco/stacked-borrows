@@ -143,7 +143,7 @@ Qed.
 
 (** * Simple proof for a function body. *)
 Definition fun_post_simple c (r: resUR) (n: nat) vs vt :=
-  res_callState c csPub ≼ r ∧ rrel r vs vt.
+  res_cs c ∅ ≼ r ∧ rrel r vs vt.
 
 Lemma sim_fun_simple n (esf etf: function) :
   length (esf.(fun_args)) = length (etf.(fun_args)) →
@@ -152,7 +152,7 @@ Lemma sim_fun_simple n (esf etf: function) :
     Forall2 (vrel rf) vls vlt →
     subst_l (esf.(fun_args)) (Val <$> vls) (esf.(fun_body)) = Some es →
     subst_l (etf.(fun_args)) (Val <$> vlt) (etf.(fun_body)) = Some et →
-    rf ⋅ res_callState c (csOwned ∅) ⊨ˢ{n,fs,ft} es ≥ et : fun_post_simple c) →
+    rf ⋅ res_cs c ∅ ⊨ˢ{n,fs,ft} es ≥ et : fun_post_simple c) →
   ⊨ᶠ esf ≥ etf.
 Proof.
   intros Hl HH fs ft Hlook rf es et vls vlt σs σt FREL SUBSTs SUBSTt. exists n.
@@ -173,7 +173,7 @@ Lemma sim_fun_simple1 n (esf etf: function) :
     vrel rf vs vt →
     subst_l (esf.(fun_args)) [Val vs] (esf.(fun_body)) = Some es →
     subst_l (etf.(fun_args)) [Val vt] (etf.(fun_body)) = Some et →
-    rf ⋅ res_callState c (csOwned ∅) ⊨ˢ{n,fs,ft} es ≥ et : fun_post_simple c) →
+    rf ⋅ res_cs c ∅ ⊨ˢ{n,fs,ft} es ≥ et : fun_post_simple c) →
   ⊨ᶠ esf ≥ etf.
 Proof.
   intros Hls Hlt HH. eapply sim_fun_simple.
@@ -254,26 +254,26 @@ Qed.
 (** * Memory: local *)
 Lemma sim_simple_alloc_local fs ft r n T Φ :
   (∀ (l: loc) (tg: nat),
-    let r' := res_mapsto l (repeat ☠%S (tsize T)) tg in
+    let r' := res_loc l (repeat (☠%S,☠%S) (tsize T)) tg in
     Φ (r ⋅ r') n (PlaceR l (Tagged tg) T) (PlaceR l (Tagged tg) T)) →
   r ⊨ˢ{n,fs,ft} Alloc T ≥ Alloc T : Φ.
 Proof.
   intros HH σs σt. apply sim_body_alloc_local; eauto.
 Qed.
 
-Lemma sim_simple_write_local fs ft r r' n l tg ty v v' Φ :
+Lemma sim_simple_write_local fs ft r r' n l tg ty vs vt v' Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [v'] tg →
-  (∀ s, v = [s] → Φ (r' ⋅ res_mapsto l [s] tg) n (ValR [☠%S]) (ValR [☠%S])) →
+  r ≡ r' ⋅ res_loc l [v'] tg →
+  (∀ ss st, vs = [ss] → vt = [st] → Φ (r' ⋅ res_loc l [(ss,st)] tg) n (ValR [☠%S]) (ValR [☠%S])) →
   r ⊨ˢ{n,fs,ft}
-    (Place l (Tagged tg) ty <- #v) ≥ (Place l (Tagged tg) ty <- #v)
+    (Place l (Tagged tg) ty <- #vs) ≥ (Place l (Tagged tg) ty <- #vt)
   : Φ.
 Proof. intros Hty Hres HH σs σt. eapply sim_body_write_local_1; eauto. Qed.
 
-Lemma sim_simple_copy_local_l fs ft r r' n l tg ty s et Φ :
+Lemma sim_simple_copy_local_l fs ft r r' n l tg ty ss st et Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [s] tg →
-  (r ⊨ˢ{n,fs,ft} #[s] ≥ et : Φ) →
+  r ≡ r' ⋅ res_loc l [(ss, st)] tg →
+  (r ⊨ˢ{n,fs,ft} #[ss] ≥ et : Φ) →
   r ⊨ˢ{n,fs,ft}
     Copy (Place l (Tagged tg) ty) ≥ et
   : Φ.
@@ -282,10 +282,10 @@ Proof.
   eapply sim_body_copy_local_l; eauto.
 Qed.
 
-Lemma sim_simple_copy_local_r fs ft r r' n l tg ty s es Φ :
+Lemma sim_simple_copy_local_r fs ft r r' n l tg ty ss st es Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [s] tg →
-  (r ⊨ˢ{n,fs,ft} es ≥ #[s] : Φ) →
+  r ≡ r' ⋅ res_loc l [(ss,st)] tg →
+  (r ⊨ˢ{n,fs,ft} es ≥ #[st] : Φ) →
   r ⊨ˢ{S n,fs,ft}
     es ≥ Copy (Place l (Tagged tg) ty)
   : Φ.
@@ -294,10 +294,10 @@ Proof.
   eapply sim_body_copy_local_r; eauto.
 Qed.
 
-Lemma sim_simple_copy_local fs ft r r' n l tg ty s Φ :
+Lemma sim_simple_copy_local fs ft r r' n l tg ty ss st Φ :
   tsize ty = 1%nat →
-  r ≡ r' ⋅ res_mapsto l [s] tg →
-  (r ⊨ˢ{n,fs,ft} #[s] ≥ #[s] : Φ) →
+  r ≡ r' ⋅ res_loc l [(ss,st)] tg →
+  (r ⊨ˢ{n,fs,ft} #[ss] ≥ #[st] : Φ) →
   r ⊨ˢ{S n,fs,ft}
     Copy (Place l (Tagged tg) ty) ≥ Copy (Place l (Tagged tg) ty)
   : Φ.
@@ -309,7 +309,7 @@ Qed.
 
 Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty Φ :
   (0 < tsize ty)%nat →
-  r ≡ r' ⋅ res_mapsto l [s] tg →
+  r ≡ r' ⋅ res_loc l [(s,s)] tg →
   arel rs s' s →
   r' ≡ r'' ⋅ rs →
   (∀ l_inner tg_inner hplt,
@@ -321,7 +321,7 @@ Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty Φ :
     end → *)
     let tk := tkUnique in
     is_Some (hplt !! l_inner) →
-    Φ (r'' ⋅ rs ⋅ res_mapsto l [s_new] tg ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) (ValR [☠%S])) →
+    Φ (r'' ⋅ rs ⋅ res_loc l [(s_new,s_new)] tg ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) (ValR [☠%S])) →
   r ⊨ˢ{n,fs,ft}
     Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default
   ≥

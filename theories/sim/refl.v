@@ -324,8 +324,8 @@ Theorem sim_mod_fun_refl f :
 Proof.
   intros Hwf. eapply (sim_fun_simple sem_steps); first done.
   intros fs ft r es et vs vt c Hlk Hrel Hsubst1 Hsubst2.
-  eapply sim_simple_viewshift.
-  { eapply viewshift_frame_l. eapply vs_call_empty_public. }
+  (* eapply sim_simple_viewshift.
+  { eapply viewshift_frame_l. eapply vs_call_empty_public. } *)
   eapply sim_simple_frame_r.
   destruct (subst_l_map _ _ _ _ _ _ _ (rrel r) Hsubst1 Hsubst2) as (map & -> & -> & Hmap).
   { clear -Hrel. induction Hrel; eauto using Forall2. }
