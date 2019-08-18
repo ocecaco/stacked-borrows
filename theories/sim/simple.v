@@ -261,12 +261,12 @@ Proof.
   intros HH σs σt. apply sim_body_alloc_local; eauto.
 Qed.
 
-Lemma sim_simple_write_local fs ft r r' n l tg ty vs vt v' Φ :
+Lemma sim_simple_write_local fs ft r r' n l tg ty v v' Φ :
   tsize ty = 1%nat →
   r ≡ r' ⋅ res_loc l [v'] tg →
-  (∀ ss st, vs = [ss] → vt = [st] → Φ (r' ⋅ res_loc l [(ss,st)] tg) n (ValR [☠%S]) (ValR [☠%S])) →
+  (∀ s, v = [s] → Φ (r' ⋅ res_loc l [(s,s)] tg) n (ValR [☠%S]) (ValR [☠%S])) →
   r ⊨ˢ{n,fs,ft}
-    (Place l (Tagged tg) ty <- #vs) ≥ (Place l (Tagged tg) ty <- #vt)
+    (Place l (Tagged tg) ty <- #v) ≥ (Place l (Tagged tg) ty <- #v)
   : Φ.
 Proof. intros Hty Hres HH σs σt. eapply sim_body_write_local_1; eauto. Qed.
 

@@ -348,53 +348,6 @@ Proof.
   intros [s Eq]%to_agree_uninj. exists s. by rewrite Eq.
 Qed.
 
-(** lmap *)
-(* Lemma lmap_lookup_op_r (lm1 lm2 : lmapUR)
-  (VALID: ✓ (lm1 ⋅ lm2)) t ls :
-  lm2 !! t ≡ Some ls → (lm1 ⋅ lm2) !! t ≡ Some ls.
-Proof.
-  intros Eq. move : (VALID t). rewrite lookup_op Eq.
-  destruct (lm1 !! t) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
-  rewrite -Some_op.
-  destruct ls, ls2; simpl; try inversion 1.
-Qed.
-
-Lemma lmap_lookup_op_l (lm1 lm2 : lmapUR)
-  (VALID: ✓ (lm1 ⋅ lm2)) t ls :
-  lm1 !! t ≡ Some ls → (lm1 ⋅ lm2) !! t ≡ Some ls.
-Proof.
-  intros Eq. move : (VALID t). rewrite lookup_op Eq.
-  destruct (lm2 !! t) as [ls2|] eqn:Eql; rewrite Eql; [|by rewrite right_id].
-  rewrite -Some_op.
-  destruct ls, ls2; simpl; try inversion 1.
-Qed.
-
-Lemma lmap_lookup_op_included (lm1 lm2 : lmapUR) t ls
-  (VALID: ✓ lm2) (INCL: (lm1 : lmapUR) ≼ (lm2 : lmapUR)):
-  lm1 !! t ≡ Some ls → lm2 !! t ≡ Some ls.
-Proof.
-  destruct INCL as [cm' Eq]. rewrite Eq. apply lmap_lookup_op_l. by rewrite -Eq.
-Qed.
-
-Lemma lmap_lookup_op_None_inv (lm1 lm2 : lmapUR) t :
-  (lm1 ⋅ lm2) !! t = None →
-  lm1 !! t = None ∧ lm2 !! t = None.
-Proof.
-  rewrite lookup_op.
-  destruct (lm1 !! t) eqn:Eq1, (lm2 !! t) eqn:Eq2;
-    rewrite Eq1 Eq2; [inversion 1..|done].
-Qed.
-
-Lemma lmap_exclusive_eq_l (tls: gset loc)
-  (c: (exclR (gsetO loc))) (mb: optionR (exclR (gsetO loc))) :
-  Some c ⋅ mb ≡ Some (Excl tls) → c ≡ Excl tls.
-Proof.
-  intros Eq.
-  have VALID: valid (Some c ⋅ mb) by rewrite Eq. move :Eq.
-  destruct c, mb as [[]|]; simplify_eq; try done.
-  rewrite right_id. by intros ?%Some_equiv_inj.
-Qed. *)
-
 (** The Core *)
 
 Lemma heaplet_core (h: heapletR) : core h = h.
@@ -539,46 +492,51 @@ Proof.
   split. by destruct k. apply to_hplR_valid.
 Qed.
 
-Lemma res_tag_uniq_insert_local_update_inner (tm: tmapUR) t k2 (h1 h2: heaplet):
+Lemma res_tag_uniq_insert_local_update_inner
+  (tm: tmapUR) t k1 k2 (h1 h2: heaplet)
+  (UNIQ: k1 = tkLocal ∨ k1 = tkUnique) :
   tm !! t = None →
-  (tm ⋅ {[t := (to_tgkR tkUnique, to_hplR h1)]},
-    {[t := (to_tgkR tkUnique, to_hplR h1)]}) ~l~>
+  (tm ⋅ {[t := (to_tgkR k1, to_hplR h1)]}, {[t := (to_tgkR k1, to_hplR h1)]}) ~l~>
   (tm ⋅ {[t := (to_tgkR k2, to_hplR h2)]}, {[t := (to_tgkR k2, to_hplR h2)]}).
 Proof.
   intros.
   do 2 rewrite (cmra_comm tm) -insert_singleton_op //.
   rewrite -(insert_insert tm t (_, to_agree <$> h2)
-                               (to_tgkR tkUnique, to_agree <$> h1)).
+                               (to_tgkR k1, to_agree <$> h1)).
   eapply (singleton_local_update (<[t := _]> tm : tmapUR)).
   - by rewrite lookup_insert.
-  - apply exclusive_local_update.
+  - have ?: Exclusive (to_tgkR k1, to_hplR h1).
+    { destruct UNIQ; subst k1; apply _. }
+    apply exclusive_local_update.
     split; [apply to_tgkR_valid|apply to_hplR_valid].
 Qed.
 
-Lemma res_tag_uniq_local_update (r: resUR) t h k' h'
+Lemma res_tag_uniq_local_update (r: resUR) t k h k' h'
+  (UNIQ: k = tkLocal ∨ k = tkUnique)
   (NONE: r.(rtm) !! t = None) :
-  (r ⋅ res_tag t tkUnique h, res_tag t tkUnique h) ~l~>
-  (r ⋅ res_tag t k' h', res_tag t k' h').
+  (r ⋅ res_tag t k h, res_tag t k h) ~l~> (r ⋅ res_tag t k' h', res_tag t k' h').
 Proof.
   destruct r as [tm cm].
   apply prod_local_update_1. rewrite /=.
   by apply res_tag_uniq_insert_local_update_inner.
 Qed.
 
-Lemma res_tag_1_insert_local_update (r: resUR) (l: loc) s1 s2 (t: ptr_id)
-  (NONE: r.(rtm) !! t = None):
-  (r ⋅ res_tag t tkUnique {[l := s1]}, res_tag t tkUnique {[l := s1]}) ~l~>
-  (r ⋅ res_tag t tkUnique {[l := s2]}, res_tag t tkUnique {[l := s2]}).
+Lemma res_tag_1_insert_local_update (r: resUR) (l: loc) k s1 s2 (t: ptr_id)
+  (UNIQ: k = tkLocal ∨ k = tkUnique)
+  (NONE: r.(rtm) !! t = None) :
+  (r ⋅ res_tag t k {[l := s1]}, res_tag t k {[l := s1]}) ~l~>
+  (r ⋅ res_tag t k {[l := s2]}, res_tag t k {[l := s2]}).
 Proof. by apply res_tag_uniq_local_update. Qed.
 
-Lemma res_tag_1_insert_local_update_r (r: resUR) r' (l: loc) s1 s2 (t: ptr_id)
-  (NONE: r.(rtm) !! t = None):
-  (r ⋅ res_tag t tkUnique {[l := s1]}, (ε, r') ⋅ res_tag t tkUnique {[l := s1]}) ~l~>
-  (r ⋅ res_tag t tkUnique {[l := s2]}, (ε, r') ⋅ res_tag t tkUnique {[l := s2]}).
+Lemma res_tag_1_insert_local_update_r (r: resUR) r' (l: loc) k s1 s2 (t: ptr_id)
+  (UNIQ: k = tkLocal ∨ k = tkUnique)
+  (NONE: r.(rtm) !! t = None) :
+  (r ⋅ res_tag t k {[l := s1]}, (ε, r') ⋅ res_tag t k {[l := s1]}) ~l~>
+  (r ⋅ res_tag t k {[l := s2]}, (ε, r') ⋅ res_tag t k {[l := s2]}).
 Proof.
   destruct r as [[tm cm] lm].
   apply prod_local_update_1. rewrite /= 2!left_id.
-  by apply (res_tag_uniq_insert_local_update_inner _ _ tkUnique).
+  by apply (res_tag_uniq_insert_local_update_inner _ _ k).
 Qed.
 
 Lemma res_tag_lookup (k: tag_kind) (h: heaplet) (t: ptr_id) :

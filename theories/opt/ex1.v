@@ -37,7 +37,7 @@ Proof.
   (* Write local *)
   rewrite (vrel_eq _ _ _ AREL).
   sim_apply sim_simple_write_local; [solve_sim..|].
-  intros sarg targ ??. simplify_eq.
+  intros sarg ->.
   sim_apply sim_simple_let=>/=.
   apply: sim_simple_result.
   (* Retag local *)
