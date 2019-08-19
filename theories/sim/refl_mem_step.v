@@ -749,22 +749,17 @@ Proof.
       case (decide (t1 = t)) => ?; [subst t1|].
       + specialize (PINV _ _ _ HLtrf) as [? PINV]. split; [done|].
         move : HL1. rewrite HLtr'.
-        intros [Eq1 Eq2]%Some_equiv_inj. simpl in Eq1, Eq2. simplify_eq.
-        intros l1 ss1 st1. rewrite -Eq2 lookup_fmap.
+        intros [Eq1%leibniz_equiv_iff Eq2]%Some_equiv_inj. simpl in Eq1, Eq2.
         have ?: k1 = k. { destruct k, k1; inversion Eq1; done. }
         subst k1. clear Eq1.
+        intros l1 ss1 st1. rewrite -Eq2 lookup_fmap.
         case (decide (l1 = l)) => ?; [subst l1|].
         * rewrite lookup_insert. intros Eq%Some_equiv_inj%to_agree_inj.
-          symmetry in Eq.
-          (* intros stk1 Eqstk1 pm opro In1 NDIS.
-          rewrite Eqstk1 in Eqstk. simplify_eq.
-          split; [by rewrite lookup_insert|].
-          split; [by rewrite lookup_insert|].
-          specialize (PINV l s'). rewrite lookup_fmap Eqs0 in PINV.
-          specialize (PINV ltac:(done) _ Eqstk1 _ _ In1 NDIS) as [? [? PINV]].
-          destruct k1; [done|by inversion Eq1]. *)
-          admit.
-
+          symmetry in Eq. simplify_eq.
+          rewrite 2!lookup_insert. intros PRE. do 2 (split; [done|]).
+          specialize (PINV l ss' st'). rewrite lookup_fmap Eqs0 in PINV.
+          specialize (PINV ltac:(done)).
+          destruct CASE as [[]|[]]; subst k; by apply PINV.
         * rewrite lookup_insert_ne // -lookup_fmap.
           intros Eq. specialize (PINV _ _ _ Eq).
           setoid_rewrite lookup_insert_ne; [|done..].
@@ -775,22 +770,34 @@ Proof.
           rewrite lookup_op res_tag_lookup_ne //.
           rewrite (lookup_op _ (res_tag _ _ _).(rtm)) res_tag_lookup_ne //. }
         specialize (PINV _ _ _ HL') as [? PINV]. split; [done|].
-        intros l1 ss1 st1 Eqs1. (* stk1 Eqstk1. *)
+        intros l1 ss1 st1 Eqs1. specialize (PINV _ _ _ Eqs1).
         case (decide (l1 = l)) => [?|NEQ];
           [subst l1; rewrite lookup_insert|rewrite lookup_insert_ne //].
-        * (* rewrite Eqstk1 in Eqstk. simplify_eq.
-          intros pm opro Instk NDIS.
-          specialize (PINV _ _ Eqs1 _ Eqstk1 _ _ Instk NDIS) as [Eqs' [? HD]].
+        * intros PRE.
+          destruct PINV as [Eqs' [? HD]]. { by destruct k1. }
           (* t1 ≠ t, t is top of stack(l), t1 is top or SRO in stack (l).
             This cannot happen. *)
           exfalso.
-          have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk1).
-          destruct k1.
-          { eapply (access1_write_remove_incompatible_head _ (Tagged t) t1 _ _ _ ND);
-              eauto. by inversion 1. }
-          { eapply (access1_write_remove_incompatible_active_SRO _ (Tagged t) t1 _ _ _ ND);
-              eauto. } *)
-          admit.
+          have ND := proj2 (state_wf_stack_item _ WFT _ _ Eqstk).
+          destruct k1; simpl in *.
+          { rewrite Eqstk in HD. simplify_eq.
+            eapply (access1_write_remove_incompatible_head _ (Tagged t) t1 _ _ _ ND);
+              eauto.
+            - by exists None, [].
+            - by inversion 1.
+            - by left. }
+          { destruct HD as (stk1 & Eqstk1 & opro & HD).
+            rewrite Eqstk1 in Eqstk. simplify_eq.
+            eapply (access1_write_remove_incompatible_head _ (Tagged t) t1 _ _ _ ND);
+              eauto.
+            - by inversion 1.
+            - destruct HD as [? HD]. rewrite HD. by left. }
+          { destruct HD as (stk1 & Eqstk1 & HD).
+            rewrite Eqstk1 in Eqstk. simplify_eq.
+            destruct PRE as (stk1 & pm & opro & Eqstk & In1 & ?).
+            rewrite Eqstk in Eqstk1. simplify_eq.
+            eapply (access1_write_remove_incompatible_active_SRO _
+                      (Tagged t) t1 _ _ _ ND); eauto. }
 
         * setoid_rewrite lookup_insert_ne; [|done]. by apply PINV.
 
@@ -850,17 +857,11 @@ Proof.
               rewrite (lookup_op _ (res_tag _ _ _).(rtm)) res_tag_lookup_ne //.
             - left. move : PB. done.
             - by right. }
-
-    (* lmap_inv *)
-    (* - move : LINV. rewrite Eqr 2!cmra_assoc.
-      intros LINV l1 t1 Eq1. simpl. specialize (LINV l1 t1 Eq1) as (?&?&?).
-      do 2 (split; [done|]).
-      case (decide (l1 = l)) => [->|?];
-        [rewrite 2!lookup_insert //|rewrite lookup_insert_ne// lookup_insert_ne//]. *) }
+  }
 
   left. apply: sim_body_result.
   intros. simpl. by apply POST.
-Admitted.
+Qed.
 
 (** Writing to local of size 1 *)
 Lemma sim_body_write_local_1 fs ft r r' n l tg T v v' σs σt Φ :
