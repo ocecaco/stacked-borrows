@@ -13,6 +13,7 @@ Definition ex1_unopt : function :=
     *{int} "x" <- #[42] ;;
     Call #[ScFnPtr "g"] [] ;;
     Copy *{int} "x"
+    (* FIXME: should deallocate `x` *)
   .
 
 Definition ex1_opt : function :=
@@ -23,6 +24,7 @@ Definition ex1_opt : function :=
     *{int} "x" <- #[42] ;;
     let: "v" := Copy *{int} "x" in
     Call #[ScFnPtr "g"] [] ;;
+    (* FIXME: should deallocate `x` *)
     "v"
   .
 

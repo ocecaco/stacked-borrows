@@ -27,14 +27,13 @@ Fixpoint expr_wf (e: expr) : Prop :=
   | Val v => value_wf v
   | Call f args => expr_wf f ∧ Forall id (fmap expr_wf args)
   | Case e branches => expr_wf e ∧ Forall id (fmap expr_wf branches)
-  | Deref e _ | Ref e | Copy e =>
+  | Deref e _ | Ref e | Copy e | Free e | Retag e _ =>
     expr_wf e
   | Proj e1 e2 | Conc e1 e2 | BinOp _ e1 e2 | Let _ e1 e2 | Write e1 e2 =>
     expr_wf e1 ∧ expr_wf e2
   (* Forbidden cases. *)
   | InitCall e | EndCall e => False (* administrative *)
   | Place _ _ _ => False (* literal pointers *)
-  | Free _ | Retag _ _ => False (* TODO: We'd like to support deallocation and retag! *)
   end.
 Definition prog_wf (prog: fn_env) :=
   has_main prog ∧
@@ -286,8 +285,8 @@ Proof using Type*.
     split; first done.
     simpl. split; last done. constructor; last done.
     eapply arel_mono, arel_ptr; auto.
-  - (* Free: can't happen *) done.
-  - (* Retag: can't happen *) done.
+  - (* Free *) admit.
+  - (* Retag *) admit.
   - (* Let *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
