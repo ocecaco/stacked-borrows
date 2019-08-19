@@ -313,7 +313,7 @@ Proof using Type*.
     eapply (Forall_lookup_1  _ _ _ _ H Hlk).
     + eapply (Forall_lookup_1  _ _ _ _ Hwf2 Hlk).
     + eauto.
-Qed.
+Admitted.
 
 End sem.
 
