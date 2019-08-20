@@ -79,6 +79,16 @@ Proof.
   case protector; naive_solver.
 Qed.
 
+Lemma dealloc_head_step' fns (σ: state) l bor T α (WF: Wf σ) :
+  (∀ m : Z, is_Some (σ.(shp) !! (l +ₗ m)) ↔ 0 ≤ m ∧ m < tsize T) →
+  memory_deallocated σ.(sst) σ.(scs) l bor (tsize T) = Some α →
+  let σ' := mkState (free_mem l (tsize T) σ.(shp)) α σ.(scs) σ.(snp) σ.(snc) in
+  head_step fns (Free (Place l bor T)) σ
+            [DeallocEvt l bor T] #[☠] σ' [].
+Proof.
+  intros DOM MD. econstructor; econstructor; eauto.
+Qed.
+
 Lemma dealloc_head_step fns (σ: state) T l bor
   (WF: Wf σ)
   (BLK: ∀ m : Z, l +ₗ m ∈ dom (gset loc) σ.(shp) ↔ 0 ≤ m ∧ m < tsize T)

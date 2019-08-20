@@ -285,7 +285,13 @@ Proof using Type*.
     split; first done.
     simpl. split; last done. constructor; last done.
     eapply arel_mono, arel_ptr; auto.
-  - (* Free *) admit.
+  - (* Free *)
+    move=>Hwf xs Hxswf /=.
+    sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by auto..].
+    intros r' n' rs rt (-> & Hrel). simpl.
+    eapply sim_simple_dealloc; eauto.
+    split; first done. constructor; done.
   - (* Retag *) admit.
   - (* Let *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).

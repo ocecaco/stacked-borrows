@@ -159,6 +159,72 @@ Proof.
     + move => ??. apply Lt. lia.
 Qed.
 
+Lemma for_each_dealloc_lookup_Some α l n f α' :
+  for_each α l n true f = Some α' →
+  ∀ l' stk', α' !! l' = Some stk' →
+  (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∧ α !! l' = Some stk'.
+Proof.
+  intros EQ. destruct (for_each_dealloc_lookup  _ _ _ _ _ EQ) as [EQ1 EQ2].
+  intros l1 stk1 Eq1.
+  destruct (block_case l l1 n) as [NEql|Eql].
+  - rewrite -EQ2 //.
+  - destruct Eql as (i & Lt & ?). subst l1. destruct Lt.
+    move : (EQ1 (Z.to_nat i)). rewrite Z2Nat.id //. intros EQ'.
+    rewrite EQ' // in Eq1.
+    rewrite -(Nat2Z.id n) -Z2Nat.inj_lt //. lia.
+Qed.
+
+Lemma free_mem_lookup l n h :
+  (∀ (i: nat), (i < n)%nat → free_mem l n h !! (l +ₗ i) = None) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) →
+    free_mem l n h !! l' = h !! l').
+Proof.
+  revert l. induction n as [|n IH]; intros l; simpl.
+  { split; intros ??; by [lia|]. } split.
+  - intros i Lt. destruct i.
+    + rewrite shift_loc_0 lookup_delete //.
+    + rewrite lookup_delete_ne.
+      * specialize (IH (l +ₗ 1))as [IH _].
+        rewrite (_: l +ₗ S i = l +ₗ 1 +ₗ i).
+        { apply IH. lia. }
+        { rewrite shift_loc_assoc. f_equal. lia. }
+      * rewrite -{1}(shift_loc_0 l).
+        move => /shift_loc_inj ?. lia.
+  - intros l' Lt.
+    rewrite lookup_delete_ne.
+    + apply IH. intros i Lti.
+      rewrite (_: l +ₗ 1 +ₗ i = l +ₗ S i).
+      * apply Lt. lia.
+      * rewrite shift_loc_assoc. f_equal. lia.
+    + rewrite -(shift_loc_0_nat l). intros ?. subst l'. apply (Lt O); [lia|done].
+Qed.
+
+Lemma free_mem_lookup_case l' l n h :
+  (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∧ free_mem l n h !! l' = h !! l' ∨
+  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i ∧ free_mem l n h !! (l +ₗ i) = None.
+Proof.
+  destruct (free_mem_lookup l n h) as [EQ1 EQ2].
+  destruct (block_case l l' n) as [NEql|Eql].
+  - left. rewrite -EQ2 //.
+  - right. destruct Eql as (i & Lt & ?). exists i. do 2 (split; [done|]).
+    subst l'. destruct Lt.
+    move : (EQ1 (Z.to_nat i)). rewrite Z2Nat.id //. intros EQ'.
+    apply EQ'.
+    rewrite -(Nat2Z.id n) -Z2Nat.inj_lt //. lia.
+Qed.
+
+Lemma free_mem_dom l' l n h:
+  l' ∈ dom (gset loc) (free_mem l n h) →
+  l' ∈ dom (gset loc) h ∧
+  (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∧ free_mem l n h !! l' = h !! l'.
+Proof.
+  intros [? EqD]%elem_of_dom.
+  destruct (free_mem_lookup_case l' l n h) as [Eqn|(i & Lt & ? & EqN)].
+  - split; [|done]. apply elem_of_dom. destruct Eqn as [? Eqn].
+    rewrite -Eqn. by eexists.
+  - exfalso. subst l'. by rewrite EqD in EqN.
+Qed.
+
 Lemma memory_deallocated_delete' α nxtc l bor n α' (m: nat):
   memory_deallocated α nxtc (l +ₗ m) bor n = Some α' →
   α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq m n).
@@ -178,3 +244,27 @@ Lemma memory_deallocated_delete α nxtc l bor n α':
   memory_deallocated α nxtc l bor n = Some α' →
   α' = fold_right (λ (i: nat) α, delete (l +ₗ i) α) α (seq O n).
 Proof. intros. eapply memory_deallocated_delete'. rewrite shift_loc_0. by eauto. Qed.
+
+Lemma dealloc1_Some stk t cids :
+  is_Some (dealloc1 stk t cids) →
+  ∃ it, it ∈ stk ∧ it.(tg) = t ∧
+    Forall (λ x : item, ¬ is_active_protector cids x) stk ∧
+    grants it.(perm) AccessWrite.
+Proof.
+  rewrite /dealloc1. move => [[]].
+  case find_granting eqn:GR; [|done]. simpl.
+  apply fmap_Some_1 in GR as [[i it'] [[GR [? ?]]%list_find_Some ?]]. simplify_eq.
+  rewrite /find_top_active_protector.
+  case list_find eqn:EqF; [done|]. intros _.
+  apply list_find_None in EqF. exists it'.
+  have ?: it' ∈ stk by eapply elem_of_list_lookup_2. done.
+Qed.
+
+Lemma dealloc1_singleton_Some it t cids:
+  is_Some (dealloc1 [it] t cids) →
+  it.(tg) = t ∧ (¬ is_active_protector cids it) ∧ grants it.(perm) AccessWrite.
+Proof.
+  move => /dealloc1_Some [it' [/elem_of_list_singleton In' [? [FA ?]]]].
+  subst. split; last split; [done| |done].
+  rewrite ->Forall_forall in FA. apply FA. by left.
+Qed.

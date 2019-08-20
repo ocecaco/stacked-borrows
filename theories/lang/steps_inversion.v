@@ -726,6 +726,39 @@ Proof.
     inversion STT as [?? STT2|?[]? STT2]; by apply result_tstep_stuck in STT2.
 Qed.
 
+(** Free *)
+Lemma fill_free_decompose K e e':
+  fill K e = Free e' →
+  K = [] ∧ e = Free e' ∨ (∃ K', K = K' ++ [FreeCtx] ∧ fill K' e = e').
+Proof.
+  revert e e'.
+  induction K as [|Ki K IH]; [by left|]. simpl.
+  intros e e' EqK. right.
+  destruct (IH _ _ EqK) as [[? _]|[K0 [? Eq0]]].
+  - subst. simpl in *. destruct Ki; try done.
+    simpl in EqK. simplify_eq. exists []. naive_solver.
+  - subst K. by exists (Ki :: K0).
+Qed.
+
+Lemma tstep_free_inv (pl: result) e' σ σ'
+  (STEP: (Free pl, σ) ~{fns}~> (e', σ')) :
+  ∃ l tg T α',
+    pl = PlaceR l tg T ∧
+    e' = #[☠%S]%E ∧
+    (∀ m, is_Some (σ.(shp) !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) ∧
+    memory_deallocated σ.(sst) σ.(scs) l tg (tsize T) = Some α' ∧
+    σ' = mkState (free_mem l (tsize T) σ.(shp)) α' σ.(scs) σ.(snp) σ.(snc).
+Proof.
+  inv_tstep. symmetry in Eq.
+  destruct (fill_free_decompose _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
+  - clear Eq. simpl in HS. inv_head_step.
+    have Eq1 := to_of_result pl. rewrite -H /to_result in Eq1. simplify_eq.
+    naive_solver.
+  - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
+    + rewrite /= Eq' to_of_result. by eexists.
+    + by rewrite Eq1' in HS.
+Qed.
+
 (** Copy *)
 Lemma fill_copy_decompose K e e':
   fill K e = Copy e' →

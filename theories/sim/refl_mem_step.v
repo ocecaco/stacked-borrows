@@ -283,6 +283,144 @@ Proof.
   apply POST; eauto.
 Qed.
 
+(** Free *)
+Lemma sim_body_free fs ft r n (pl: result) σs σt Φ
+  (RREL: rrel r pl pl) :
+  (∀ l t T,
+    pl = PlaceR l t T →
+    (∀ m, is_Some (σs.(shp) !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
+    (∀ m, is_Some (σt.(shp) !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
+    ∀ α', memory_deallocated σt.(sst) σt.(scs) l t (tsize T) = Some α' →
+      let σs' := mkState (free_mem l (tsize T) σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
+      let σt' := mkState (free_mem l (tsize T) σt.(shp)) α' σt.(scs) σt.(snp) σt.(snc) in
+      Φ r n (ValR [☠%S]) σs' (ValR [☠%S]) σt') →
+  r ⊨{n,fs,ft} (Free pl, σs) ≥ (Free pl, σt) : Φ.
+Proof.
+  intros POST. pfold. intros NT. intros.
+  have WSAT1 := WSAT. (* backup *)
+
+  (* making a step *)
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  split; [|done|].
+  { right.
+    destruct (NT (Free pl) σs) as [[]|[es' [σs' STEPS]]];
+      [done..|].
+    destruct (tstep_free_inv _ _ _ _ _ STEPS)
+      as (l&t&T & α' & EqH & ? & Eqh & Eqα' & ?). symmetry in EqH. simplify_eq.
+    have Eqh' : (∀ m, is_Some (σt.(shp) !! (l +ₗ m)) ↔ 0 ≤ m < tsize T).
+    { intros m. rewrite -(Eqh m). rewrite -2!(elem_of_dom (D:=gset loc)).
+      rewrite (wsat_heap_dom _ _ _ WSAT1) //. }
+    have Eqα'2: memory_deallocated σt.(sst) σt.(scs) l t (tsize T) = Some α'.
+    { destruct SREL as (Eqst&?&Eqcs&?). by rewrite -Eqst -Eqcs. }
+    exists (#[☠%S])%E, (mkState (free_mem l (tsize T) σt.(shp)) α'
+                                σt.(scs) σt.(snp) σt.(snc)).
+    by eapply (head_step_fill_tstep _ []), dealloc_head_step'. }
+
+  constructor 1. intros.
+  destruct (tstep_free_inv _ _ _ _ _ STEPT)
+    as (l&t&T& α' & EqH & ? & Eqh & Eqα' & ?). symmetry in EqH. simplify_eq.
+  have Eqh' : (∀ m, is_Some (σs.(shp) !! (l +ₗ m)) ↔ 0 ≤ m < tsize T).
+    { intros m. rewrite -(Eqh m). rewrite -2!(elem_of_dom (D:=gset loc)).
+      rewrite (wsat_heap_dom _ _ _ WSAT1) //. }
+  have Eqα'2: memory_deallocated σs.(sst) σs.(scs) l t (tsize T) = Some α'.
+  { destruct SREL as (Eqst&?&Eqcs&?). by rewrite Eqst Eqcs. }
+  set σs' := mkState (free_mem l (tsize T) σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc).
+  have STEPS: (Free (Place l t T), σs) ~{fs}~> ((#[☠%S])%E, σs').
+  { by eapply (head_step_fill_tstep _ []), dealloc_head_step'. }
+
+  (* unfolding rrel for place *)
+  simpl in RREL. destruct RREL as [VREL _].
+  inversion VREL as [|???? AREL U]; subst; simplify_eq. clear U VREL.
+  destruct AREL as (_ & _ & AREL).
+
+  (* reestablishing WSAT *)
+  destruct (free_mem_lookup l (tsize T) σt.(shp)) as [Hmst1 Hmst2].
+  destruct (free_mem_lookup l (tsize T) σs.(shp)) as [Hmss1 Hmss2].
+
+  exists (#[☠%S])%E, σs', r, n. split; last split.
+  { left. by constructor 1. }
+  { split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - done.
+    - intros t' k' h' Eqt'.
+      specialize (PINV _ _ _ Eqt') as [? PINV].
+      split; [done|]. intros l1 ss1 st1 Eql1.
+      specialize (PINV _ _ _ Eql1).
+      destruct k'; simpl in *.
+      + specialize (PINV I) as (Eqst & Eqss & HTOP). intros _.
+        destruct (free_mem_lookup_case l1 l (tsize T) σt.(shp))
+          as [[NEql Eql]|(i & Lti & ? & Eql)].
+        * destruct (for_each_dealloc_lookup _ _ _ _ _ Eqα') as [_ EQ2].
+          rewrite Eql (Hmss2 _ NEql) (EQ2 _ NEql) //.
+        * subst l1. exfalso.
+          destruct (for_each_true_lookup_case_2 _ _ _ _ _ Eqα') as [EQ1 _].
+          destruct Lti as [Lei Lti].
+          destruct (EQ1 (Z.to_nat i)) as (stk1 & stk' & Eqstk & EqN & DA).
+          { rewrite -(Nat2Z.id (tsize T)). by apply Z2Nat.inj_lt; lia. }
+          rewrite Z2Nat.id // in Eqstk. rewrite Eqstk in HTOP. simplify_eq.
+          move : DA. clear -AREL Eqt'.
+          destruct (dealloc1 (init_stack (Tagged t')) t σt.(scs))
+            eqn:Eqd; [|done]. intros _.
+          destruct (dealloc1_singleton_Some (mkItem Unique (Tagged t') None)
+                      t σt.(scs)) as [Eqt _]. { by eexists. }
+          simpl in Eqt. subst t. move : Eqt'.
+          destruct AREL as [h AREL]. rewrite lookup_op AREL.
+          by apply tagKindR_local_exclusive_r.
+      + intros (stk1 & pm & opro & Eqstk1 & ?).
+        destruct (for_each_dealloc_lookup_Some _ _ _ _ _ Eqα' _ _ Eqstk1)
+          as [NEQ EQ].
+        destruct PINV as [Eqst [Eqss PO]].
+        { by exists stk1, pm, opro. }
+        destruct PO as (stk' & Eqstk' & PO).
+        rewrite Eqstk' in EQ. simplify_eq. split; last split.
+        * by rewrite Hmst2.
+        * by rewrite Hmss2.
+        * by exists stk1.
+      + intros (stk1 & pm & opro & Eqstk1 & ?).
+        destruct (for_each_dealloc_lookup_Some _ _ _ _ _ Eqα' _ _ Eqstk1)
+          as [NEQ EQ].
+        destruct PINV as [Eqst [Eqss PO]].
+        { by exists stk1, pm, opro. }
+        destruct PO as (stk' & Eqstk' & PO).
+        rewrite Eqstk' in EQ. simplify_eq. split; last split.
+        * by rewrite Hmst2.
+        * by rewrite Hmss2.
+        * by exists stk1.
+    - intros c Tc Eqc. specialize (CINV _ _ Eqc) as [? CINV].
+      split; [done|]. intros tc L InL. specialize (CINV _ _ InL) as [? CINV].
+      split; [done|]. intros l1 Inl1.
+      specialize (CINV _ Inl1). simpl.
+      destruct (for_each_true_lookup_case_2 _ _ _ _ _ Eqα') as [EQ1 EQ2].
+      (* from Eqα', l1 cannot be in l because it is protected by c,
+        so α' !! l1 = σt.(sst) !! l1. *)
+      destruct (block_case l l1 (tsize T)) as [NEql|(i & [Lei Lti] & Eql)].
+      + rewrite EQ2 //.
+      + exfalso. clear EQ2.
+        subst l1. destruct CINV as (stk & pm & Eqstk & Instk & ?).
+        specialize (EQ1 (Z.to_nat i)) as (stk1 & stk' & Eqstk').
+        { rewrite -(Nat2Z.id (tsize T)). by apply Z2Nat.inj_lt; lia. }
+        rewrite Z2Nat.id // in Eqstk'.
+        destruct Eqstk' as (Eqstk1 & Eqstk' & DA).
+        rewrite Eqstk1 in Eqstk. simplify_eq.
+        move : DA. destruct (dealloc1 stk t σt.(scs)) eqn:Eqd; [|done].
+        intros _.
+        destruct (dealloc1_Some stk t σt.(scs)) as (it & Eqit & ? & FA & GR).
+        { by eexists. }
+        rewrite ->Forall_forall in FA. apply (FA _ Instk).
+        rewrite /is_active_protector /= /is_active bool_decide_true //.
+    - rewrite /srel /=. destruct SREL as (?&?&?&?&PB).
+      do 4 (split; [done|]).
+      intros l1 Inl1.
+      destruct (for_each_true_lookup_case_2 _ _ _ _ _ Eqα') as [_ EQ2].
+      destruct (free_mem_dom _ _ _ _ Inl1) as (InD & NEql & EqM).
+      specialize (EQ2 _ NEql).
+      destruct (PB _ InD) as [PP|PV]; [left|by right].
+      intros ?. simpl. rewrite (Hmst2 _ NEql) (Hmss2 _ NEql). by apply PP. }
+  left.
+  apply: sim_body_result. intros. eapply POST; eauto.
+Qed.
+
 (** Copy *)
 Lemma sim_body_copy_public fs ft r n (pl: result) σs σt Φ
   (RREL: rrel r pl pl) :

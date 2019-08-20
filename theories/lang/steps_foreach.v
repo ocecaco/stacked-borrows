@@ -86,6 +86,21 @@ Proof.
     + move => ??. apply Lt. lia.
 Qed.
 
+Lemma block_case l l' n :
+  (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
+  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+Proof.
+  case (decide (l'.1 = l.1)) => [Eql|NEql];
+    [case (decide (l.2 ≤ l'.2 < l.2 + n)) => [[Le Lt]|NIN]|].
+  - have Eql2: l' = l +ₗ Z.of_nat (Z.to_nat (l'.2 - l.2)). {
+      destruct l, l'. move : Eql Le => /= -> ?.
+      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
+    right. rewrite Eql2. rewrite Eql2 /= in Lt.
+    eexists. split; [|done]. lia.
+  - left. intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia.
+  - left. intros i Lt Eq3. apply NEql. by rewrite Eq3.
+Qed.
+
 Lemma for_each_lookup_case α l n f α' :
   for_each α l n false f = Some α' →
   ∀ l' stk stk', α !! l' = Some stk → α' !! l' = Some stk' →
@@ -93,20 +108,15 @@ Lemma for_each_lookup_case α l n f α' :
 Proof.
   intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
   intros l1 stk stk' Eq Eq'.
-  case (decide (l1.1 = l.1)) => [Eql|NEql];
-    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
-  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
-      destruct l, l1. move : Eql Le => /= -> ?.
-      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
-    destruct (EQ2 (Z.to_nat (l1.2 - l.2)) stk') as [stk1 [Eq1 Eq2]];
-      [rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia|by rewrite -Eql2 |].
-    rewrite -Eql2 in Eq1. simplify_eq. right. split; [done|].
-    exists (Z.to_nat (l1.2 - l.2)). rewrite -Eql2. split; [|done].
-    rewrite Z2Nat.id; lia.
+  destruct (block_case l l1 n) as [NEql|Eql].
   - left. rewrite EQ3 in Eq'; [by simplify_eq|].
-    intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia.
-  - left. rewrite EQ3 in Eq'; [by simplify_eq|].
-    intros i Lt Eq3. apply NEql. by rewrite Eq3.
+    intros i Lt Eq3. by apply (NEql i).
+  - right. split; [|done].
+    destruct Eql as (i & [] & Eql). subst l1.
+    destruct (EQ2 (Z.to_nat i) stk') as [stk1 [Eq1 Eq2]].
+    + rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia.
+    + rewrite Z2Nat.id //.
+    + rewrite Z2Nat.id // Eq in Eq1. by simplify_eq.
 Qed.
 
 Lemma for_each_lookup_case_2 α l n f α' :
@@ -129,6 +139,29 @@ Proof.
       by move => /shift_loc_inj /Z_of_nat_inj ? //.
   - intros l' Lt. rewrite IH2.
     + rewrite lookup_insert_ne; [done|]. move => Eql'. apply (Lt n); by [lia|].
+    + move => ??. apply Lt. lia.
+Qed.
+
+Lemma for_each_true_lookup_case_2 α l n f α' :
+  for_each α l n true f = Some α' →
+  (∀ (i: nat), (i < n)%nat → ∃ stk stk',
+    α !! (l +ₗ i) = Some stk ∧ α' !! (l +ₗ i) = None ∧  f stk = Some stk' ) ∧
+  (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l').
+Proof.
+  revert α. induction n as [|n IH]; intros α; simpl.
+  { move => [<-]. split; intros ??; [lia|done]. }
+  case (α !! (l +ₗ n)) as [stkn|] eqn:Eqn; [|done] => /=.
+  case (f stkn) as [stkn'|] eqn: Eqn'; [|done] => /= /IH [IH1 IH2].
+  split.
+  - intros i Lt.
+    case (decide (i = n)) => Eq'; [subst i|].
+    + rewrite Eqn. rewrite IH2; [rewrite lookup_delete; naive_solver|].
+      move => ?? /shift_loc_inj /Z_of_nat_inj ?. by lia.
+    + destruct (IH1 i) as (stk & stk' & Eqs & ?); [lia|].
+      rewrite lookup_delete_ne in Eqs; [naive_solver|].
+      by move => /shift_loc_inj /Z_of_nat_inj ? //.
+  - intros l' Lt. rewrite IH2.
+    + rewrite lookup_delete_ne; [done|]. move => Eql'. apply (Lt n); by [lia|].
     + move => ??. apply Lt. lia.
 Qed.
 
@@ -164,21 +197,9 @@ Lemma init_mem_lookup_case l n h :
 Proof.
   destruct (init_mem_lookup l n h) as [EQ1 EQ2].
   intros l1 s1 Eq'.
-  case (decide (l1.1 = l.1)) => [Eql|NEql];
-    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
-  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
-      destruct l, l1. move : Eql Le => /= -> ?.
-      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
-    right. rewrite Eql2. eexists; split; [|done].
-    rewrite Eql2 /= in Lt. lia.
-  - left.
-    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
-    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
-     rewrite EQ2 // in Eq'.
-  - left.
-    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
-    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
-    rewrite EQ2 // in Eq'.
+  destruct (block_case l l1 n) as [NEql|Eql].
+  - left. rewrite EQ2 // in Eq'.
+  - by right.
 Qed.
 
 Lemma init_mem_lookup_empty l n :
@@ -219,21 +240,9 @@ Lemma init_stacks_lookup_case α l n t :
 Proof.
   destruct (init_stacks_lookup α l n t) as [EQ1 EQ2].
   intros l1 s1 Eq'.
-  case (decide (l1.1 = l.1)) => [Eql|NEql];
-    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
-  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
-      destruct l, l1. move : Eql Le => /= -> ?.
-      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
-    right. rewrite Eql2. eexists; split; [|done].
-    rewrite Eql2 /= in Lt. lia.
-  - left.
-    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
-    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
-     rewrite EQ2 // in Eq'.
-  - left.
-    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
-    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
-    rewrite EQ2 // in Eq'.
+  destruct (block_case l l1 n) as [NEql|Eql].
+  - left. rewrite EQ2 // in Eq'.
+  - by right.
 Qed.
 
 Lemma init_stacks_lookup_case_2 α l n t :
@@ -244,23 +253,12 @@ Lemma init_stacks_lookup_case_2 α l n t :
 Proof.
   destruct (init_stacks_lookup α l n t) as [EQ1 EQ2].
   intros l1 s1 Eq'.
-  case (decide (l1.1 = l.1)) => [Eql|NEql];
-    [case (decide (l.2 ≤ l1.2 < l.2 + n)) => [[Le Lt]|NIN]|].
-  - have Eql2: l1 = l +ₗ Z.of_nat (Z.to_nat (l1.2 - l.2)). {
-      destruct l, l1. move : Eql Le => /= -> ?.
-      rewrite /shift_loc /= Z2Nat.id; [|lia]. f_equal. lia. }
-    right. rewrite Eql2. rewrite Eql2 /= in Lt.
-    eexists; split; last split; [|done|].
-    + lia.
-    + rewrite EQ1 //. lia.
-  - left.
-    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
-    { intros i Lt Eq3. apply NIN. rewrite Eq3 /=. lia. }
-    rewrite EQ2 //.
-  - left.
-    have ?: ∀ i : nat, (i < n)%nat → l1 ≠ l +ₗ i.
-    { intros i Lt Eq3. apply NEql. by rewrite Eq3. }
-    rewrite EQ2 //.
+  destruct (block_case l l1 n) as [NEql|Eql].
+  - left. rewrite EQ2 //.
+  - right. destruct Eql as (i & Lt & ?).
+    exists i. do 2 (split; [done|]). subst l1. destruct Lt.
+    move : (EQ1 (Z.to_nat i)). rewrite Z2Nat.id //. intros EQ'. apply EQ'.
+    rewrite -(Nat2Z.id n). by apply Z2Nat.inj_lt; lia.
 Qed.
 
 Lemma for_each_dom α l n f α' :

@@ -341,6 +341,14 @@ Proof.
   intros HH σs σt. apply sim_body_alloc_public=>/=; eauto.
 Qed.
 
+Lemma sim_simple_dealloc fs ft r rs rt n Φ :
+  rrel r rs rt →
+  Φ r n (ValR [☠%S]) (ValR [☠%S]) →
+  r ⊨ˢ{n,fs,ft} Free rs ≥ Free rt : Φ.
+Proof.
+  intros [Hrel <-]%rrel_with_eq HH σs σt. eapply sim_body_free; eauto.
+Qed.
+
 Lemma sim_simple_write_public fs ft r n (rs1 rs2 rt1 rt2: result) Φ :
   rrel r rs1 rt1 →
   rrel r rs2 rt2 →
