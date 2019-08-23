@@ -12,8 +12,9 @@ Definition ex1_unopt : function :=
     Call #[ScFnPtr "f"] [] ;;
     *{int} "x" <- #[42] ;;
     Call #[ScFnPtr "g"] [] ;;
-    Copy *{int} "x"
-    (* FIXME: should deallocate `x` *)
+    let: "v" := Copy *{int} "x" in
+    Free "x" ;; Free "i" ;;
+    "v"
   .
 
 Definition ex1_opt : function :=
@@ -24,7 +25,7 @@ Definition ex1_opt : function :=
     *{int} "x" <- #[42] ;;
     let: "v" := Copy *{int} "x" in
     Call #[ScFnPtr "g"] [] ;;
-    (* FIXME: should deallocate `x` *)
+    Free "x" ;; Free "i" ;;
     "v"
   .
 
@@ -74,7 +75,7 @@ Proof.
   apply: sim_body_result=>_. simpl.
   apply: sim_body_let_r. simpl. (* FIXME: figure out why [sim_apply_r] does the wrong thing here *)
   (* We can go back to simple mode! *)
-  eapply sim_simplify. { by eauto. }
+  eapply (sim_simplify (fun_post_simple c)). { by eauto. }
   simplify_eq/=. clear- AREL FREL LOOK.
   (* Call *)
   sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
@@ -89,13 +90,21 @@ Proof.
   sim_apply_l sim_body_deref_l. simpl.
   sim_apply_l sim_body_copy_unique_l; [try solve_sim..|].
   { rewrite lookup_insert. done. }
+  apply: sim_body_result=>Hval. simpl.
+  apply: sim_body_let_l. simpl.
+  (* Free stuff *)
+  eapply (sim_simplify (fun_post_simple c)). { by eauto. }
+  sim_apply sim_simple_free; [try solve_sim..|]. admit. simpl.
+  sim_apply sim_simple_let=>/=.
+  sim_apply sim_simple_free; [try solve_sim..|]. admit. simpl.
+  sim_apply sim_simple_let=>/=.
   (* Finishing up. *)
   (* eapply sim_body_viewshift.
   { do 5 eapply viewshift_frame_r. eapply vs_call_empty_public. } *)
-  apply: sim_body_result=>Hval. do 2 (split; first done). split.
+  apply: sim_simple_result. split.
   - solve_res.
   - constructor; simpl; auto.
-Qed.
+Admitted.
 
 (** Top-level theorem: Two programs that only differ in the
 "ex1" function are related. *)

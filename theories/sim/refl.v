@@ -290,9 +290,15 @@ Proof using Type*.
     sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs rt (-> & Hrel). simpl.
-    eapply sim_simple_dealloc; eauto.
+    apply: sim_simple_free; eauto.
     split; first done. constructor; done.
-  - (* Retag *) admit.
+  - (* Retag *)
+    move=>Hwf xs Hxswf /=.
+    sim_bind (subst_map _ e) (subst_map _ e).
+    eapply sim_simple_post_mono, IHe; [|by auto..].
+    intros r' n' rs rt (-> & Hrel). simpl.
+    eapply sim_simple_retag_public; eauto.
+    split; first done. constructor; done.
   - (* Let *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.
@@ -319,7 +325,7 @@ Proof using Type*.
     eapply (Forall_lookup_1  _ _ _ _ H Hlk).
     + eapply (Forall_lookup_1  _ _ _ _ Hwf2 Hlk).
     + eauto.
-Admitted.
+Qed.
 
 End sem.
 

@@ -341,12 +341,13 @@ Proof.
   intros HH σs σt. apply sim_body_alloc_public=>/=; eauto.
 Qed.
 
-Lemma sim_simple_dealloc fs ft r rs rt n Φ :
+Lemma sim_simple_free fs ft r es rs et rt n Φ :
+  IntoResult es rs → IntoResult et rt →
   rrel r rs rt →
   Φ r n (ValR [☠%S]) (ValR [☠%S]) →
-  r ⊨ˢ{n,fs,ft} Free rs ≥ Free rt : Φ.
+  r ⊨ˢ{n,fs,ft} Free es ≥ Free et : Φ.
 Proof.
-  intros [Hrel <-]%rrel_with_eq HH σs σt. eapply sim_body_free; eauto.
+  intros <- <- [Hrel <-]%rrel_with_eq HH σs σt. eapply sim_body_free; eauto.
 Qed.
 
 Lemma sim_simple_write_public fs ft r n (rs1 rs2 rt1 rt2: result) Φ :
@@ -377,7 +378,7 @@ Lemma sim_simple_retag_public fs ft r n (rs rt: result) k Φ :
   r ⊨ˢ{n,fs,ft} Retag rs k ≥ Retag rt k : Φ.
 Proof.
   intros [Hrel ?]%rrel_with_eq. simplify_eq.
-Abort.
+Admitted.
 
 (** * Pure *)
 Lemma sim_simple_let fs ft r n x (vs1 vt1: result) es1 et1 es2 et2 Φ :
