@@ -350,12 +350,36 @@ Definition retag_ref h α cids (nxtp: ptr_id) l (old_tag: tag) T
 Definition adding_protector (kind: retag_kind) (c: call_id) : option call_id :=
   match kind with FnEntry => Some c | _ => None end.
 
-(* This implements EvalContextExt::retag *)
+(* This *partly* implements EvalContextExt::retag *)
 (* Assumption: ct ∈ cids *)
+Definition retag1
+  h α (nxtp: ptr_id) (cids: call_id_stack) (ct: call_id)
+  (l: loc) (otag: tag) (kind: retag_kind) pk Tr :
+  option (tag * stacks * ptr_id) :=
+    let qualify : option (ref_kind * option call_id) :=
+      match pk, kind with
+      (* Mutable reference *)
+      | RefPtr Mutable, _ =>
+          Some (UniqueRef (is_two_phase kind), adding_protector kind ct)
+      (* Immutable reference *)
+      | RefPtr Immutable, _ => Some (SharedRef, adding_protector kind ct)
+      (* If is both raw ptr and Raw retagging, no protector *)
+      | RawPtr mut, RawRt => Some (RawRef (bool_decide (mut = Mutable)), None)
+      (* Box pointer, no protector *)
+      | BoxPtr, _ => Some (UniqueRef false, None)
+      (* Ignore Raw pointer otherwise *)
+      | RawPtr _, _ => None
+      end in
+    match qualify with
+    | Some (rkind, protector) => retag_ref h α cids nxtp l otag Tr rkind protector
+    | None => Some (otag, α, nxtp)
+    end
+    .
+
 Equations retag
   (h: mem) α (nxtp: ptr_id) (cids: call_id_stack) (ct: call_id) (x: loc) (kind: retag_kind) T :
   option (mem * stacks * ptr_id) :=
-  retag h α nxtp cids ct x kind (FixedSize _)         := Some (h, α, nxtp) ;
+  retag h α nxtp cids ct x kind (FixedSize _)      := Some (h, α, nxtp) ;
   retag h α nxtp cids ct x kind (Union _)          := Some (h, α, nxtp) ;
   retag h α nxtp cids ct x kind (Unsafe T)         := retag h α nxtp cids ct x kind T ;
   retag h α nxtp cids ct x kind (Reference pk Tr) with h !! x :=
@@ -416,7 +440,7 @@ Infix "<<t" := tag_values_included (at level 60, no associativity).
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
 Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
-  event → mem → stacks → call_id_stack → ptr_id → call_id → Prop :=
+  event → stacks → call_id_stack → ptr_id → call_id → Prop :=
 (* | SysCallIS id :
     bor_step h α β nxtp (SysCallEvt id) h α β nxtp *)
 (* This implements EvalContextExt::new_allocation. *)
@@ -424,30 +448,30 @@ Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
     (* Tagged nxtp is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     bor_step h α cids nxtp nxtc
-              (AllocEvt x (Tagged nxtp) T) h
+              (AllocEvt x (Tagged nxtp) T)
               (init_stacks α x (tsize T) (Tagged nxtp)) cids (S nxtp) nxtc
 (* This implements AllocationExtra::memory_read. *)
 | CopyIS α' l lbor T vl
     (ACC: memory_read α cids l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp):
-    bor_step h α cids nxtp nxtc (CopyEvt l lbor T vl) h α' cids nxtp nxtc
+    bor_step h α cids nxtp nxtc (CopyEvt l lbor T vl) α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_written. *)
 | WriteIS α' l lbor T vl
     (ACC: memory_written α cids l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp) :
-    bor_step h α cids nxtp nxtc (WriteEvt l lbor T vl) h α' cids nxtp nxtc
+    bor_step h α cids nxtp nxtc (WriteEvt l lbor T vl) α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor T
     (ACC: memory_deallocated α cids l lbor (tsize T) = Some α') :
-    bor_step h α cids nxtp nxtc (DeallocEvt l lbor T) h α' cids nxtp nxtc
+    bor_step h α cids nxtp nxtc (DeallocEvt l lbor T) α' cids nxtp nxtc
 | InitCallIS :
-    bor_step h α cids nxtp nxtc (InitCallEvt nxtc) h α (nxtc :: cids) nxtp (S nxtc)
+    bor_step h α cids nxtp nxtc (InitCallEvt nxtc) α (nxtc :: cids) nxtp (S nxtc)
 | EndCallIS c cids' v
     (TOP: cids = c :: cids') :
-    bor_step h α cids nxtp nxtc (EndCallEvt c v) h α cids' nxtp nxtc
-| RetagIS h' α' nxtp' x T kind c cids'
+    bor_step h α cids nxtp nxtc (EndCallEvt c v) α cids' nxtp nxtc
+| RetagIS α' nxtp' l otag ntag T kind pkind c cids'
     (TOP: cids = c :: cids')
-    (RETAG: retag h α nxtp cids c x kind T = Some (h', α', nxtp')) :
-    bor_step h α cids nxtp nxtc (RetagEvt x T kind) h' α' cids nxtp' nxtc.
+    (RETAG: retag1 h α nxtp cids c l otag kind pkind T = Some (ntag, α', nxtp')) :
+    bor_step h α cids nxtp nxtc (RetagEvt l otag ntag pkind T kind) α' cids nxtp' nxtc.

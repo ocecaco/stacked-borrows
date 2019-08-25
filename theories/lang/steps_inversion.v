@@ -21,7 +21,7 @@ Ltac inv_head_step :=
       inversion H ; subst; clear H
   | H : pure_expr_step _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
-  | H : bor_step _ _ _ _ _ _ _ _ _ _ _ |- _ =>
+  | H : bor_step _ _ _ _ _ _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
   end.
 
@@ -853,9 +853,10 @@ Qed.
 
 (** Retag *)
 
-Lemma fill_retag_decompose K e kind e':
-  fill K e = Retag e' kind →
-  K = [] ∧ e = Retag e' kind ∨ (∃ K', K = K' ++ [RetagCtx kind] ∧ fill K' e = e').
+Lemma fill_retag_decompose K e pkind T kind e':
+  fill K e = Retag e' pkind T kind →
+  K = [] ∧ e = Retag e' pkind T kind ∨
+  (∃ K', K = K' ++ [RetagCtx pkind T kind] ∧ fill K' e = e').
 Proof.
   revert e e'.
   induction K as [|Ki K IH]; [by left|]. simpl.
@@ -866,17 +867,17 @@ Proof.
   - subst K. by exists (Ki :: K0).
 Qed.
 
-Lemma tstep_retag_inv x tg T pk rk e' σ σ'
-  (STEP: (Retag (Place x tg (Reference pk T)) rk, σ) ~{fns}~> (e', σ')) :
-  ∃ c cids h' α' nxtp',
+Lemma tstep_retag_inv l otg T pk rk e' σ σ'
+  (STEP: (Retag #[ScPtr l otg] pk T rk, σ) ~{fns}~> (e', σ')) :
+  ∃ c cids ntg α' nxtp',
   σ.(scs) = c :: cids ∧
-  retag σ.(shp) σ.(sst) σ.(snp) σ.(scs) c x rk (Reference pk T)
-    = Some (h', α', nxtp') ∧
-  e' = #[☠]%V ∧
-  σ' = mkState h' α' σ.(scs) nxtp' σ.(snc).
+  retag1 σ.(shp) σ.(sst) σ.(snp) σ.(scs) c l otg rk pk T
+    = Some (ntg, α', nxtp') ∧
+  e' = #[ScPtr l ntg]%V ∧
+  σ' = mkState σ.(shp) α' σ.(scs) nxtp' σ.(snc).
 Proof.
   inv_tstep. symmetry in Eq.
-  destruct (fill_retag_decompose _ _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
+  destruct (fill_retag_decompose _ _ _ _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
   - clear Eq. simpl in HS. inv_head_step. naive_solver.
   - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
     + rewrite /= Eq'. by eexists.

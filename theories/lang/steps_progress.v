@@ -991,10 +991,12 @@ Definition pointer_kind_access pk :=
   | RefPtr Mutable | RawPtr Mutable | BoxPtr => AccessWrite
   | _ => AccessRead
   end.
-Definition valid_location (h: mem) (α: stacks) cids (x: loc) pk T :=
-  ∃ l tg, h !! x = Some (ScPtr l tg) ∧ is_freeze T ∧
+Definition valid_block (h: mem) (α: stacks) cids (l: loc) (tg: tag) pk T :=
+  is_freeze T ∧
   (∀ m, (m < tsize T)%nat → l +ₗ m ∈ dom (gset loc) h ∧ ∃ stk,
     α !! (l +ₗ m) = Some stk ∧ access1_pre cids stk (pointer_kind_access pk) tg).
+Definition valid_location (h: mem) (α: stacks) cids (x: loc) pk T :=
+  ∃ l tg, h !! x = Some (ScPtr l tg) ∧ valid_block h α cids l tg pk T.
 Definition valid_mem_ptr h α cids x T :=
   ∀ (n: nat) pk Tr, (n, Reference pk Tr) ∈ sub_ref_types T →
     valid_location h α cids (x +ₗ n) pk Tr.
@@ -1002,8 +1004,7 @@ Definition valid_mem_sum (h: mem) l T :=
   ∀ Ts (n: nat), (n, Sum Ts) ∈ sub_sum_types T → ∃ i,
     h !! (l +ₗ n) = Some (ScInt i) ∧ 0 ≤ i < length Ts.
 
-
-Lemma retag1_is_freeze_is_Some h α nxtp cids c x kind pk T
+Lemma retag1_nested_is_freeze_is_Some h α nxtp cids c x kind pk T
   (EqD: dom (gset loc) h ≡ dom (gset loc) α)
   (LOC: valid_location h α cids x pk T) :
   is_Some (retag h α nxtp cids c x kind (Reference pk T)).
@@ -1030,6 +1031,39 @@ Proof.
   - destruct (retag_ref_is_freeze_is_Some h α cids nxtp l tg T
                           (UniqueRef false) None)
       as [bac Eq]; [by apply EQD|done..| |rewrite Eq; by eexists].
+    simpl. clear -EQD. intros m stk Lt Eq.
+    destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
+Qed.
+
+
+Lemma retag1_is_freeze_is_Some h α nxtp cids c l otg kind pk T
+  (EqD: dom (gset loc) h ≡ dom (gset loc) α)
+  (LOC: valid_block h α cids l otg pk T) :
+  is_Some (retag1 h α nxtp cids c l otg kind pk T).
+Proof.
+  destruct LOC as (FRZ & EQD).
+  destruct pk as [[]|mut|]; simpl.
+  - destruct (retag_ref_is_freeze_is_Some h α cids nxtp l otg T
+                (UniqueRef (is_two_phase kind)) (adding_protector kind c))
+      as [bac Eq]; [by apply EQD|done..| |].
+    + simpl. clear -EQD. intros m stk Lt Eq.
+      destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
+    + destruct kind; rewrite /retag1 Eq; by eexists.
+  - destruct (retag_ref_is_freeze_is_Some h α cids nxtp l otg T SharedRef
+                      (adding_protector kind c))
+      as [bac Eq]; [by apply EQD|done..| |].
+    + simpl. clear -EQD. intros m stk Lt Eq.
+      destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
+    + destruct kind; rewrite /retag1 Eq; by eexists.
+  - destruct kind; [by eexists..| |by eexists].
+    destruct (retag_ref_is_freeze_is_Some h α cids nxtp l otg T
+              (RawRef (bool_decide (mut = Mutable))) None)
+      as [bac Eq]; [by apply EQD|done..| |rewrite /retag1 Eq; by eexists].
+    simpl. clear -EQD. intros m stk Lt Eq.
+    destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. simplify_eq. by destruct mut.
+  - destruct (retag_ref_is_freeze_is_Some h α cids nxtp l otg T
+                          (UniqueRef false) None)
+      as [bac Eq]; [by apply EQD|done..| |rewrite /retag1 Eq; by eexists].
     simpl. clear -EQD. intros m stk Lt Eq.
     destruct (EQD _ Lt) as [_ [stk' [Eq' ?]]]. by simplify_eq.
 Qed.
@@ -1081,7 +1115,7 @@ Proof.
       [apply sub_ref_types_O_elem_of|].
     assert (l0 = l ∧ tag0 = tg) as [].
     { rewrite shift_loc_0 Eq0 in Eql0. by simplify_eq. } clear Eql0. subst l0 tag0.
-    destruct (retag1_is_freeze_is_Some h α nxtp cids c x rkind pkind T WF)
+    destruct (retag1_nested_is_freeze_is_Some h α nxtp cids c x rkind pkind T WF)
       as [? Eq]; [by do 2 eexists|].
     move : Eq. rewrite retag_equation_2 Eq0 /= => ->. by eexists.
   - clear. intros h x n α _ cids c rk pk T Eq0 REF _ _.
@@ -1147,40 +1181,42 @@ Proof.
     + move : Lt => /=. lia.
 Abort.
 
-Lemma retag_head_step fns σ x xbor T kind :
+(* Lemma retag_head_step fns σ x xbor T kind :
   ∃ σ',
   head_step fns (Retag (Place x xbor T) kind ) σ [RetagEvt x T kind] #[☠] σ' [].
 Proof.
   eexists.
   econstructor 2. { econstructor; eauto. }
   econstructor.
-Abort.
+Abort. *)
 
-Lemma retag1_head_step' fns σ x xbor pk T kind c' cids' h' α' nxtp':
+Lemma retag1_head_step' fns σ l otg ntg pk T kind c' cids' α' nxtp':
   σ.(scs) = c' :: cids' →
-  retag σ.(shp) σ.(sst) σ.(snp) σ.(scs) c' x kind (Reference pk T) = Some (h', α', nxtp') →
-  let σ' := mkState h' α' σ.(scs) nxtp' σ.(snc) in
-  head_step fns (Retag (Place x xbor (Reference pk T)) kind) σ
-            [RetagEvt x (Reference pk T) kind] #[☠] σ' [].
+  retag1 σ.(shp) σ.(sst) σ.(snp) σ.(scs) c' l otg kind pk T =
+    Some (ntg, α', nxtp') →
+  let σ' := mkState σ.(shp) α' σ.(scs) nxtp' σ.(snc) in
+  head_step fns (Retag #[ScPtr l otg] pk T kind) σ
+            [RetagEvt l otg ntg pk T kind] #[ScPtr l ntg] σ' [].
 Proof.
   econstructor. { econstructor; eauto. } simpl.
   econstructor; eauto.
 Qed.
 
-Lemma retag1_head_step fns σ x xbor pk T kind
+Lemma retag1_head_step fns σ l otg pk T kind
   (BAR: ∃ c, c ∈ σ.(scs))
-  (LOC: valid_location σ.(shp) σ.(sst) σ.(scs) x pk T)
+  (LOC: valid_block σ.(shp) σ.(sst) σ.(scs) l otg pk T)
   (WF: Wf σ) :
-  ∃ c' cids' h' α' nxtp',
+  ∃ c' cids' ntg α' nxtp',
   σ.(scs) = c' :: cids' ∧
-  retag σ.(shp) σ.(sst) σ.(snp) σ.(scs) c' x kind (Reference pk T) = Some (h', α', nxtp') ∧
-  let σ' := mkState h' α' σ.(scs) nxtp' σ.(snc) in
-  head_step fns (Retag (Place x xbor (Reference pk T)) kind) σ
-            [RetagEvt x (Reference pk T) kind] #[☠] σ' [].
+  retag1 σ.(shp) σ.(sst) σ.(snp) σ.(scs) c' l otg kind pk T =
+    Some (ntg, α', nxtp') ∧
+  let σ' := mkState σ.(shp) α' σ.(scs) nxtp' σ.(snc) in
+  head_step fns (Retag #[ScPtr l otg] pk T kind) σ
+            [RetagEvt l otg ntg pk T kind] #[ScPtr l ntg] σ' [].
 Proof.
   destruct σ as [h α cids nxtp nxtc]; simpl in *.
   destruct cids as [|c cids']; [exfalso; move : BAR => [?]; apply not_elem_of_nil|].
-  destruct (retag1_is_freeze_is_Some h α nxtp (c::cids') c x kind pk T) as [[[h' α'] nxtp'] Eq];
+  destruct (retag1_is_freeze_is_Some h α nxtp (c::cids') c l otg kind pk T) as [[[h' α'] nxtp'] Eq];
     [apply WF|by destruct kind..|done|].
   exists c, cids', h', α' , nxtp'. do 2 (split; [done|]).
   eapply retag1_head_step'; eauto.

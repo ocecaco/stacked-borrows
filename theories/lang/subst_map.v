@@ -17,7 +17,7 @@ Lemma expr_ind (P : expr → Prop):
   (∀ e1 e2, P e1 → P e2 → P (Write e1 e2)) →
   (∀ ty, P (Alloc ty)) →
   (∀ e, P e → P (Free e)) →
-  (∀ e k, P e → P (Retag e k)) →
+  (∀ e pk T rk, P e → P (Retag e pk T rk)) →
   (∀ b e1 e2, P e1 → P e2 → P (Let b e1 e2)) →
   (∀ e el, P e → Forall P el → P (Case e el)) →
   ∀ e, P e.
@@ -26,6 +26,8 @@ Proof.
   (* Find head symbol, then find lemma for that symbol.
      We have to be this smart because we can't use the unguarded [REC]! *)
   match goal with
+  | |- P (?head _ _ _ _) =>
+    match goal with H : context[head] |- _ => apply H; try done end
   | |- P (?head _ _ _) =>
     match goal with H : context[head] |- _ => apply H; try done end
   | |- P (?head _ _) =>
@@ -60,7 +62,7 @@ Fixpoint subst_map (xs : gmap string result) (e : expr) : expr :=
   | Free e => Free (subst_map xs e)
   | Deref e T => Deref (subst_map xs e) T
   | Ref e => Ref (subst_map xs e)
-  | Retag e kind => Retag (subst_map xs e) kind
+  | Retag e pk T kind => Retag (subst_map xs e) pk T kind
   | Let x1 e1 e2 =>
       Let x1
         (subst_map xs e1)
