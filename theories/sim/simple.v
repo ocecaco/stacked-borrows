@@ -261,6 +261,15 @@ Proof.
   intros HH σs σt. apply sim_body_alloc_local; eauto.
 Qed.
 
+Lemma sim_simple_free_local_1 fs ft r r' n l tg ty v Φ :
+  tsize ty = 1%nat →
+  r ≡ r' ⋅ res_loc l [v] tg →
+  Φ r' n (ValR [☠%S]) (ValR [☠%S]) →
+  r ⊨ˢ{n,fs,ft} Free (Place l (Tagged tg) ty) ≥ Free (Place l (Tagged tg) ty) : Φ.
+Proof.
+  intros Hty Hres HH σs σt. eapply sim_body_free_unique_local_1; eauto.
+Qed.
+
 Lemma sim_simple_write_local fs ft r r' n l tg ty v v' Φ :
   tsize ty = 1%nat →
   r ≡ r' ⋅ res_loc l [v'] tg →
@@ -341,13 +350,13 @@ Proof.
   intros HH σs σt. apply sim_body_alloc_public=>/=; eauto.
 Qed.
 
-Lemma sim_simple_free fs ft r es rs et rt n Φ :
+Lemma sim_simple_free_public fs ft r es rs et rt n Φ :
   IntoResult es rs → IntoResult et rt →
   rrel r rs rt →
   Φ r n (ValR [☠%S]) (ValR [☠%S]) →
   r ⊨ˢ{n,fs,ft} Free es ≥ Free et : Φ.
 Proof.
-  intros <- <- [Hrel <-]%rrel_with_eq HH σs σt. eapply sim_body_free; eauto.
+  intros <- <- [Hrel <-]%rrel_with_eq HH σs σt. eapply sim_body_free_public; eauto.
 Qed.
 
 Lemma sim_simple_write_public fs ft r n (rs1 rs2 rt1 rt2: result) Φ :

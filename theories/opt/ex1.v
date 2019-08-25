@@ -94,9 +94,14 @@ Proof.
   apply: sim_body_let_l. simpl.
   (* Free stuff *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
-  sim_apply sim_simple_free; [try solve_sim..|]. admit. simpl.
+  sim_apply sim_simple_free_local_1; [try solve_sim..|]. simpl.
   sim_apply sim_simple_let=>/=.
-  sim_apply sim_simple_free; [try solve_sim..|]. admit. simpl.
+  sim_apply sim_simple_free_public.
+  { simpl. constructor; [|by constructor].
+    assert (args = sarg). { by revert AREL; apply arel_eq. } subst args.
+    revert AREL. apply arel_mono; [|solve_res].
+    apply (cmra_valid_included _ _ Hval).
+    do 3 apply cmra_mono_r. apply cmra_included_l. } simpl.
   sim_apply sim_simple_let=>/=.
   (* Finishing up. *)
   (* eapply sim_body_viewshift.
@@ -104,7 +109,7 @@ Proof.
   apply: sim_simple_result. split.
   - solve_res.
   - constructor; simpl; auto.
-Admitted.
+Qed.
 
 (** Top-level theorem: Two programs that only differ in the
 "ex1" function are related. *)

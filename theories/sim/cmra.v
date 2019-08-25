@@ -131,6 +131,9 @@ Proof.
   destruct c as [[]|[]|]; inversion Eq; simpl in *; simplify_eq.
 Qed.
 
+Instance to_tgkR_inj : Inj (=) (=) to_tgkR.
+Proof. intros [] [] ?; by simplify_eq. Qed.
+
 Lemma tagKindR_valid (k: tagKindR) :
   valid k → ∃ k', k = to_tgkR k'.
 Proof.
@@ -528,17 +531,6 @@ Lemma res_tag_1_insert_local_update (r: resUR) (l: loc) k s1 s2 (t: ptr_id)
   (r ⋅ res_tag t k {[l := s2]}, res_tag t k {[l := s2]}).
 Proof. by apply res_tag_uniq_local_update. Qed.
 
-Lemma res_tag_1_insert_local_update_r (r: resUR) r' (l: loc) k s1 s2 (t: ptr_id)
-  (UNIQ: k = tkLocal ∨ k = tkUnique)
-  (NONE: r.(rtm) !! t = None) :
-  (r ⋅ res_tag t k {[l := s1]}, (ε, r') ⋅ res_tag t k {[l := s1]}) ~l~>
-  (r ⋅ res_tag t k {[l := s2]}, (ε, r') ⋅ res_tag t k {[l := s2]}).
-Proof.
-  destruct r as [[tm cm] lm].
-  apply prod_local_update_1. rewrite /= 2!left_id.
-  by apply (res_tag_uniq_insert_local_update_inner _ _ k).
-Qed.
-
 Lemma res_tag_lookup (k: tag_kind) (h: heaplet) (t: ptr_id) :
   (res_tag t k h).(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
 Proof. by rewrite lookup_insert. Qed.
@@ -546,3 +538,40 @@ Proof. by rewrite lookup_insert. Qed.
 Lemma res_tag_lookup_ne (k: tag_kind) (h: heaplet) (t t': ptr_id) (NEQ: t' ≠ t) :
   (res_tag t k h).(rtm) !! t' ≡ None.
 Proof. by rewrite lookup_insert_ne. Qed.
+
+
+Lemma res_tag_uniq_dealloc_local_update_inner
+  (tm: tmapUR) t k h
+  (UNIQ: k = tkLocal ∨ k = tkUnique) :
+  tm !! t = None →
+  (tm ⋅ {[t := (to_tgkR k, h)]}, {[t := (to_tgkR k, h)]}) ~l~>
+  (tm, ε).
+Proof.
+  intros.
+  rewrite (cmra_comm tm) -insert_singleton_op //.
+  rewrite -{2}(delete_insert tm t (to_tgkR k, h)) //.
+  eapply (delete_singleton_local_update (<[t := _]> tm : tmapUR)).
+  destruct UNIQ; subst k; apply _.
+Qed.
+
+Lemma res_tag_uniq_dealloc_local_update (r: resUR) t k h
+  (UNIQ: k = tkLocal ∨ k = tkUnique)
+  (NONE: r.(rtm) !! t = None) :
+  (r ⋅ res_tag t k h, res_tag t k h) ~l~> (r, ε : resUR).
+Proof.
+  destruct r as [tm cm]. rewrite pair_op right_id.
+  apply prod_local_update_1.
+  by apply res_tag_uniq_dealloc_local_update_inner.
+Qed.
+
+Lemma res_tag_uniq_dealloc_local_update_r (r: resUR) r' t k h
+  (UNIQ: k = tkLocal ∨ k = tkUnique)
+  (NONE: (r ⋅ r').(rtm) !! t = None) :
+  (r ⋅ r' ⋅ res_tag t k h, r' ⋅ res_tag t k h) ~l~>
+  (r ⋅ r', r').
+Proof.
+  rewrite (cmra_comm r' (res_tag t k h)).
+  rewrite -{4}(left_id ε _ r').
+  by apply op_local_update_frame, res_tag_uniq_dealloc_local_update.
+Qed.
+

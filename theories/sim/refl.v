@@ -290,7 +290,7 @@ Proof using Type*.
     sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs rt (-> & Hrel). simpl.
-    apply: sim_simple_free; eauto.
+    apply: sim_simple_free_public; eauto.
     split; first done. constructor; done.
   - (* Retag *)
     move=>Hwf xs Hxswf /=.

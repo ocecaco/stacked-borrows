@@ -325,3 +325,19 @@ Proof.
   - exists h. move : Eqh.
     by do 2 (rewrite lookup_op res_tag_lookup_ne; [|done]).
 Qed.
+
+Lemma arel_res_tag_dealloc r t h k ss st
+  (UNIQ: k = tkLocal ∨ k = tkUnique) :
+  arel (r ⋅ res_tag t k h) ss st →
+  arel r ss st.
+Proof.
+  destruct ss as [| |? [t1|]|], st as [| |? []|]; auto; [|naive_solver].
+  intros (?&?& h' & Eqh). do 2 (split; [done|]).
+  case (decide (t1 = t)) => ?; [subst t1|].
+  - exfalso. move : Eqh. rewrite lookup_op res_tag_lookup.
+    destruct UNIQ; subst k.
+    + apply tagKindR_local_exclusive_l.
+    + apply tagKindR_uniq_exclusive_l.
+  - exists h'. move : Eqh.
+    by rewrite lookup_op res_tag_lookup_ne // right_id.
+Qed.
