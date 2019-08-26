@@ -32,22 +32,19 @@ Definition ex1_opt : function :=
 Lemma ex1_sim_body :
   ⊨ᶠ ex1_unopt ≥ ex1_opt.
 Proof.
-  apply (sim_fun_simple1 10)=>// fs ft rarg es et args argt c LOOK AREL ??.
+  apply (sim_fun_simple1 10)=>// fs ft rarg es et arg c LOOK AREL ??.
   simplify_eq/=.
   (* Alloc local *)
   sim_apply sim_simple_alloc_local=> l t /=.
   sim_apply sim_simple_let=>/=.
   (* Write local *)
-  rewrite (vrel_eq _ _ _ AREL).
   sim_apply sim_simple_write_local; [solve_sim..|].
   intros sarg ->.
   sim_apply sim_simple_let=>/=.
   apply: sim_simple_result.
   (* Retag local *)
   sim_apply sim_simple_let=>/=.
-  destruct args as [|args args']; first by inversion AREL.
-  apply Forall2_cons_inv in AREL as [AREL ATAIL].
-  destruct args' as [|]; last by inversion ATAIL. clear ATAIL.
+  apply Forall2_cons_inv in AREL as [AREL _].
   sim_apply sim_simple_retag_local; [simpl; lia|solve_sim..|].
   move=>l_i tg_i hplt /= Hl_i.
   (* Call *)
@@ -94,18 +91,16 @@ Proof.
   apply: sim_body_let_l. simpl.
   (* Free stuff *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
-  sim_apply sim_simple_free_local_1; [try solve_sim..|]. simpl.
+  sim_apply sim_simple_free_local_1; [solve_sim..|]. simpl.
   sim_apply sim_simple_let=>/=.
   sim_apply sim_simple_free_public.
   { simpl. constructor; [|by constructor].
-    assert (args = sarg). { by revert AREL; apply arel_eq. } subst args.
-    revert AREL. apply arel_mono; [|solve_res].
-    apply (cmra_valid_included _ _ Hval).
-    do 3 apply cmra_mono_r. apply cmra_included_l. } simpl.
-  sim_apply sim_simple_let=>/=.
+    (* FIXME: fix automation *)
+    apply: arel_mono; last fast_done.
+    apply: cmra_valid_included; first fast_done.
+    do 3 apply cmra_mono_r. solve_res. solve_res. }
+  simpl. sim_apply sim_simple_let=>/=.
   (* Finishing up. *)
-  (* eapply sim_body_viewshift.
-  { do 5 eapply viewshift_frame_r. eapply vs_call_empty_public. } *)
   apply: sim_simple_result. split.
   - solve_res.
   - constructor; simpl; auto.

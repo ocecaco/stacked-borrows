@@ -168,11 +168,11 @@ Qed.
 Lemma sim_fun_simple1 n (esf etf: function) :
   length (esf.(fun_args)) = 1%nat →
   length (etf.(fun_args)) = 1%nat →
-  (∀ fs ft rf es et vs vt c,
+  (∀ fs ft rf es et v c,
     sim_local_funs_lookup fs ft →
-    vrel rf vs vt →
-    subst_l (esf.(fun_args)) [Val vs] (esf.(fun_body)) = Some es →
-    subst_l (etf.(fun_args)) [Val vt] (etf.(fun_body)) = Some et →
+    vrel rf v v →
+    subst_l (esf.(fun_args)) [Val v] (esf.(fun_body)) = Some es →
+    subst_l (etf.(fun_args)) [Val v] (etf.(fun_body)) = Some et →
     rf ⋅ res_cs c ∅ ⊨ˢ{n,fs,ft} es ≥ et : fun_post_simple c) →
   ⊨ᶠ esf ≥ etf.
 Proof.
@@ -183,7 +183,8 @@ Proof.
   rewrite Hls Hlt=>??.
   destruct vls as [|vs []]; [done| |done].
   destruct vlt as [|vt []]; [done| |done].
-  inversion FREL as [|???? RREL]. eapply HH; done.
+  inversion FREL as [|???? RREL]. specialize (vrel_eq _ _ _ RREL)=>?.
+  simplify_eq. eapply HH; done.
 Qed.
 
 Lemma sim_simple_bind fs ft
