@@ -21,7 +21,7 @@ Ltac inv_head_step :=
       inversion H ; subst; clear H
   | H : pure_expr_step _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
-  | H : bor_step _ _ _ _ _ _ _ _ _ _ |- _ =>
+  | H : bor_step _ _ _ _ _ _ _ _ _ |- _ =>
       inversion H ; subst; clear H
   end.
 
@@ -867,20 +867,22 @@ Proof.
   - subst K. by exists (Ki :: K0).
 Qed.
 
-Lemma tstep_retag_inv l otg T pk rk e' σ σ'
-  (STEP: (Retag #[ScPtr l otg] pk T rk, σ) ~{fns}~> (e', σ')) :
-  ∃ c cids ntg α' nxtp',
+Lemma tstep_retag_inv (ptr: result) T pk rk e' σ σ'
+  (STEP: (Retag ptr pk T rk, σ) ~{fns}~> (e', σ')) :
+  ∃ l otg c cids ntg α' nxtp',
+  ptr = ValR [ScPtr l otg] ∧
   σ.(scs) = c :: cids ∧
-  retag1 σ.(shp) σ.(sst) σ.(snp) σ.(scs) c l otg rk pk T
-    = Some (ntg, α', nxtp') ∧
+  retag σ.(sst) σ.(snp) σ.(scs) c l otg rk pk T = Some (ntg, α', nxtp') ∧
   e' = #[ScPtr l ntg]%V ∧
   σ' = mkState σ.(shp) α' σ.(scs) nxtp' σ.(snc).
 Proof.
   inv_tstep. symmetry in Eq.
   destruct (fill_retag_decompose _ _ _ _ _ _ Eq) as [[]|[K' [? Eq']]]; subst.
-  - clear Eq. simpl in HS. inv_head_step. naive_solver.
+  - clear Eq. simpl in HS. inv_head_step.
+    have Eq1 := to_of_result ptr. rewrite -H0 /to_result in Eq1. simplify_eq.
+    naive_solver.
   - exfalso. apply val_head_stuck in HS. destruct (fill_val K' e1') as [? Eq1'].
-    + rewrite /= Eq'. by eexists.
+    + rewrite /= Eq' to_of_result. by eexists.
     + by rewrite Eq1' in HS.
 Qed.
 

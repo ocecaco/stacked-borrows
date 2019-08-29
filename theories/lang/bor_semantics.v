@@ -182,82 +182,59 @@ Definition unsafe_action
 Section blah.
 Context {A: Type}.
 Equations visit_freeze_sensitive'
-  (h: mem) (l: loc) (f: A → loc → nat → bool → option A)
+  (l: loc) (f: A → loc → nat → bool → option A)
   (a: A) (last cur_dist: nat) (T: type) : option (A * (nat * nat)) :=
-  visit_freeze_sensitive' h l f a last cur_dist (FixedSize n) :=
+  visit_freeze_sensitive' l f a last cur_dist (FixedSize n) :=
     (* consider frozen, simply extend the distant by n *)
       Some (a, (last, cur_dist + n)%nat) ;
-  visit_freeze_sensitive' h l f a last cur_dist (Reference _ _) :=
+  visit_freeze_sensitive' l f a last cur_dist (Reference _ _) :=
     (* consider frozen, extend the distant by 1 *)
       Some (a, (last, S cur_dist)) ;
-  visit_freeze_sensitive' h l f a last cur_dist (Unsafe T) :=
+  visit_freeze_sensitive' l f a last cur_dist (Unsafe T) :=
     (* reach an UnsafeCell, apply the action `f` and return new `last` and
         `cur_dist` *)
       unsafe_action f a l last cur_dist (tsize T) ;
-  visit_freeze_sensitive' h l f a last cur_dist (Union Ts) :=
+  visit_freeze_sensitive' l f a last cur_dist (Union Ts) :=
     (* If it's a union, look at the type to see if there is UnsafeCell *)
       if is_freeze (Union Ts)
       (* No UnsafeCell, consider the whole block frozen and simply extend the
           distant. *)
       then Some (a, (last, cur_dist + (tsize (Union Ts)))%nat)
-      (* There can be UnsafeCell, consider the whole block unfrozen and perform
-          `f a _ _ false` on the whole block. `unsafe_action` will return the
-          offsets for the following visit. *)
+      (* There can be UnsafeCell, consider the whole block of [Union Ts]
+          unfrozen and perform `f a _ _ false` on the whole block.
+          `unsafe_action` will return the offsets for the following visit. *)
       else unsafe_action f a l last cur_dist (tsize (Union Ts)) ;
-  visit_freeze_sensitive' h l f a last cur_dist (Product Ts) :=
+  visit_freeze_sensitive' l f a last cur_dist (Product Ts) :=
     (* Try a shortcut *)
       if is_freeze (Product Ts)
       (* No UnsafeCell, consider the whole block frozen and simply extend the
         distant. *)
       then Some (a, (last, cur_dist + (tsize (Product Ts)))%nat)
-      (* This implements left-to-right search on the type, which guarantees
+      (* Perform a left-to-right search on [Product Ts], which guarantees
         that the offsets are increasing. *)
       else visit_LR a last cur_dist Ts
         where visit_LR (a: A) (last cur_dist: nat) (Ts: list type)
           : option (A * (nat * nat)) :=
           { visit_LR a last cur_dist [] := Some (a, (last, cur_dist)) ;
             visit_LR a last cur_dist (T' :: Ts') :=
-              alc ← visit_freeze_sensitive' h l f a last cur_dist T' ;
+              alc ← visit_freeze_sensitive' l f a last cur_dist T' ;
               visit_LR alc.1 alc.2.1 alc.2.2 Ts' } ;
-  visit_freeze_sensitive' h l f a last cur_dist (Sum Ts) :=
+  visit_freeze_sensitive' l f a last cur_dist (Sum Ts) :=
     (* Try a shortcut *)
       if is_freeze (Sum Ts)
       (* No UnsafeCell, consider the whole block frozen and simply extend the
           distant. *)
       then Some (a, (last, cur_dist + (tsize (Sum Ts)))%nat)
-      else
-        match h !! (l +ₗ (last + cur_dist)) with
-        (* This looks up the current state to see which discriminant currently
-            is active (which is an integer) and redirect the visit for the type
-            of that discriminant. Note that this consitutes a read-access, and
-            should adhere to the access checks. But we are skipping them here.
-            FIXME *)
-        | Some (ScInt i) =>
-            if decide (O ≤ i)
-            then (* the discriminant is well-defined, visit with the
-                    corresponding type *)
-              alc ← visit_lookup Ts (Z.to_nat i) ;
-              (* Anything in the padding is considered frozen and will be
-                 applied with the action by the following visit.
-                 `should_offset` presents the offset that the visit SHOULD
-                 arrive at after the visit. If there are padding bytes left,
-                 they will be added to the cur_dist. *)
-              let should_offset := (last + cur_dist + tsize (Sum Ts))%nat in
-                Some (alc.1, (alc.2.1, (should_offset - alc.2.1)%nat))
-            else None
-        | _ => None
-        end
-      where visit_lookup (Ts: list type) (i: nat) : option (A * (nat * nat)) :=
-            { visit_lookup [] _             := None ;
-              visit_lookup (T :: _) O      :=
-                visit_freeze_sensitive' h l f a last (S cur_dist) T ;
-              visit_lookup (T :: Ts) (S i)  := visit_lookup Ts i }
+      (* There can be UnsafeCell, consider the whole block of [Sum Ts] unfrozen
+          and perform `f a _ _ false` on the whole block. `unsafe_action` will
+          return the offsets for the following visit. *)
+      else unsafe_action f a l last cur_dist (tsize (Sum Ts))
   .
 End blah.
 
 Definition visit_freeze_sensitive {A: Type}
-  h (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
-  match visit_freeze_sensitive' h l f a O O T with
+  (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
+  match visit_freeze_sensitive' l f a O O T with
   | Some (a', (last', cur_dist')) =>
       (* the last block is frozen *)
       f a' (l +ₗ last') cur_dist' true
@@ -310,13 +287,13 @@ Definition reborrowN α cids l n old_tag new_tag pm prot :=
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
-Definition reborrow h α cids l (old_tag: tag) T (kind: ref_kind)
+Definition reborrow α cids l (old_tag: tag) T (kind: ref_kind)
   (new_tag: tag) (protector: option call_id) :=
   match kind with
   | SharedRef | RawRef false =>
       (* for shared refs and const raw pointer, treat Unsafe as SharedReadWrite
         and Freeze as SharedReadOnly *)
-      visit_freeze_sensitive h l T
+      visit_freeze_sensitive l T
         (λ α' l' sz frozen,
           (* If is in Unsafe, use SharedReadWrite, otherwise SharedReadOnly *)
           let perm := if frozen then SharedReadOnly else SharedReadWrite in
@@ -331,11 +308,12 @@ Definition reborrow h α cids l (old_tag: tag) T (kind: ref_kind)
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
-Definition retag_ref h α cids (nxtp: ptr_id) l (old_tag: tag) T
+Definition retag_ref α cids (nxtp: ptr_id) l (old_tag: tag) T
   (kind: ref_kind) (protector: option call_id)
   : option (tag * stacks * ptr_id) :=
   match tsize T with
   | O => (* Nothing to do for zero-sized types *)
+      (* TODO: this can be handled by reborrow *)
       Some (old_tag, α, nxtp)
   | _ =>
       let new_tag := match kind with
@@ -343,7 +321,7 @@ Definition retag_ref h α cids (nxtp: ptr_id) l (old_tag: tag) T
                      | _ => Tagged nxtp
                      end in
       (* reborrow old_tag with new_tag *)
-      α' ← reborrow h α cids l old_tag T kind new_tag protector;
+      α' ← reborrow α cids l old_tag T kind new_tag protector;
       Some (new_tag, α', S nxtp)
   end.
 
@@ -352,8 +330,7 @@ Definition adding_protector (kind: retag_kind) (c: call_id) : option call_id :=
 
 (* This *partly* implements EvalContextExt::retag *)
 (* Assumption: ct ∈ cids *)
-Definition retag1
-  h α (nxtp: ptr_id) (cids: call_id_stack) (ct: call_id)
+Definition retag α (nxtp: ptr_id) (cids: call_id_stack) (ct: call_id)
   (l: loc) (otag: tag) (kind: retag_kind) pk Tr :
   option (tag * stacks * ptr_id) :=
     let qualify : option (ref_kind * option call_id) :=
@@ -371,61 +348,10 @@ Definition retag1
       | RawPtr _, _ => None
       end in
     match qualify with
-    | Some (rkind, protector) => retag_ref h α cids nxtp l otag Tr rkind protector
+    | Some (rkind, protector) => retag_ref α cids nxtp l otag Tr rkind protector
     | None => Some (otag, α, nxtp)
     end
     .
-
-Equations retag
-  (h: mem) α (nxtp: ptr_id) (cids: call_id_stack) (ct: call_id) (x: loc) (kind: retag_kind) T :
-  option (mem * stacks * ptr_id) :=
-  retag h α nxtp cids ct x kind (FixedSize _)      := Some (h, α, nxtp) ;
-  retag h α nxtp cids ct x kind (Union _)          := Some (h, α, nxtp) ;
-  retag h α nxtp cids ct x kind (Unsafe T)         := retag h α nxtp cids ct x kind T ;
-  retag h α nxtp cids ct x kind (Reference pk Tr) with h !! x :=
-  { | Some (ScPtr l otag) :=
-        let qualify : option (ref_kind * option call_id) :=
-          match pk, kind with
-          (* Mutable reference *)
-          | RefPtr Mutable, _ =>
-              Some (UniqueRef (is_two_phase kind), adding_protector kind ct)
-          (* Immutable reference *)
-          | RefPtr Immutable, _ => Some (SharedRef, adding_protector kind ct)
-          (* If is both raw ptr and Raw retagging, no protector *)
-          | RawPtr mut, RawRt => Some (RawRef (bool_decide (mut = Mutable)), None)
-          (* Box pointer, no protector *)
-          | BoxPtr, _ => Some (UniqueRef false, None)
-          (* Ignore Raw pointer otherwise *)
-          | RawPtr _, _ => None
-          end in
-        match qualify with
-        | Some (rkind, protector) =>
-            bac ← retag_ref h α cids nxtp l otag Tr rkind protector ;
-            Some (<[x := ScPtr l bac.1.1]>h, bac.1.2, bac.2)
-        | None => Some (h, α, nxtp)
-        end ;
-    | _ := None } ;
-  retag h α nxtp cids ct x kind (Product Ts)       := visit_LR h α nxtp x Ts
-    (* left-to-right visit to retag *)
-    where visit_LR h α (nxtp: ptr_id) (x: loc) (Ts: list type)
-      : option (mem * stacks * ptr_id) :=
-      { visit_LR h α nxtp x []         := Some (h, α, nxtp) ;
-        visit_LR h α nxtp x (T :: Ts)  :=
-          hac ← retag h α nxtp cids ct x kind T ;
-          visit_LR hac.1.1 hac.1.2 hac.2 (x +ₗ (tsize T)) Ts } ;
-  retag h α nxtp cids ct x kind (Sum Ts) with h !! x :=
-  { | Some (ScInt i) :=
-        if decide (O ≤ i < length Ts)
-        then (* the discriminant is well-defined, visit with the
-                corresponding type *)
-          visit_lookup Ts (Z.to_nat i)
-        else None
-        where visit_lookup (Ts: list type) (i: nat) : option (mem * stacks * ptr_id) :=
-        { visit_lookup [] i             := None ;
-          visit_lookup (T :: Ts) O      := retag h α nxtp cids ct (x +ₗ 1) kind T ;
-          visit_lookup (T :: Ts) (S i)  := visit_lookup Ts i } ;
-    | _ := None }
-  .
 
 Definition tag_included (tg: tag) (nxtp: ptr_id) : Prop :=
   match tg with
@@ -439,7 +365,7 @@ Infix "<<t" := tag_values_included (at level 60, no associativity).
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
-Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
+Inductive bor_step α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
   event → stacks → call_id_stack → ptr_id → call_id → Prop :=
 (* | SysCallIS id :
     bor_step h α β nxtp (SysCallEvt id) h α β nxtp *)
@@ -447,7 +373,7 @@ Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
 | AllocIS x T :
     (* Tagged nxtp is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
-    bor_step h α cids nxtp nxtc
+    bor_step α cids nxtp nxtc
               (AllocEvt x (Tagged nxtp) T)
               (init_stacks α x (tsize T) (Tagged nxtp)) cids (S nxtp) nxtc
 (* This implements AllocationExtra::memory_read. *)
@@ -455,23 +381,23 @@ Inductive bor_step h α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
     (ACC: memory_read α cids l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp):
-    bor_step h α cids nxtp nxtc (CopyEvt l lbor T vl) α' cids nxtp nxtc
+    bor_step α cids nxtp nxtc (CopyEvt l lbor T vl) α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_written. *)
 | WriteIS α' l lbor T vl
     (ACC: memory_written α cids l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp) :
-    bor_step h α cids nxtp nxtc (WriteEvt l lbor T vl) α' cids nxtp nxtc
+    bor_step α cids nxtp nxtc (WriteEvt l lbor T vl) α' cids nxtp nxtc
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor T
     (ACC: memory_deallocated α cids l lbor (tsize T) = Some α') :
-    bor_step h α cids nxtp nxtc (DeallocEvt l lbor T) α' cids nxtp nxtc
+    bor_step α cids nxtp nxtc (DeallocEvt l lbor T) α' cids nxtp nxtc
 | InitCallIS :
-    bor_step h α cids nxtp nxtc (InitCallEvt nxtc) α (nxtc :: cids) nxtp (S nxtc)
+    bor_step α cids nxtp nxtc (InitCallEvt nxtc) α (nxtc :: cids) nxtp (S nxtc)
 | EndCallIS c cids' v
     (TOP: cids = c :: cids') :
-    bor_step h α cids nxtp nxtc (EndCallEvt c v) α cids' nxtp nxtc
+    bor_step α cids nxtp nxtc (EndCallEvt c v) α cids' nxtp nxtc
 | RetagIS α' nxtp' l otag ntag T kind pkind c cids'
     (TOP: cids = c :: cids')
-    (RETAG: retag1 h α nxtp cids c l otag kind pkind T = Some (ntag, α', nxtp')) :
-    bor_step h α cids nxtp nxtc (RetagEvt l otag ntag pkind T kind) α' cids nxtp' nxtc.
+    (RETAG: retag α nxtp cids c l otag kind pkind T = Some (ntag, α', nxtp')) :
+    bor_step α cids nxtp nxtc (RetagEvt l otag ntag pkind T kind) α' cids nxtp' nxtc.

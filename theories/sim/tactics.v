@@ -33,7 +33,7 @@ Ltac reshape_expr e tac :=
   | Free ?e => go (FreeCtx :: K) e
   | Deref ?e ?T => go (DerefCtx T :: K) e
   | Ref ?e => go (RefCtx :: K) e
-  | Retag ?e ?k => go (RetagCtx k :: K) e
+  | Retag ?e ?k ?T ?rk => go (RetagCtx k T rk :: K) e
   | Let ?x ?e1 ?e2 => go (LetCtx x e2 :: K) e1
   | Case ?e ?el => go (CaseCtx el :: K) e
   end

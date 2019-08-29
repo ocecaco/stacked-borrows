@@ -70,25 +70,6 @@ Lemma of_result_list_expr (vl: list value) :
   (of_result <$> (ValR <$> vl)) = Val <$> vl.
 Proof. induction vl as [|v vl IH]; [done|]. by rewrite 3!fmap_cons IH. Qed.
 
-(* Lemma subst_is_closed X x es e :
-  is_closed X es → is_closed (x::X) e → is_closed X (subst x es e).
-Proof.
-  revert e X. fix FIX 1; destruct e=>X //=; repeat (case_bool_decide=>//=);
-    try naive_solver; rewrite ?andb_True; intros.
-  - set_solver.
-  - split; first naive_solver. induction el; naive_solver.
-  - (* eauto using is_closed_weaken with set_solver. *)
-  - eapply is_closed_weaken; first done.
-    destruct (decide (BNamed x = f)), (decide (BNamed x ∈ xl)); set_solver.
-  - induction el; naive_solver.
-  - split; first naive_solver. induction el; naive_solver.
-Qed.
-
-Lemma subst'_is_closed X b es e :
-  is_closed X es → is_closed (b:b:X) e → is_closed X (subst' b es e).
-Proof. destruct b; first done. apply subst_is_closed. Qed.
- *)
-
 (** Equality and other typeclass stuff *)
 
 Instance bin_op_eq_dec : EqDecision bin_op.
@@ -354,7 +335,7 @@ Inductive head_step :
     : head_step e σ [ev] e' σ []
   | HeadImpureS σ e e' ev h' α' cids' nxtp' nxtc'
       (ExprStep : mem_expr_step σ.(shp) e ev h' e')
-      (InstrStep: bor_step h' σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+      (InstrStep: bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
                            ev α' cids' nxtp' nxtc')
     : head_step e σ [ev] e' (mkState h' α' cids' nxtp' nxtc') [].
 
@@ -413,7 +394,6 @@ Definition new_place T (v: expr) : expr :=
 Definition retag_place
   (p: expr) (pk: pointer_kind) (T: type) (kind: retag_kind) : expr :=
   let: "p" := p in
-  (* read the current tag of the place [p] *)
-  let: "o" := & "p" in
-  (* retag and update with new tag *)
-  "p" <- Retag "o" pk T kind.
+  (* read the current pointer stored in the place [p] *)
+  (* retag and update [p] with the pointer with new tag *)
+  "p" <- Retag (Copy "p") pk T kind.

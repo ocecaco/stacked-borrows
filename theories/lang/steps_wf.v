@@ -27,9 +27,9 @@ Proof. move => ??? WF ??? /WF /=. lia. Qed.
 (** Alloc *)
 Lemma alloc_step_wf (σ σ': state) e e' l bor T:
   mem_expr_step σ.(shp) e (AllocEvt l bor T) σ'.(shp) e' →
-  bor_step σ'.(shp) σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                    (AllocEvt l bor T)
-                    σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+           (AllocEvt l bor T)
+           σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α cids nxtp nxtc].
@@ -63,9 +63,9 @@ Qed.
 (** Dealloc *)
 Lemma dealloc_step_wf σ σ' e e' l bor T :
   mem_expr_step σ.(shp) e (DeallocEvt l bor T) σ'.(shp) e' →
-  bor_step σ'.(shp) σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                    (DeallocEvt l bor T)
-                    σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+           (DeallocEvt l bor T)
+           σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α cids nxtp nxtc].
@@ -90,9 +90,9 @@ Qed.
 (** Copy *)
 Lemma copy_step_wf σ σ' e e' l bor T vl :
   mem_expr_step σ.(shp) e (CopyEvt l bor T vl) σ'.(shp) e' →
-  bor_step σ'.(shp) σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                    (CopyEvt l bor T vl)
-                    σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+           (CopyEvt l bor T vl)
+           σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ' ∧ vl <<t σ'.(snp).
 Proof.
   destruct σ as [h α cids nxtp nxtc].
@@ -170,9 +170,9 @@ Qed.
 
 Lemma write_step_wf σ σ' e e' l bor T vl :
   mem_expr_step σ.(shp) e (WriteEvt l bor T vl) σ'.(shp) e' →
-  bor_step σ'.(shp) σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                    (WriteEvt l bor T vl)
-                    σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+           (WriteEvt l bor T vl)
+           σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α cids nxtp nxtc].
@@ -205,9 +205,9 @@ Qed.
 (** Call *)
 Lemma initcall_step_wf σ σ' e e' n :
   mem_expr_step σ.(shp) e (InitCallEvt n) σ'.(shp) e' →
-  bor_step σ'.(shp) σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                    (InitCallEvt n)
-                    σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+           (InitCallEvt n)
+           σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α cids nxtp nxtc].
@@ -231,9 +231,9 @@ Qed.
 (** EndCall *)
 Lemma endcall_step_wf σ σ' e e' n v :
   mem_expr_step σ.(shp) e (EndCallEvt n v) σ'.(shp) e' →
-  bor_step σ'.(shp) σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                    (EndCallEvt n v)
-                    σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+           (EndCallEvt n v)
+           σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α cids nxtp nxtc].
@@ -257,8 +257,8 @@ Proof.
   by destruct tg; simpl; intros ?; [lia..|done].
 Qed.
 
-Lemma retag_ref_nxtp_mono h α cids nxtp l bor T kind bar bor' α' nxtp' :
-  retag_ref h α cids nxtp l bor T kind bar = Some (bor', α', nxtp') →
+Lemma retag_ref_nxtp_mono α cids nxtp l bor T kind bar bor' α' nxtp' :
+  retag_ref α cids nxtp l bor T kind bar = Some (bor', α', nxtp') →
   (nxtp ≤ nxtp')%nat.
 Proof.
   rewrite /retag_ref.
@@ -266,8 +266,8 @@ Proof.
   case reborrow eqn:Eqb; [simpl|done]. intros. simplify_eq. lia.
 Qed.
 
-Lemma retag_ref_nxtp_bor_mono h α cids nxtp l bor T kind bar bor' α' nxtp' :
-  retag_ref h α cids nxtp l bor T kind bar = Some (bor', α', nxtp') →
+Lemma retag_ref_nxtp_bor_mono α cids nxtp l bor T kind bar bor' α' nxtp' :
+  retag_ref α cids nxtp l bor T kind bar = Some (bor', α', nxtp') →
   bor <t nxtp → bor' <t nxtp'.
 Proof.
   rewrite /retag_ref.
@@ -609,53 +609,38 @@ Proof.
 Qed.
 
 Lemma visit_freeze_sensitive'_offsets {A}
-  h l (f: A → _ → nat → _ → _) a (last cur_dist: nat) T a' last' cur_dist' :
+  l (f: A → _ → nat → _ → _) a (last cur_dist: nat) T a' last' cur_dist' :
   let HA (oalc: option (A * (nat * nat))) l1 c1 T1 a2 l2 c2 :=
     (oalc = Some (a2, (l2, c2)) →
       (l1 ≤ l2 ∧ l2 + c2 = l1 + c1 + tsize T1)%nat) in
-  HA (visit_freeze_sensitive' h l f a last cur_dist T)
+  HA (visit_freeze_sensitive' l f a last cur_dist T)
      last cur_dist T a' last' cur_dist'.
 Proof.
   intros HA.
   apply (visit_freeze_sensitive'_elim
     (* general goal P *)
-    (λ _ _ _ _ l1 c1 T1 oalc, ∀ a2 l2 c2, HA oalc l1 c1 T1 a2 l2 c2)
-    (λ _ _ _ _ _ _ _ _ l1 c1 Ts oalc, ∀ a2 l2 c2,
-      HA oalc l1 c1 (Product Ts) a2 l2 c2)
-    (λ _ _ _ _ l1 c1 _ Ts i oalc, ∀ a2 l2 c2,
-      oalc = Some (a2, (l2, c2)) → ∃ T1, Ts !! i = Some T1 ∧
-      (l1 ≤ l2 ∧ l2 + c2 = l1 + S c1 + tsize T1)%nat)); rewrite /HA.
+    (λ _ _ _ l1 c1 T1 oalc, ∀ a2 l2 c2, HA oalc l1 c1 T1 a2 l2 c2)
+    (λ _ _ _ _ _ _ _ l1 c1 Ts oalc, ∀ a2 l2 c2,
+      HA oalc l1 c1 (Product Ts) a2 l2 c2)); rewrite /HA.
   - intros. simplify_eq. simpl. lia.
   - intros. simplify_eq. simpl. lia.
-  - clear. intros _ ????????? [??]%unsafe_action_offsets. subst. simpl. lia.
-  - clear. intros _ ?????????. case is_freeze.
+  - clear. intros ????????? [??]%unsafe_action_offsets. subst. simpl. lia.
+  - clear. intros ?????????. case is_freeze.
     + intros. simplify_eq. lia.
     + intros [??]%unsafe_action_offsets. subst. lia.
-  - clear. intros ??????? IH ???.
+  - clear. intros ?????? IH ???.
     case is_freeze; [intros; simplify_eq; lia|by move => /IH].
-  - clear. intros ???? l1 c1 ? IH ???.
-    case is_freeze; [intros; simplify_eq; lia|].
-    case lookup => [[//|i|//|//]|//].
-    case decide => [Ge0|//].
-    case visit_freeze_sensitive'_clause_6_visit_lookup
-      as [[? [l3 c3]]|] eqn:Eq1; [simpl|done].
-    intros. simplify_eq.
-    destruct (IH ScPoison _ Ge0 _ _ _ Eq1) as (T1&HL&Le&Eq).
-    split; [done|]. rewrite le_plus_minus_r; [done|].
-    etrans; [apply (le_plus_l _ c3)|]. rewrite Eq.
-    rewrite (_: l1 + S c1 + tsize T1 = l1 + c1 + S (tsize T1))%nat; [|lia].
-    by eapply plus_le_compat_l, tsize_subtype_of_sum, elem_of_list_lookup_2.
+  - clear. intros ?????????. case is_freeze.
+    + intros. simplify_eq. lia.
+    + intros [??]%unsafe_action_offsets. subst. lia.
   - naive_solver.
-  - clear. intros h l f a1 l1 c1 Ts a2 l2 c2 T Ts' IH1 IH2 a4 l4 c4.
+  - clear. intros l f a1 l1 c1 Ts a2 l2 c2 T Ts' IH1 IH2 a4 l4 c4.
     case visit_freeze_sensitive' as [[a3 [l3 c3]]|] eqn:Eq3; [|done].
     cbn -[tsize].
     destruct (IH2 a3 l3 c3) as [Le3 EqO3]; [done|].
     intros Eq4. destruct (IH1 (a3, (l3, c3)) a4 l4 c4 Eq4) as [Le4 EqO4].
     clear -Le3 EqO3 Le4 EqO4. simpl in Le4. rewrite EqO4. cbn -[tsize].
     rewrite EqO3 tsize_product_cons. lia.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
 Qed.
 
 Lemma unsafe_action_stacks_unchanged
@@ -677,7 +662,7 @@ Proof.
   intros ??. rewrite shift_loc_assoc -Nat2Z.inj_add. apply NEQ. lia.
 Qed.
 
-Lemma visit_freeze_sensitive'_stacks_unchanged h l (f: stacks → _ → _ → _ → _)
+Lemma visit_freeze_sensitive'_stacks_unchanged l (f: stacks → _ → _ → _ → _)
   α α' last cur T l' c' :
   let HF (f: stacks → loc → nat → bool → option stacks) :=
     (∀ α1 α2 l n b, f α1 l n b = Some α2 →
@@ -686,40 +671,34 @@ Lemma visit_freeze_sensitive'_stacks_unchanged h l (f: stacks → _ → _ → _ 
     (lo ≤ ln)%nat ∧
     (∀ l', (∀ (i : nat), (lo ≤ i < ln)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
   HF f →
-  visit_freeze_sensitive' h l f α last cur T = Some (α', (l', c')) →
+  visit_freeze_sensitive' l f α last cur T = Some (α', (l', c')) →
   UC α α' l last l'.
 Proof.
   intros HF UC.
   apply (visit_freeze_sensitive'_elim
     (* general goal P *)
-    (λ _ l f α l1 c1 T oalc, ∀ α' l' c',
+    (λ l f α l1 c1 T oalc, ∀ α' l' c',
       HF f → oalc = Some (α', (l', c')) → UC α α' l l1 l')
-    (λ _ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
-      HF f → oalc = Some (α', (l', c')) →
-          UC α α' l l1 l')
-    (λ _ l f α l1 c1 Ts1 Ts2 _ oalc, ∀ α' l' c',
+    (λ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
       HF f → oalc = Some (α', (l', c')) →
           UC α α' l l1 l')); rewrite /HF /UC.
   - naive_solver.
   - naive_solver.
   - (* Unsafe case *)
-    clear. intros _ ?? α l1 c1 ? α2 l2 c2 HF0.
+    clear. intros ?? α l1 c1 ? α2 l2 c2 HF0.
     eapply unsafe_action_stacks_unchanged; eauto.
   - (* Union case *)
-    intros _???????? HF0. case is_freeze; [by intros; simplify_eq|].
+    intros ???????? HF0. case is_freeze; [by intros; simplify_eq|].
     intros UN. eapply unsafe_action_stacks_unchanged; eauto.
-  - clear. intros ??????? IH ??? HF0.
+  - clear. intros ?????? IH ??? HF0.
     case is_freeze; [by intros ?; simplify_eq|]. intros VS.
     eapply (IH _ _ _ HF0); eauto.
-  - clear. intros ??????? IH ??? HF0. case is_freeze; [by intros; simplify_eq|].
-    case lookup => [[//|i|//|//]|//].
-    case decide => [Ge0|//].
-    case visit_freeze_sensitive'_clause_6_visit_lookup
-      as [[? []]|] eqn:Eq1; [simpl|done].
-    intros. simplify_eq. eapply (IH ScPoison); eauto.
+  - (* Sum case *)
+    intros ???????? HF0. case is_freeze; [by intros; simplify_eq|].
+    intros UN. eapply unsafe_action_stacks_unchanged; eauto.
   - naive_solver.
   - (* Product case *)
-    clear. intros ???????????? IH1 IH2 ??? HF0.
+    clear. intros ??????????? IH1 IH2 ??? HF0.
     case visit_freeze_sensitive' as [alc|] eqn:Eqa; [|done].
     intros VS. destruct alc as [a1 [l1 c1]]. simpl in VS.
     destruct (IH2 a1 l1 c1 HF0 eq_refl) as [Le2 IH2'].
@@ -728,12 +707,9 @@ Proof.
     intros ? NC. simpl in IH1', IH2'. rewrite IH1'; [rewrite IH2' //|].
     + intros ??. apply NC. lia.
     + intros ??. apply NC. lia.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
 Qed.
 
-Lemma visit_freeze_sensitive'_wf_stack h l (f: stacks → _ → _ → _ → _)
+Lemma visit_freeze_sensitive'_wf_stack l (f: stacks → _ → _ → _ → _)
   α α' last cur T l' c' nxtp nxtc (P: stacks → loc → nat → Prop) :
   let Hα α1 α2 l n :=
     (P α1 l n → wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
@@ -746,55 +722,51 @@ Lemma visit_freeze_sensitive'_wf_stack h l (f: stacks → _ → _ → _ → _)
   let HF0 (f: stacks → loc → nat → bool → option stacks) :=
     (∀ α1 α2 l n b, f α1 l n b = Some α2 →
       ∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') in
-  let HF f := (∀ α1 α2  l n b, f α1 l n b = Some α2 → Hα α1 α2 l n) in
+  let HF f := (∀ α1 α2 l n b, f α1 l n b = Some α2 → Hα α1 α2 l n) in
   HP →
-  visit_freeze_sensitive' h l f α last cur T = Some (α', (l', c')) →
+  visit_freeze_sensitive' l f α last cur T = Some (α', (l', c')) →
   (last ≤ l')%nat ∧ (HF0 f → HF f → Hα α α' (l +ₗ last) (l' - last)%nat).
 Proof.
   intros Hα HP HF0 HF HP1.
   apply (visit_freeze_sensitive'_elim
     (* general goal P *)
-    (λ _ l f α l1 c1 T oalc, ∀ α' l' c',
+    (λ l f α l1 c1 T oalc, ∀ α' l' c',
       oalc = Some (α', (l', c')) →
         (l1 ≤ l')%nat ∧ (HF0 f → HF f → Hα α α' (l +ₗ l1) (l' - l1)%nat))
-    (λ _ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
+    (λ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
       oalc = Some (α', (l', c')) →
-        (l1 ≤ l')%nat ∧ (HF0 f → HF f → Hα α α' (l +ₗ l1) (l' - l1)%nat))
-    (λ _ l f α l1 c1 Ts Ts2 _ oalc, ∀ α' l' c',
-      oalc = Some (α', (l', c')) →
-        (l1 ≤ l')%nat ∧ (HF0 f → HF f →  Hα α α' (l +ₗ l1) (l' - l1)%nat)));
+        (l1 ≤ l')%nat ∧ (HF0 f → HF f → Hα α α' (l +ₗ l1) (l' - l1)%nat)));
     rewrite /HF /HF0 /Hα.
   - naive_solver.
   - naive_solver.
   - (* Unsafe case *)
     clear -HP1.
-    intros _ ????????? UN. split.
+    intros ????????? UN. split.
     + apply unsafe_action_offsets  in UN as [??]. lia.
     + intros HF0 HF HP2. eapply unsafe_action_wf_stack; eauto.
   - (* Union case *)
-    clear -HP1. intros _?????????. case is_freeze; [by intros; simplify_eq|].
+    clear -HP1. intros ?????????. case is_freeze; [by intros; simplify_eq|].
     intros UN. split.
     + apply unsafe_action_offsets  in UN as [??]. lia.
     + intros HF0 HF HP2. eapply unsafe_action_wf_stack; eauto.
-  - clear -HP1. intros ??????? IH ???.
+  - clear -HP1. intros ?????? IH ???.
     case is_freeze; [by intros ?; simplify_eq|]. intros VS. eapply IH; eauto.
-  - clear. intros ??????? IH ???. case is_freeze; [by intros; simplify_eq|].
-    case lookup => [[//|i|//|//]|//].
-    case decide => [Ge0|//].
-    case visit_freeze_sensitive'_clause_6_visit_lookup
-      as [[? []]|] eqn:Eq1; [simpl|done].
-    intros. simplify_eq. eapply (IH ScPoison); eauto.
+  - (* Sum case *)
+    clear -HP1. intros ?????????. case is_freeze; [by intros; simplify_eq|].
+    intros UN. split.
+    + apply unsafe_action_offsets  in UN as [??]. lia.
+    + intros HF0 HF HP2. eapply unsafe_action_wf_stack; eauto.
   - naive_solver.
   - (* Product case *)
-    clear -HP1. intros h l f α1 l1 c1 Ts1 α0 l0 c0 T Ts IH1 IH2 α' l' c'.
+    clear -HP1. intros l f α1 l1 c1 Ts1 α0 l0 c0 T Ts IH1 IH2 α' l' c'.
     case visit_freeze_sensitive' as [alc|] eqn:Eqa; [|done].
     intros VS. simpl in VS. destruct alc as [α2 [l2 c2]].
-    destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ _ Eqa) as [Le2 Eq2].
+    destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ Eqa) as [Le2 Eq2].
     specialize (IH2 α2 l2 c2 eq_refl) as [_ IH2].
     specialize (IH1 (α2, (l2,c2)) _ _ _ VS) as [Le1 IH1]. simpl in Le1.
     split. { lia. }
     intros HF0 HF HP2 WF.
-    destruct (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ _ HF0 Eqa)
+    destruct (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ HF0 Eqa)
       as [_ NC].
     destruct (HP1 α0 (l +ₗ l0) (l2 - l0)%nat (l' - l2)%nat) as [HP3 HP4].
     { rewrite (_: (l2  - l0 + (l' - l2))%nat = l' - l0)%nat //. lia. }
@@ -806,12 +778,9 @@ Proof.
     apply HP4. intros i Lt. apply NC.
     intros j Ltj. rewrite shift_loc_assoc -Nat2Z.inj_add.
     intros ?%shift_loc_inj. lia.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
 Qed.
 
-Lemma visit_freeze_sensitive_wf_stack h l T (f: stacks → _ → _ → _ → _)
+Lemma visit_freeze_sensitive_wf_stack l T (f: stacks → _ → _ → _ → _)
   nxtp nxtc α α' (P: stacks → loc → nat → Prop) :
   let HP :=
     (∀ α l sz1 sz2, P α l (sz1 + sz2)%nat → P α l sz1 ∧ ∀ α',
@@ -825,7 +794,7 @@ Lemma visit_freeze_sensitive_wf_stack h l T (f: stacks → _ → _ → _ → _)
     wf_stack_item α1 nxtp nxtc ∧ wf_non_empty α1 →
     dom (gset loc) α1 ≡ dom (gset loc) α2 ∧
    wf_stack_item α2 nxtp nxtc ∧ wf_non_empty α2) →
-  visit_freeze_sensitive h l T f α = Some α' →
+  visit_freeze_sensitive l T f α = Some α' →
   P α l (tsize T) →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
@@ -834,16 +803,16 @@ Proof.
   intros HP HF0 HP1 HF1 Hf. rewrite /visit_freeze_sensitive.
   case visit_freeze_sensitive' as [[α1 [last cur]]|] eqn:Eq; [|done].
   move => Eqf HP2 WF.
-  destruct (visit_freeze_sensitive'_wf_stack _ _ _ _ _ _ _ _ _ _ nxtp nxtc P HP1 Eq)
+  destruct (visit_freeze_sensitive'_wf_stack _ _ _ _ _ _ _ _ _ nxtp nxtc P HP1 Eq)
     as [Le WF'].
   specialize (WF' HF1 Hf). rewrite shift_loc_0_nat Nat.sub_0_r in WF'.
-  destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ _ Eq) as [_ Eqs].
+  destruct (visit_freeze_sensitive'_offsets _ _ _ _ _ _ _ _ _ Eq) as [_ Eqs].
   simpl in Eqs. rewrite -Eqs in HP2.
   specialize (HP1 _ _ _ _ HP2) as [HP3 HP4].
   specialize (WF' HP3 WF) as [EqD WF1]. rewrite EqD.
   eapply Hf; eauto.
   apply HP4. intros i Lt.
-  apply (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ _ HF1 Eq).
+  apply (visit_freeze_sensitive'_stacks_unchanged _ _ _ _ _ _ _ _ _ HF1 Eq).
   intros j Ltj. rewrite shift_loc_assoc -Nat2Z.inj_add.
     intros ?%shift_loc_inj. lia.
 Qed.
@@ -860,11 +829,11 @@ Proof.
     apply TF. lia.
 Qed.
 
-Lemma reborrow_wf_stack h α nxtc cids nxtp l old T kind new bar α'
+Lemma reborrow_wf_stack α nxtc cids nxtp l old T kind new bar α'
   (TG2: new <t nxtp)
   (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end)
   (NEW: tag_fresh new α l (tsize T)) :
-  reborrow h α cids l old T kind new bar = Some α' →
+  reborrow α cids l old T kind new bar = Some α' →
   wf_stack_item α nxtp nxtc ∧ wf_non_empty α →
   dom (gset loc) α ≡ dom (gset loc) α' ∧
   wf_stack_item α' nxtp nxtc ∧ wf_non_empty α'.
@@ -884,9 +853,9 @@ Proof.
       * intros ???????. by eapply reborrowN_wf_stack.
 Qed.
 
-Lemma retag1_ref_wf_stack h α nxtc cids nxtp l old T kind bar bor' α' nxtp'
+Lemma retag_ref_wf_stack h α nxtc cids nxtp l old T kind bar bor' α' nxtp'
   (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end) :
-  retag_ref h α cids nxtp l old T kind bar = Some (bor', α', nxtp') →
+  retag_ref α cids nxtp l old T kind bar = Some (bor', α', nxtp') →
   wf_mem_tag h nxtp →
   wf_stack_item α nxtp nxtc → wf_non_empty α →
   wf_mem_tag h nxtp' ∧
@@ -908,124 +877,33 @@ Proof.
   - split; [|done]. eapply wf_stack_item_mono; [..|done|exact WF2]. by lia.
 Qed.
 
-Lemma retag_ref_wf_stack h α nxtc cids nxtp x l old T kind bar bor' α' nxtp'
-  (BAR : match bar with Some c => (c < nxtc)%nat | _ => True end)
-  (Eqx: h !! x = Some (ScPtr l old)) :
-  retag_ref h α cids nxtp l old T kind bar = Some (bor', α', nxtp') →
-  wf_mem_tag h nxtp →
-  wf_stack_item α nxtp nxtc → wf_non_empty α →
-  dom (gset loc) h ≡ dom (gset loc) (<[x:=(ScPtr l bor')]> h) ∧
-  wf_mem_tag (<[x:=(ScPtr l bor')]> h) nxtp' ∧
-  dom (gset loc) α ≡ dom (gset loc) α' ∧
-  wf_stack_item α' nxtp' nxtc ∧ wf_non_empty α'.
-Proof.
-  intros RE WF1 WF2 WF3. split; last split.
-  { symmetry; apply dom_map_insert_is_Some; by eexists. }
-  { intros x' l' t'. case (decide (x' = x)) => ?; [subst x'|].
-    - rewrite lookup_insert => ?. simplify_eq.
-      move : RE => /retag_ref_nxtp_bor_mono LT. apply LT.
-      destruct old; [by eapply WF1|done].
-    - rewrite lookup_insert_ne; [|done].
-      move => /WF1. apply (tag_value_included_trans (Tagged t')).
-      by eapply retag_ref_nxtp_mono. }
-  eapply retag1_ref_wf_stack; eauto.
-Qed.
-
 Definition borrow_barrier_Some nxtc kind c : Prop :=
   match kind with FnEntry => (c < nxtc)%nat | _ => True end.
 
-Lemma retag_wf_stack h α nxtp nxtc cids c l kind T h' α' nxtp' :
-  let Hα h h' α α' nxtp nxtp' cids c kind :=
-    (borrow_barrier_Some nxtc kind c →
-      wf_mem_tag h nxtp →
-      wf_stack_item α nxtp nxtc → wf_non_empty α →
-      dom (gset loc) h ≡ dom (gset loc) h' ∧
-      wf_mem_tag h' nxtp' ∧ dom (gset loc) α ≡ dom (gset loc) α' ∧
-      wf_stack_item α' nxtp' nxtc ∧ wf_non_empty α') in
-  retag h α nxtp cids c l kind T = Some (h', α', nxtp') →
-  Hα h h' α α' nxtp nxtp' cids c kind.
-Proof.
-  intros Hα.
-  eapply (retag_elim
-    (* general goal P *)
-    (λ h α nxtp cids c _ kind _ ohac, ∀ h' α' nxtp',
-        ohac = Some (h', α', nxtp') → Hα h h' α α' nxtp nxtp' cids c kind)
-    (* invariant for Product's where P1 *)
-    (λ _ _ _ cids c _ kind _ h α nxtp _ _ ohac, ∀ h' α' nxtp',
-        ohac = Some (h', α', nxtp') → Hα h h' α α' nxtp nxtp' cids c kind)
-    (* invariant for Sum's where P3 *)
-    (λ h _ _ α nxtp cids c kind _ _ _ ohac, ∀ h' α' nxtp',
-        ohac = Some (h', α', nxtp') → Hα h h' α α' nxtp nxtp' cids c kind)); rewrite /Hα.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - (* Reference cases *)
-    clear. intros h ?? bor α nxtp cids c rt_kind p_kind T Eq h' α' nxtp'.
-    destruct p_kind as [[]|[]|];
-      [| |destruct rt_kind; try by (intros; simplify_eq)..|];
-      (case retag_ref as [[[new α1] nxtp1]|] eqn:Eq1; [simpl|done]);
-      intros ???; simplify_eq; eapply retag_ref_wf_stack; eauto; [| |done..];
-      by destruct rt_kind.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - (* Product inner recursive case *)
-    intros ?????????????? IH1 IH2 ???.
-    case retag as [hac|]; [|done]. move => /= /IH1 WF BS WF1 WF2 WF3.
-    destruct hac as [[h2 α2] c2].
-    destruct (IH2 _ _ _ eq_refl) as (Eq1&?&Eq2&?&?); [done..|].
-    destruct (WF BS) as (? & ? & ? & ?); [done..|].
-    split; last split; last split; [by rewrite Eq1|done|by rewrite Eq2|done..].
-  - naive_solver.
-  - (* Sum case *)
-    intros ????????? IH Eq ???. case decide => Le; [|done]. by apply IH.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-Qed.
-
-Lemma retag_wf h α nxtp nxtc c cids l kind T h' α' nxtp' :
-  retag h α nxtp (c::cids) c l kind T = Some (h', α', nxtp') →
-  Wf (mkState h α (c::cids) nxtp nxtc) → Wf (mkState h' α' (c::cids) nxtp' nxtc).
-Proof.
-  move => /retag_wf_stack WF' WF.
-  have ?: borrow_barrier_Some nxtc kind c.
-  { destruct kind; [|done..]. apply WF. by left. }
-  destruct (WF' nxtc) as (Eq1 & ? & Eq2 & ? & ?); [done|apply WF..|].
-  constructor; simpl; [|done..|apply WF|apply WF].
-  by rewrite -Eq1 -Eq2; apply WF.
-Qed.
-
-Lemma retag1_wf h α nxtp nxtc c cids l otag rkind pk T ntag α' nxtp' :
-  retag1 h α nxtp (c::cids) c l otag rkind pk T = Some (ntag, α', nxtp') →
+Lemma retag_wf h α nxtp nxtc c cids l otag rkind pk T ntag α' nxtp' :
+  retag α nxtp (c::cids) c l otag rkind pk T = Some (ntag, α', nxtp') →
   Wf (mkState h α (c::cids) nxtp nxtc) → Wf (mkState h α' (c::cids) nxtp' nxtc).
 Proof.
   intros RT WF.
   have ?: borrow_barrier_Some nxtc rkind c.
   { destruct rkind; [|done..]. apply WF. by left. }
   revert RT.
-  destruct pk as [[]|[]|]; rewrite /retag1 /=;
+  destruct pk as [[]|[]|]; rewrite /retag /=;
     [| |destruct rkind; simpl; try by (intros; simplify_eq)..|];
      (case retag_ref as [[[new α1] nxtp1]|] eqn:Eq1; [simpl|done]);
     intros ?; simplify_eq;
     destruct WF;
-    (eapply retag1_ref_wf_stack in Eq1; eauto);
+    (eapply retag_ref_wf_stack in Eq1; eauto);
     [|by destruct rkind| |by destruct rkind|..];
     destruct Eq1 as (WF1 & Eq1 & ? & ?);
     (split; [by rewrite -Eq1|done..]).
 Qed.
 
-Lemma retag1_step_wf σ σ' e e' l ot nt pk T kind :
+Lemma retag_step_wf σ σ' e e' l ot nt pk T kind :
   mem_expr_step σ.(shp) e (RetagEvt l ot nt pk T kind) σ'.(shp) e' →
-  bor_step σ'.(shp) σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                    (RetagEvt l ot nt pk T kind)
-                    σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
+  bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+           (RetagEvt l ot nt pk T kind)
+           σ'.(sst) σ'.(scs) σ'.(snp) σ'.(snc) →
   Wf σ → Wf σ'.
 Proof.
   destruct σ as [h α cids nxtp nxtc].
@@ -1033,7 +911,7 @@ Proof.
   intros BS IS WF.
   inversion BS. clear BS. simplify_eq.
   inversion IS. clear IS. simplify_eq.
-  by eapply retag1_wf.
+  by eapply retag_wf.
 Qed.
 
 (** SysCall step *)
@@ -1061,10 +939,11 @@ Proof.
   - by inversion ExprStep.
   - eapply initcall_step_wf; eauto.
   - eapply endcall_step_wf; eauto.
-  - eapply retag1_step_wf; eauto.
+  - eapply retag_step_wf; eauto.
   - by inversion ExprStep.
   (* - eapply syscall_step_wf; eauto. *)
 Qed.
+
 Lemma tstep_wf fns eσ1 eσ2 :
   eσ1 ~{fns}~> eσ2 → Wf eσ1.2 → Wf eσ2.2.
 Proof. inversion 1. inversion PRIM. by eapply (head_step_wf fns). Qed.
@@ -1074,7 +953,6 @@ Proof.
   intros SS. induction SS; [done|]. intros WF1. apply IHSS. revert WF1.
   by apply (tstep_wf fns).
 Qed.
-
 Lemma tstep_tc_wf fs (conf conf': expr * state) :
   conf ~{fs}~>+ conf' → Wf conf.2 → Wf conf'.2.
 Proof.
@@ -1082,55 +960,3 @@ Proof.
   - eapply tstep_wf; eauto.
   - intros. apply IH. eapply tstep_wf; eauto.
 Qed.
-
-Lemma retag_nxtp_mono h α nxtp cids c l kind T h' α' nxtp' :
-  retag h α nxtp cids c l kind T = Some (h', α', nxtp') →
-  (nxtp ≤ nxtp')%nat.
-Proof.
-  eapply (retag_elim
-    (* general goal P *)
-    (λ h α nxtp _ _ _ _ _ ohac, ∀ h' α' nxtp',
-        ohac = Some (h', α', nxtp') → (nxtp ≤ nxtp')%nat)
-    (* invariant for Product's where P1 *)
-    (λ _ _ _ _ _ _ _ _ h α nxtp _ _ ohac, ∀ h' α' nxtp',
-        ohac = Some (h', α', nxtp') → (nxtp ≤ nxtp')%nat)
-    (* invariant for Sum's where P3 *)
-    (λ h _ _ α nxtp _ _ _ _ _ _ ohac, ∀ h' α' nxtp',
-        ohac = Some (h', α', nxtp') → (nxtp ≤ nxtp')%nat)).
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - (* Reference cases *)
-    clear. intros h ?? bor α nxtp cids c rt_kind p_kind T Eq h' α' nxtp'. simpl.
-    destruct p_kind as [[]|[]|];
-      [| |destruct rt_kind; try by (intros; simplify_eq)..|];
-      (case retag_ref as [[[new α1] nxtp1]|] eqn:Eq1; [simpl|done]);
-      intros; simplify_eq; eapply retag_ref_nxtp_mono; eauto.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - (* Product inner recursive case *)
-    intros ?????????????? IH1 IH2 ???.
-    case retag as [hac|]; [|done]. move => /= /IH1 Le. destruct hac as [[]].
-    etrans; [|exact Le]. by eapply IH2.
-  - naive_solver.
-  - (* Sum case *)
-    intros ????????? IH Eq ???. case decide => Le; [|done]. by apply IH.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-  - naive_solver.
-Qed.
-
-(* Lemma head_step_nxtp_mono fns σ σ' e e' obs efs :
-  head_step fns e σ obs e' σ' efs → (σ.(snp) ≤ σ'.(snp))%nat.
-Proof.
-  intros HS. inversion HS; [done|]. simplify_eq.
-  inversion InstrStep; simplify_eq; simpl; try done; [lia|].
-  by eapply retag_nxtp_mono.
-Qed. *)

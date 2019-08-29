@@ -421,7 +421,7 @@ Proof.
   apply: sim_body_result. intros. eapply POST; eauto.
 Qed.
 
-(** Freeing to unique/local *)
+(** Freeing unique/local *)
 (* This one deallocates [l] with [tsize T] and tag [t]. It also deallocates
   the logical resource [res_tag t k h0]. In general, we can require that any
   locations in [h0] be included in [T]. Here, we prove a simple lemma where
@@ -430,7 +430,6 @@ Lemma sim_body_free_unique_local_1 fs ft r r' n l t k T s σs σt Φ :
   tsize T = 1%nat →
   r ≡ r' ⋅ res_tag t k {[l := s]} →
   (k = tkLocal ∨ k = tkUnique) →
-  (* is_Some (h0 !! l) → *)
   (is_Some (σs.(shp) !! l) → is_Some (σt.(shp) !! l) →
     ∀ α', memory_deallocated σt.(sst) σt.(scs) l (Tagged t) (tsize T) = Some α' →
       let σs' := mkState (free_mem l (tsize T) σs.(shp)) α' σs.(scs) σs.(snp) σs.(snc) in
@@ -1222,43 +1221,119 @@ Proof.
 Qed.
 
 (** Retag *)
-
-Lemma sim_body_retag_local_mut_ref fs ft r r' r'' n x xt xs xs' rs T σs σt Φ :
-  (0 < tsize T)%nat →
-  (* owns local x with tag xt and value xs *)
-  r ≡ r' ⋅ res_loc x [(xs,xs)] xt →
-  (* xs is supposed to be a Ptr(li,told), and, coming from the arguments, told
-    must be a public tag. *)
-  arel rs xs' xs →
-  r' ≡ r'' ⋅ rs →
-  let Tr := (Reference (RefPtr Mutable) T) in
-  (∀ li told,
-    xs = ScPtr li told →
-    ∀ tnew hplt c cids hs' αs' nps' ht' αt' npt' (STACK: σt.(scs) = c :: cids),
-    retag σt.(shp) σt.(sst) σt.(snp) σt.(scs) c x Default Tr
-      = Some (ht', αt', npt') →
-    retag σs.(shp) σs.(sst) σs.(snp) σs.(scs) c x Default Tr
-      = Some (hs', αs', nps') →
-    let σs' := mkState hs' αs' σs.(scs) nps' σs.(snc) in
-    let σt' := mkState ht' αt' σt.(scs) npt' σt.(snc) in
-    let s_new := ScPtr li (Tagged tnew) in
-    let tk := tkUnique in
-    is_Some (hplt !! li) →
-    tag_on_top αt' li tnew →
-    Φ (r'' ⋅ rs ⋅ res_loc x [(s_new,s_new)] xt ⋅ res_tag tnew tk hplt)
-      n (ValR [☠%S]) σs' (ValR [☠%S]) σt') →
+Lemma sim_body_retag_public fs ft r n ptr pk T kind σs σt Φ
+  (RREL: rrel r ptr ptr) :
+  (∀ l otg ntg α' nxtp' c cids,
+    ptr = ValR [ScPtr l otg] →
+    σt.(scs) = c :: cids →
+    retag σt.(sst) σt.(snp) σt.(scs) c l otg kind pk T = Some (ntg, α', nxtp') →
+    let σs' := mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc) in
+    let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
+    Φ r n (ValR [ScPtr l ntg]) σs' (ValR [ScPtr l ntg]) σt') →
   r ⊨{n,fs,ft}
-    (Retag (Place x (Tagged xt) Tr) Default, σs) ≥
-    (Retag (Place x (Tagged xt) Tr) Default, σt) : Φ.
+    (Retag ptr pk T kind, σs) ≥
+    (Retag ptr pk T kind, σt) : Φ.
 Proof.
-  intros NZST Eqr PTag Eqr' Tr POST. pfold. intros NT. intros.
+  intros POST. pfold. intros NT. intros.
+  have WSAT1 := WSAT. (* back up *)
+
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+
+  split; [|done|].
+  { (* tgt reducible *)
+    right.
+    edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
+    (* inversion retag of src *)
+    destruct (tstep_retag_inv _ _ _ _ _ _ _ _ STEPS)
+      as (l & otg & c & cids & ntg & α' & nxtp' & ? & Eqs & EqT & ? & ?).
+    subst ptr es'.
+
+    destruct SREL as (Eqsst & Eqnp & Eqcs & Eqnc & PUBP).
+    exists (#[ScPtr l ntg])%V,
+           (mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc)).
+    eapply (head_step_fill_tstep _ []), retag_head_step'.
+    - rewrite -Eqcs; eauto.
+    - by rewrite -Eqsst -Eqnp -Eqcs. }
+
+  constructor 1.
+  intros.
+
+  (* inversion retag of tgt *)
+  destruct (tstep_retag_inv _ _ _ _ _ _ _ _ STEPT)
+      as (l & otg & c & cids & ntg & α' & nxtp' & ? & Eqs & EqT & ? & ?).
+  subst ptr et'.
+
+  exists (#[ScPtr l ntg])%V,
+         (mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc)),
+         r, n. subst σt'.
+  split; last split.
+  { left. constructor.
+    destruct SREL as (Eqsst & Eqnp & Eqcs & Eqnc & PUBP).
+    eapply (head_step_fill_tstep _ []), retag_head_step'.
+    - rewrite Eqcs; eauto.
+    - by rewrite Eqsst Eqnp Eqcs. }
+  { (* unfolding rrel for place *)
+    simpl in RREL.
+    inversion RREL as [|???? AREL _]; subst; simplify_eq. clear RREL.
+    destruct AREL as (_ & _ & AREL).
+    admit. }
+
+  left.
+  apply: sim_body_result. intros. eapply POST; eauto.
+Abort.
+
+Lemma sim_body_retag_mut_ref_default fs ft r r' rs n l told T σs σt Φ :
+  (0 < tsize T)%nat →
+  r ≡ r' ⋅ rs →
+  let pk : pointer_kind := (RefPtr Mutable) in
+  let otg : tag := Tagged told in
+  let s_old : scalar := ScPtr l otg in
+  (* Ptr(l,otg) comes from the arguments, so [otg] must be a public tag. *)
+  arel rs s_old s_old →
+  (∀ tnew hplt c cids αs' nps' αt' npt' (STACK: σt.(scs) = c :: cids),
+    retag σt.(sst) σt.(snp) σt.(scs) c l otg Default pk T
+      = Some ((Tagged tnew), αt', npt') →
+    retag σs.(sst) σs.(snp) σs.(scs) c l otg Default pk T
+      = Some ((Tagged tnew), αs', nps') →
+    (* [hplt] contains all [l +ₗ i]'s and the new tag [tnew] is on top of the
+      stack for each [l +ₗ i].
+      TODO: we can also specify that [hplt] knows the values of [l +ₗ i]'s. *)
+    (∀ i: nat, (i < tsize T) →
+      is_Some $ hplt !! (l +ₗ i) ∧ tag_on_top αt' (l +ₗ i) tnew) →
+    let σs' := mkState σs.(shp) αs' σs.(scs) nps' σs.(snc) in
+    let σt' := mkState σt.(shp) αt' σt.(scs) npt' σt.(snc) in
+    let s_new := ScPtr l (Tagged tnew) in
+    Φ (r ⋅ res_tag tnew tkUnique hplt) n (ValR [s_new]) σs' (ValR [s_new]) σt') →
+  r ⊨{n,fs,ft}
+    (Retag #[s_old] pk T Default, σs) ≥
+    (Retag #[s_old] pk T Default, σt) : Φ.
+Proof.
+  intros NZST Eqr pk otg s_old AREL POST. pfold. intros NT. intros.
   have WSAT1 := WSAT. (* back up *)
 
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   destruct SREL as (Eqsst & Eqnp & Eqcs & Eqnc & PUBP).
 
+  split; [|done|].
+  { (* tgt reducible *)
+    right.
+    edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
+    (* inversion retag of src *)
+    destruct (tstep_retag_inv _ (ValR _) _ _ _ _ _ _ STEPS)
+      as (l' & otg' & c & cids & ntg & α' & nxtp' & ? & Eqs & EqT & ? & ?).
+    simplify_eq.
+    (* apply retag_ref_change in EqT as (l & to & Eqx' & Eqh' & Eqp' & RB); [|done..].
+    subst h' nxtp'. rewrite Eqhs Eqx' in Eqhpl. simplify_eq.
+    rewrite Eqsst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
+    (* retag of tgt *)
+    exists (#[☠])%V,
+      (mkState (<[x:=ScPtr l (Tagged σt.(snp))]> σt.(shp)) α' σt.(scs) (S σt.(snp)) σt.(snc)).
+    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
+    eapply retag_ref_reborrowN; eauto. *)
+    admit. }
+
   (* some lookup properties *)
-  have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
+  (* have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
   have HLxtr: r.(rtm) !! xt ≡ Some (to_tgkR tkLocal, {[x := to_agree (xs,xs)]}).
   { rewrite Eqr. eapply tmap_lookup_op_local_included;
                   [apply VALIDr|apply cmra_included_r|].
@@ -1270,7 +1345,7 @@ Proof.
   { destruct ((r_f ⋅ r'' ⋅ rs).(rtm) !! xt) as [ls|] eqn:Eqls; [|done].
     exfalso. move : HLxtrf.
     rewrite Eqr Eqr' cmra_assoc (cmra_assoc r_f) lookup_op Eqls res_tag_lookup.
-    apply tagKindR_exclusive_local_heaplet. }
+    apply tagKindR_exclusive_local_heaplet. } *)
   (* have HLxlr : (r.(rlm) !! x : optionR tagR) ≡ Some (to_tagR xt).
   { rewrite Eqr. apply lmap_lookup_op_r; [apply VALIDr|].
     rewrite (res_mapsto_llookup_1 x [xs]); [done|by simpl;lia]. }

@@ -8,7 +8,7 @@ Set Default Proof Using "Type".
 Definition ex1_unopt : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in (* put argument into place *)
-    Retag "x" Default ;;
+    retag_place "x" (RefPtr Mutable) int Default ;;
     Call #[ScFnPtr "f"] [] ;;
     *{int} "x" <- #[42] ;;
     Call #[ScFnPtr "g"] [] ;;
@@ -20,7 +20,7 @@ Definition ex1_unopt : function :=
 Definition ex1_opt : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in
-    Retag "x" Default ;;
+    retag_place "x" (RefPtr Mutable) int Default ;;
     Call #[ScFnPtr "f"] [] ;;
     *{int} "x" <- #[42] ;;
     let: "v" := Copy *{int} "x" in
@@ -43,13 +43,24 @@ Proof.
   intros sarg ->.
   sim_apply sim_simple_let=>/=.
   apply: sim_simple_result.
-  (* Retag local *)
+  (* Retag a local place *)
   sim_apply sim_simple_let=>/=.
-  destruct args as [|args args']; first by inversion AREL.
-  apply Forall2_cons_inv in AREL as [AREL ATAIL].
-  destruct args' as [|]; last by inversion ATAIL. clear ATAIL.
-  sim_apply sim_simple_retag_local; [simpl; lia|solve_sim..|].
-  move=>l_i tg_i hplt /= Hl_i.
+  sim_apply sim_simple_let=>/=.
+    (* Copy local place *)
+    sim_apply sim_simple_copy_local; [solve_sim..|].
+    apply: sim_simple_result. simpl.
+    (* Retag *)
+    destruct args as [|args args']; first by inversion AREL.
+    apply Forall2_cons_inv in AREL as [AREL ATAIL].
+    destruct args' as [|]; last by inversion ATAIL. clear ATAIL.
+    have AREL': arel rarg sarg sarg.
+    { have AREL':=(arel_eq _ _ _ AREL). by subst args. }
+    sim_apply sim_simple_retag_mut_ref; [simpl; lia| |eauto|..]; [solve_sim|].
+    move=>l_i tg_i tg_n hplt /= ? IS_i. subst sarg.
+    specialize (IS_i O ltac:(lia)). rewrite shift_loc_0_nat in IS_i.
+    (* Write local *)
+    sim_apply sim_simple_write_local; [solve_sim..|].
+    intros s ?. simplify_eq.
   (* Call *)
   sim_apply sim_simple_let=>/=.
   sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
@@ -98,7 +109,7 @@ Proof.
   sim_apply sim_simple_let=>/=.
   sim_apply sim_simple_free_public.
   { simpl. constructor; [|by constructor].
-    assert (args = sarg). { by revert AREL; apply arel_eq. } subst args.
+    assert (args = ScPtr l' tg_i). { by revert AREL; apply arel_eq. } subst args.
     revert AREL. apply arel_mono; [|solve_res].
     apply (cmra_valid_included _ _ Hval).
     do 3 apply cmra_mono_r. apply cmra_included_l. } simpl.
