@@ -1260,23 +1260,44 @@ Proof.
 
   (* inversion retag of tgt *)
   destruct (tstep_retag_inv _ _ _ _ _ _ _ _ STEPT)
-      as (l & otg & c & cids & ntg & α' & nxtp' & ? & Eqs & EqT & ? & ?).
+      as (l & otg & c & cids & ntg & α' & nxtp' & ? & Eqs & EqRT & ? & ?).
   subst ptr et'.
 
-  exists (#[ScPtr l ntg])%V,
-         (mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc)),
-         r, n. subst σt'.
-  split; last split.
-  { left. constructor.
-    destruct SREL as (Eqsst & Eqnp & Eqcs & Eqnc & PUBP).
+  set σs' := (mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc)).
+  have STEPS: (Retag #[ScPtr l otg] pk T kind, σs) ~{fs}~> ((#[ScPtr l ntg])%E, σs').
+  { destruct SREL as (Eqsst & Eqnp & Eqcs & Eqnc & PUBP).
     eapply (head_step_fill_tstep _ []), retag_head_step'.
     - rewrite Eqcs; eauto.
     - by rewrite Eqsst Eqnp Eqcs. }
+
+  exists (#[ScPtr l ntg])%V, σs', r, n. subst σt'.
+  split; last split.
+  { left. by constructor. }
   { (* unfolding rrel for place *)
     simpl in RREL.
     inversion RREL as [|???? AREL _]; subst; simplify_eq. clear RREL.
-    destruct AREL as (_ & _ & AREL).
-    admit. }
+
+    have Lenp: (σt.(snp) ≤ nxtp')%nat. by apply retag_change_nxtp in EqRT.
+    split; last split; last split; last split; last split.
+    - by apply (tstep_wf _ _ _ STEPS WFS).
+    - by apply (tstep_wf _ _ _ STEPT WFT).
+    - done. (* TODO *)
+    - intros t' k' h' Eqt'.
+      specialize (PINV _ _ _ Eqt') as [Ltp PINV].
+      split; [by simpl; lia|].
+      intros l1 ss st Eql1 PRE. specialize (PINV _ _ _ Eql1).
+      destruct k'.
+      + specialize (PINV I) as (Eqst & Eqss & Eqstk).
+        do 2 (split; [done|]). move : Eqstk. simpl.
+        admit.
+      + simpl. admit.
+      + simpl. admit.
+    - intros c1 Tc Eqc. specialize (CINV _ _ Eqc) as [Ltc CINV].
+      split; [done|].
+      intros tc L InL. specify 
+      
+      admit.
+    - admit. }
 
   left.
   apply: sim_body_result. intros. eapply POST; eauto.

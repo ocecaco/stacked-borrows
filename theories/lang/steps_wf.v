@@ -709,6 +709,29 @@ Proof.
     + intros ??. apply NC. lia.
 Qed.
 
+Lemma visit_freeze_sensitive_stacks_unchanged l (f: stacks → _ → _ → _ → _)
+  α α' T :
+  (∀ α1 α2 l n b, f α1 l n b = Some α2 →
+      ∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') →
+  visit_freeze_sensitive l T f α = Some α' →
+  ∀ l', (∀ (i : nat), (i < tsize T)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l'.
+Proof.
+  intros HF.
+  rewrite /visit_freeze_sensitive.
+  case visit_freeze_sensitive' as [[α1 [l1 c1]]|] eqn:Eq; [|done].
+  intros Eqf.
+  have Eq' := Eq.
+  apply visit_freeze_sensitive'_offsets in Eq' as [_ Eq'].
+  rewrite 2!Nat.add_0_l in Eq'.
+  apply visit_freeze_sensitive'_stacks_unchanged in Eq as [_ EQ]; [|done].
+  specialize (HF _ _ _ _ _ Eqf).
+  intros l' NEq. rewrite HF; last first.
+  { intros i Lt. rewrite shift_loc_assoc -Nat2Z.inj_add.
+    apply NEq. rewrite -Eq'. lia. }
+  rewrite EQ //.
+  intros i [_ Lti]. apply NEq. rewrite -Eq'. lia.
+Qed.
+
 Lemma visit_freeze_sensitive'_wf_stack l (f: stacks → _ → _ → _ → _)
   α α' last cur T l' c' nxtp nxtc (P: stacks → loc → nat → Prop) :
   let Hα α1 α2 l n :=

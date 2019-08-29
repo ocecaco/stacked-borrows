@@ -705,3 +705,55 @@ Proof.
   apply tag_on_top_grant_unique in GR as [stk1 Eq1]; [|done].
   rewrite /tag_on_top Eq' Eq1 /=. by eexists.
 Qed.
+
+Lemma retag_nxtp_change α cids c nxtp l otag ntag rk pk T α' nxtp'
+  (TS: (O < tsize T)%nat)
+  (RK: match pk with | RawPtr _ => rk = RawRt | _ => True end) :
+  retag α nxtp cids c l otag rk pk T = Some (ntag, α', nxtp') →
+  nxtp' = S nxtp ∧
+  match ntag with
+  | Untagged => True
+  | Tagged t => nxtp = t
+  end.
+Proof.
+  assert (∃ n, tsize T = S n) as [n EqT].
+  { destruct (tsize T); [lia|by eexists]. }
+  destruct pk as [[]| |]; [| |subst rk|]; rewrite /retag /= /retag_ref EqT;
+  (case reborrow as [α1|]; [|done]); simpl; intros; by simplify_eq.
+Qed.
+
+Lemma retag_change_case α cids c nxtp l otag ntag rk pk T α' nxtp' :
+  retag α nxtp cids c l otag rk pk T = Some (ntag, α', nxtp') →
+  tsize T = O ∧ α' = α ∧ nxtp' = nxtp ∧ ntag = otag ∨
+  (O < tsize T)%nat ∧
+    match pk, rk with
+    | RawPtr _, RawRt => True
+    | RawPtr _, _ => α' = α ∧ nxtp' = nxtp ∧ ntag = otag
+    | _, _ => True
+    end.
+Proof.
+  destruct (tsize T) as [|n] eqn:EqT.
+  - rewrite /retag /retag_ref EqT /=.
+    destruct pk as [[]| |]; [| |destruct rk|]; simpl; intros; simplify_eq;
+      by left.
+  - rewrite /retag /retag_ref EqT /=.
+    destruct pk as [[]| |]; [| |destruct rk|]; simpl; intros; simplify_eq;
+      right; (split; [lia|done]).
+Qed.
+
+Lemma retag_change_nxtp α cids c nxtp l otag ntag rk pk T α' nxtp' :
+  retag α nxtp cids c l otag rk pk T = Some (ntag, α', nxtp') →
+  (nxtp ≤ nxtp')%nat.
+Proof.
+  intros RT.
+  destruct (retag_change_case _ _ _ _ _ _ _ _ _ _ _ _ RT) as [[?[?[??]]]|[? Eq]].
+  - by simplify_eq.
+  - destruct pk.
+    + apply retag_nxtp_change in RT as []; [lia|done..].
+    + destruct rk.
+      * by destruct Eq as [_ [? _]]; subst.
+      * by destruct Eq as [_ [? _]]; subst.
+      * apply retag_nxtp_change in RT as []; [lia|done..].
+      * by destruct Eq as [_ [? _]]; subst.
+    + apply retag_nxtp_change in RT as []; [lia|done..].
+Qed.

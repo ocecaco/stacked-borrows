@@ -322,6 +322,8 @@ Definition retag_ref α cids (nxtp: ptr_id) l (old_tag: tag) T
                      end in
       (* reborrow old_tag with new_tag *)
       α' ← reborrow α cids l old_tag T kind new_tag protector;
+      (* TODO: this always increments the [nxtp] field, even though that is not
+        necessary when new_tag = Untagged *)
       Some (new_tag, α', S nxtp)
   end.
 
