@@ -70,25 +70,6 @@ Lemma of_result_list_expr (vl: list value) :
   (of_result <$> (ValR <$> vl)) = Val <$> vl.
 Proof. induction vl as [|v vl IH]; [done|]. by rewrite 3!fmap_cons IH. Qed.
 
-(* Lemma subst_is_closed X x es e :
-  is_closed X es → is_closed (x::X) e → is_closed X (subst x es e).
-Proof.
-  revert e X. fix FIX 1; destruct e=>X //=; repeat (case_bool_decide=>//=);
-    try naive_solver; rewrite ?andb_True; intros.
-  - set_solver.
-  - split; first naive_solver. induction el; naive_solver.
-  - (* eauto using is_closed_weaken with set_solver. *)
-  - eapply is_closed_weaken; first done.
-    destruct (decide (BNamed x = f)), (decide (BNamed x ∈ xl)); set_solver.
-  - induction el; naive_solver.
-  - split; first naive_solver. induction el; naive_solver.
-Qed.
-
-Lemma subst'_is_closed X b es e :
-  is_closed X es → is_closed (b:b:X) e → is_closed X (subst' b es e).
-Proof. destruct b; first done. apply subst_is_closed. Qed.
- *)
-
 (** Equality and other typeclass stuff *)
 
 Instance bin_op_eq_dec : EqDecision bin_op.
@@ -161,7 +142,8 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
       bool_decide (l = l') && bool_decide (bor = bor') && bool_decide (T = T')
   | Deref e T, Deref e' T' =>
       bool_decide (T = T') && expr_beq e e'
-  | Retag e kind, Retag e' kind' =>
+  | Retag e pk T kind, Retag e' pk' T' kind' =>
+     bool_decide (pk = pk') && bool_decide (T = T') &&
      bool_decide (kind = kind') && expr_beq e e'
   | Copy e, Copy e' | Ref e, Ref e' | InitCall e, InitCall e'
   (* | AtomRead e, AtomRead e' *) | EndCall e, EndCall e' => expr_beq e e'
@@ -228,8 +210,11 @@ Proof.
       | Deref e T => GenNode 13 [GenLeaf $ inl $ inr $ inr $ inr T; go e]
       | Ref e => GenNode 14 [go e]
       (* | Field e path => GenNode 15 [GenLeaf $ inr $ inl $ inl (* $ inl *) path; go e] *)
-      | Retag e kind => GenNode 15 [GenLeaf $ inr $ inl (* $ inr $ inr *) kind; go e]
-      | Let x e1 e2 => GenNode 16 [GenLeaf $ inr $ inr x; go e1; go e2]
+      | Retag e pk T kind =>
+          GenNode 15 [GenLeaf $ inr $ inl $ inl pk;
+                      GenLeaf $ inr $ inl $ inr T;
+                      GenLeaf $ inr $ inr $ inl kind; go e]
+      | Let x e1 e2 => GenNode 16 [GenLeaf$ inr $ inr $ inr x; go e1; go e2]
       | Case e el => GenNode 17 (go e :: (go <$> el))
       (* | Fork e => GenNode 23 [go e]
       | SysCall id => GenNode 24 [GenLeaf $ inr $ inr id] *)
@@ -256,9 +241,11 @@ Proof.
      | GenNode 13 [GenLeaf (inl (inr (inr (inr T)))); e] => Deref (go e) T
      | GenNode 14 [e] => Ref (go e)
      (* | GenNode 15 [GenLeaf (inr (inl (inl (*  (inl *) path(* ) *)))); e] => Field (go e) path *)
-     | GenNode 15 [GenLeaf (inr (inl (* (inr (inr *) kind (* ) ) *))); e] =>
-        Retag (go e) kind
-     | GenNode 16 [GenLeaf (inr (inr x)); e1; e2] => Let x (go e1) (go e2)
+     | GenNode 15 [GenLeaf (inr (inl (inl pk)));
+                   GenLeaf (inr (inl (inr T)));
+                   GenLeaf (inr (inr (inl kind))); e] =>
+        Retag (go e) pk T kind
+     | GenNode 16 [GenLeaf (inr (inr (inr x))); e1; e2] => Let x (go e1) (go e2)
      | GenNode 17 (e :: el) => Case (go e) (go <$> el)
      (* | GenNode 23 [e] => Fork (go e)
      | GenNode 24 [GenLeaf (inr (inr id))] => SysCall id *)
@@ -346,10 +333,10 @@ Inductive head_step :
   | HeadPureS σ e e' ev
       (ExprStep: pure_expr_step fns σ.(shp) e ev e')
     : head_step e σ [ev] e' σ []
-  | HeadImpureS σ e e' ev h0 h' α' cids' nxtp' nxtc'
-      (ExprStep : mem_expr_step σ.(shp) e ev h0 e')
-      (InstrStep: bor_step h0 σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                           ev h' α' cids' nxtp' nxtc')
+  | HeadImpureS σ e e' ev h' α' cids' nxtp' nxtc'
+      (ExprStep : mem_expr_step σ.(shp) e ev h' e')
+      (InstrStep: bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
+                           ev α' cids' nxtp' nxtc')
     : head_step e σ [ev] e' (mkState h' α' cids' nxtp' nxtc') [].
 
 Lemma result_head_stuck e1 σ1 κ e2 σ2 efs :
@@ -400,4 +387,13 @@ Qed.
 
 (* Allocate a place of type [T] and initialize it with a value [v] *)
 Definition new_place T (v: expr) : expr :=
-   let: "x" := Alloc T in "x" <- v ;; "x".
+  let: "x" := Alloc T in "x" <- v ;; "x".
+
+(* Retag a place [p] that is a pointer of kind [pk] to a region of type [T],
+  with retag [kind] *)
+Definition retag_place
+  (p: expr) (pk: pointer_kind) (T: type) (kind: retag_kind) : expr :=
+  let: "p" := p in
+  (* read the current pointer stored in the place [p] *)
+  (* retag and update [p] with the pointer with new tag *)
+  "p" <- Retag (Copy "p") pk T kind.

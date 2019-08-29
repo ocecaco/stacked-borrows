@@ -27,7 +27,7 @@ Fixpoint expr_wf (e: expr) : Prop :=
   | Val v => value_wf v
   | Call f args => expr_wf f ∧ Forall id (fmap expr_wf args)
   | Case e branches => expr_wf e ∧ Forall id (fmap expr_wf branches)
-  | Deref e _ | Ref e | Copy e | Free e | Retag e _ =>
+  | Deref e _ | Ref e | Copy e | Free e | Retag e _ _ _ =>
     expr_wf e
   | Proj e1 e2 | Conc e1 e2 | BinOp _ e1 e2 | Let _ e1 e2 | Write e1 e2 =>
     expr_wf e1 ∧ expr_wf e2

@@ -8,29 +8,32 @@ Set Default Proof Using "Type".
 Definition ex3_down : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in
-    Retag "x"  FnEntry ;;
+    retag_place "x" (RefPtr Mutable) int FnEntry ;;
     *{int} "x" <- #[42] ;;
     let: "v" := Call #[ScFnPtr "f"] [] in
     *{int} "x" <- #[13] ;;
+    Free "x" ;; Free "i" ;;
     "v"
   .
 
 Definition ex3_down_opt_1 : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in
-    Retag "x"  FnEntry ;;
+    retag_place "x" (RefPtr Mutable) int FnEntry ;;
     let: "v" := Call #[ScFnPtr "f"] [] in
     *{int} "x" <- #[42] ;;
     *{int} "x" <- #[13] ;;
+    Free "x" ;; Free "i" ;;
     "v"
   .
 
 Definition ex3_down_opt_2 : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in
-    Retag "x"  FnEntry ;;
+    retag_place "x" (RefPtr Mutable) int FnEntry ;;
     let: "v" := Call #[ScFnPtr "f"] [] in
     *{int} "x" <- #[13] ;;
+    Free "x" ;; Free "i" ;;
     "v"
   .
 

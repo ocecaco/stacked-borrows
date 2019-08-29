@@ -317,29 +317,30 @@ Proof.
   eapply sim_simple_copy_local_r; done.
 Qed.
 
-Lemma sim_simple_retag_local fs ft r r' r'' rs n l s' s tg ty Φ :
+Lemma sim_simple_retag_mut_ref fs ft r r' rs n (ptr: scalar) ty Φ :
   (0 < tsize ty)%nat →
-  r ≡ r' ⋅ res_loc l [(s,s)] tg →
-  arel rs s' s →
-  r' ≡ r'' ⋅ rs →
-  (∀ l_inner tg_inner hplt,
-    let s_new := ScPtr l_inner (Tagged tg_inner) in
+  r ≡ r' ⋅ rs →
+  arel rs ptr ptr →
+  (∀ l told tnew hplt,
+    ptr = ScPtr l told →
+    let s_new := ScPtr l (Tagged tnew) in
 (*    let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
     match m with
     | Mutable => is_Some (hplt !! l_inner)
     | Immutable => if is_freeze ty then is_Some (hplt !! l_inner) else True
     end → *)
+    let s_new := ScPtr l (Tagged tnew) in
     let tk := tkUnique in
-    is_Some (hplt !! l_inner) →
-    Φ (r'' ⋅ rs ⋅ res_loc l [(s_new,s_new)] tg ⋅ res_tag tg_inner tk hplt) n (ValR [☠%S]) (ValR [☠%S])) →
+    (∀ i: nat, (i < tsize ty) → is_Some $ hplt !! (l +ₗ i)) →
+    Φ (r ⋅ res_tag tnew tk hplt) n (ValR [s_new]) (ValR [s_new])) →
   r ⊨ˢ{n,fs,ft}
-    Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default
+    Retag #[ptr] (RefPtr Mutable) ty Default
   ≥
-    Retag (Place l (Tagged tg) (Reference (RefPtr Mutable) ty)) Default
+    Retag #[ptr] (RefPtr Mutable) ty Default
   : Φ.
 Proof.
-  intros ???? HH σs σt. eapply sim_body_retag_local_mut_ref; eauto.
-Qed.
+  intros ??? HH σs σt.
+Admitted.
 
 (** * Memory: shared *)
 Lemma sim_simple_alloc_public fs ft r n T Φ :
@@ -382,10 +383,10 @@ Proof.
   eapply sim_body_copy_public; eauto.
 Qed.
 
-Lemma sim_simple_retag_public fs ft r n (rs rt: result) k Φ :
+Lemma sim_simple_retag_public fs ft r n (rs rt: result) pk T rk Φ :
   rrel r rs rt →
   (Φ r n (ValR [☠%S]) (ValR [☠%S])) →
-  r ⊨ˢ{n,fs,ft} Retag rs k ≥ Retag rt k : Φ.
+  r ⊨ˢ{n,fs,ft} Retag rs pk T rk ≥ Retag rt pk T rk : Φ.
 Proof.
   intros [Hrel ?]%rrel_with_eq. simplify_eq.
 Admitted.

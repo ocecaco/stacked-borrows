@@ -1,4 +1,4 @@
-From stbor.lang Require Import steps_retag.
+From stbor.lang Require Import steps_retag steps_progress.
 From stbor.sim Require Export instance.
 
 Set Default Proof Using "Type".

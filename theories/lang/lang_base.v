@@ -177,8 +177,9 @@ Inductive expr :=
 (* | CAS (e0 e1 e2 : expr) *)     (* CAS the value `e2` for `e1` to the place `e0` *)
 (* | AtomWrite (e1 e2: expr) *)
 (* | AtomRead (e: expr) *)
-(* retag *)
-| Retag (e : expr) (kind: retag_kind) (* Retag the place `e` with retag kind `kind`. *)
+(* retag *) (* Retag the memory pointed to by `e` of type (Reference pk T) with
+  retag kind `kind`. *)
+| Retag (e : expr) (pk: pointer_kind) (T: type) (kind: retag_kind)
 (* let binding *)
 | Let (x : binder) (e1 e2: expr)
 (* case *)
@@ -209,7 +210,7 @@ Arguments Free _%E.
 (* Arguments CAS _%E _%E _%E. *)
 (* Arguments AtomWrite _%E _%E. *)
 (* Arguments AtomRead _%E. *)
-Arguments Retag _%E _.
+Arguments Retag _%E _ _ _.
 Arguments Let _%binder _%E _%E.
 Arguments Case _%E _%E.
 (* Arguments Fork _%E. *)
@@ -225,7 +226,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Let x e1 e2 => is_closed X e1 && is_closed (x :b: X) e2
   | Case e el | Call e el (* | App e el  *)
       => is_closed X e && forallb (is_closed X) el
-  | Copy e | Retag e _ | Deref e _ | Ref e (* | Field e _ *)
+  | Copy e | Retag e _ _ _ | Deref e _ | Ref e (* | Field e _ *)
       | Free e | InitCall e | EndCall e (* | AtomRead e | Fork e *)
       => is_closed X e
   (* | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2 *)
@@ -305,7 +306,7 @@ Inductive event :=
 | NewCallEvt (fid: fn_id)
 | InitCallEvt (c: call_id)
 | EndCallEvt (c: call_id) (v: value)
-| RetagEvt (x: loc) (T: type) (kind: retag_kind)
+| RetagEvt (l: loc) (otag ntag: tag) (pk: pointer_kind) (T: type) (kind: retag_kind)
 (* | SysCallEvt (id: nat) *)
 | SilentEvt
 .

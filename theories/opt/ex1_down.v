@@ -8,17 +8,19 @@ Set Default Proof Using "Type".
 Definition ex1_down : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in (* put argument into place *)
-    Retag "x"  FnEntry ;;
+    retag_place "x" (RefPtr Mutable) int FnEntry ;;
     let: "v" := Copy *{int} "x" in
     Call #[ScFnPtr "f"] [] ;;
+    Free "x" ;; Free "i" ;;
     "v"
     .
 
 Definition ex1_down_opt : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in
-    Retag "x"  FnEntry ;;
+    retag_place "x" (RefPtr Mutable) int FnEntry ;;
     Call #[ScFnPtr "f"] [] ;;
+    Free "x" ;; Free "i" ;;
     Copy *{int} "x"
     .
 
