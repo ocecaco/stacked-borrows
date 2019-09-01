@@ -538,13 +538,11 @@ Proof.
     move => it /elem_of_cons [-> //|] / (proj1 (WF _ _ Eq)) [Lt ?].
     split; [|done]. move : Lt. destruct it.(tg); [lia|done].
   - destruct (for_each_lookup_case _ _ _ _ _ ACC _ _ _ Eq Eq')
-      as [?|[Eqf [i [[Le Lt] ?]]]].
+      as [?|[Eqf [i [Lt ?]]]].
     { subst. by apply (WF _ _ Eq). }
     eapply grant_stack_item_tagged_NoDup; eauto.
     + destruct new.(tg); [|done].
-      subst l'. intros it. apply (NEW (Z.to_nat i)).
-      * rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; by lia.
-      * by rewrite Z2Nat.id.
+      subst l'. intros it. by apply (NEW i).
     + by apply (WF _ _ Eq).
 Qed.
 

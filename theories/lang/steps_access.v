@@ -168,10 +168,7 @@ Proof.
   intros l1 stk1 Eq1.
   destruct (block_case l l1 n) as [NEql|Eql].
   - rewrite -EQ2 //.
-  - destruct Eql as (i & Lt & ?). subst l1. destruct Lt.
-    move : (EQ1 (Z.to_nat i)). rewrite Z2Nat.id //. intros EQ'.
-    rewrite EQ' // in Eq1.
-    rewrite -(Nat2Z.id n) -Z2Nat.inj_lt //. lia.
+  - destruct Eql as (i & Lt & ?). subst l1. rewrite EQ1 // in Eq1.
 Qed.
 
 Lemma free_mem_lookup l n h :
@@ -201,16 +198,13 @@ Qed.
 
 Lemma free_mem_lookup_case l' l n h :
   (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∧ free_mem l n h !! l' = h !! l' ∨
-  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i ∧ free_mem l n h !! (l +ₗ i) = None.
+  ∃ i : nat, (i < n)%nat ∧ l' = l +ₗ i ∧ free_mem l n h !! (l +ₗ i) = None.
 Proof.
   destruct (free_mem_lookup l n h) as [EQ1 EQ2].
   destruct (block_case l l' n) as [NEql|Eql].
   - left. rewrite -EQ2 //.
   - right. destruct Eql as (i & Lt & ?). exists i. do 2 (split; [done|]).
-    subst l'. destruct Lt.
-    move : (EQ1 (Z.to_nat i)). rewrite Z2Nat.id //. intros EQ'.
-    apply EQ'.
-    rewrite -(Nat2Z.id n) -Z2Nat.inj_lt //. lia.
+    subst l'. by apply EQ1.
 Qed.
 
 Lemma free_mem_dom l' l n h:

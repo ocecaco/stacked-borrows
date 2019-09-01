@@ -1,4 +1,4 @@
-From stbor.lang Require Export defs steps_foreach steps_list.
+From stbor.lang Require Export defs steps_foreach steps_list steps_wf.
 
 Set Default Proof Using "Type".
 
@@ -485,6 +485,23 @@ Proof.
     + apply HL. lia.
 Qed.
 
+Lemma active_SRO_elem_of_inv i it t stk :
+  stk !! i = Some it → it.(tg) = Tagged t →
+  it.(perm) = SharedReadOnly →
+  (∀ j jt, (j < i)%nat → stk !! j = Some jt → jt.(perm) = SharedReadOnly) →
+  t ∈ active_SRO stk.
+Proof.
+  revert i.
+  induction stk as [|it' stk IH]; [set_solver|].
+  intros [|i]; intros Eq; simpl in Eq.
+  { simplify_eq. intros. apply active_SRO_cons_elem_of. split; [done|by left]. }
+  intros Eqt SRO PREV.
+  apply active_SRO_cons_elem_of.
+  have SRO' := PREV O it' ltac:(lia) eq_refl. split; [done|].
+  right. apply (IH _ Eq Eqt SRO).
+  intros j jt Lt. apply (PREV (S j) jt). lia.
+Qed.
+
 Lemma find_granting_incompatible_active_SRO stk t ti idx pm
   (HD: ti ∈ active_SRO stk) :
   find_granting stk AccessWrite t = Some (idx, pm) →
@@ -507,21 +524,24 @@ Qed.
 Lemma find_first_write_incompatible_active_SRO stk pm idx :
   find_first_write_incompatible stk pm = Some idx →
   ∀ t, t ∈ active_SRO stk → ∃ i it, stk !! i = Some it ∧
-    it.(tg) = Tagged t ∧ (i < idx)%nat.
+    it.(perm) = SharedReadOnly ∧
+    it.(tg) = Tagged t ∧ (i < idx)%nat ∧
+    (∀ (j : nat) (jt : item), (j < i)%nat → stk !! j = Some jt →
+        jt.(perm) = SharedReadOnly).
 Proof.
   intros EF t IN.
   destruct (active_SRO_elem_of _ _ IN) as (i1 & it1 & Eqit1 & Eqt1 & Eqp1 & HL1).
   move  : EF.
   destruct pm; [| |done..].
   { simpl. intros. simplify_eq. exists i1, it1.
-    repeat split; [done..|]. by eapply lookup_lt_Some. }
+    repeat split; [done..| |done]. by eapply lookup_lt_Some. }
   simpl.
   destruct (list_find_elem_of (λ it, it.(perm) ≠ SharedReadWrite) (reverse stk) it1)
     as [[n1 pm1] Eqpm1].
   { rewrite elem_of_reverse. by eapply elem_of_list_lookup_2. }
   { by rewrite Eqp1. }
   rewrite Eqpm1. intros. simplify_eq.
-  exists i1, it1. repeat split; [done..|].
+  exists i1, it1. repeat split; [done..| |done].
   apply list_find_Some_not_earlier in Eqpm1 as (Eqrv & Eqpmv & HLv).
   case (decide (i1 + n1 < length stk)%nat) => [?|]; [lia|].
   rewrite Nat.nlt_ge => GE. exfalso.
@@ -544,7 +564,7 @@ Proof.
   intros NEQ.
   have HD' := find_granting_incompatible_active_SRO _ _ _ _ _ HD GRANT.
   destruct (find_first_write_incompatible_active_SRO _ _ _ INC _ HD')
-    as (i & it & Eqi & Eqt & Lt).
+    as (i & it & Eqi & Eqp & Eqt & Lt & HL).
   rewrite -{1}(take_drop n stk) in ND. intros ?.
   eapply (remove_check_incompatible_items _ _ _ _ idx it i ti ND); eauto.
 Qed.
@@ -756,4 +776,773 @@ Proof.
       * apply retag_nxtp_change in RT as []; [lia|done..].
       * by destruct Eq as [_ [? _]]; subst.
     + apply retag_nxtp_change in RT as []; [lia|done..].
+Qed.
+
+Lemma unsafe_action_stacks_changed
+  (f: stacks → _ → nat → _ → _) α l (last fsz usz: nat) α' ln cn
+  (P: option stack → option stack → bool → Prop)
+  (HF: ∀ α1 α2 l n b, f α1 l n b = Some α2 →
+      (∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') ∧
+      (∀ (i : nat), (i < n)%nat → P (α1 !! (l +ₗ i)) (α2 !! (l +ₗ i)) b)):
+  unsafe_action f α l last fsz usz = Some (α', (ln, cn)) →
+  (last ≤ ln)%nat ∧
+  (∀ l', (∀ (i : nat), (last ≤ i < ln)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l') ∧
+  (∀ (i : nat), (last ≤ i < ln)%nat → ∃ b, P (α !! (l +ₗ i)) (α' !! (l +ₗ i)) b).
+Proof.
+  rewrite /unsafe_action.
+  case f as [α1|] eqn:Eqf1; [simpl|done]. case (f α1) eqn:Eqf2; [simpl|done].
+  intros ?. simplify_eq. split; [lia|].
+  destruct (HF _ _ _ _ _ Eqf1) as [HF1 Eq1].
+  destruct (HF _ _ _ _ _ Eqf2) as [HF2 Eq2]. split.
+  { intros ? NEQ. rewrite HF2; last first.
+    - intros i Lt.
+      rewrite shift_loc_assoc -Nat2Z.inj_add. apply NEQ. lia.
+    - rewrite HF1 //.
+      intros ??. rewrite shift_loc_assoc -Nat2Z.inj_add. apply NEQ. lia. }
+  intros i [Le Lt].
+  case (decide (i < last + fsz)%nat) => [Lt1|Ge1].
+  - have Le1: (i - last < fsz)%nat by lia.
+    have Eql: l +ₗ i = l +ₗ last +ₗ (i - last)%nat.
+    { rewrite shift_loc_assoc. f_equal. lia. }
+    specialize (Eq1 _ Le1). rewrite -Eql in Eq1. rewrite HF2.
+    + by exists true.
+    + intros j Ltj.
+      rewrite shift_loc_assoc -Nat2Z.inj_add.
+      intros ?%shift_loc_inj%Z_of_nat_inj. subst i. lia.
+  - apply Nat.nlt_ge in Ge1.
+    have Le1: (i - (last + fsz) < usz)%nat by lia.
+    have Eql: l +ₗ i = l +ₗ (last + fsz)%nat +ₗ (i - (last + fsz))%nat.
+    { rewrite shift_loc_assoc. f_equal. lia. }
+    specialize (Eq2 _ Le1). rewrite -Eql in Eq2. rewrite -HF1.
+    + by exists false.
+    + intros ??. rewrite shift_loc_assoc -Nat2Z.inj_add.
+      intros ?%shift_loc_inj%Z_of_nat_inj. subst i. lia.
+Qed.
+
+
+Lemma visit_freeze_sensitive'_stacks_changed l (f: stacks → _ → _ → _ → _)
+  α α' last cur T l' c'
+  (P: option stack → option stack → bool → Prop) :
+  let HF (f: stacks → loc → nat → bool → option stacks) :=
+    ∀ α1 α2 l n b, f α1 l n b = Some α2 →
+      (∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') ∧
+      (∀ (i : nat), (i < n)%nat → P (α1 !! (l +ₗ i)) (α2 !! (l +ₗ i)) b) in
+  let UC α1 α2 (l: loc) (lo ln: nat) :=
+    (lo ≤ ln)%nat ∧
+    (∀ l', (∀ (i : nat), (lo ≤ i < ln)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') ∧
+    (∀ (i : nat), (lo ≤ i < ln)%nat → ∃ b, P (α1 !! (l +ₗ i)) (α2 !! (l +ₗ i)) b) in
+  HF f →
+  visit_freeze_sensitive' l f α last cur T = Some (α', (l', c')) →
+  UC α α' l last l'.
+Proof.
+  intros HF UC.
+  apply (visit_freeze_sensitive'_elim
+    (* general goal P *)
+    (λ l f α l1 c1 T oalc, ∀ α' l' c',
+      HF f → oalc = Some (α', (l', c')) → UC α α' l l1 l')
+    (λ l f _ _ _ Ts1 α l1 c1 Ts2 oalc, ∀ α' l' c',
+      HF f → oalc = Some (α', (l', c')) →
+          UC α α' l l1 l')); rewrite /HF /UC.
+  - clear. intros l f α1 l1 c1 s1 α2 l2 c2 HF ?.
+    simplify_eq. split; [done|].
+    split; [naive_solver|]. clear. intros i []. lia.
+  - clear. intros l f α1 l1 c1 ?? α2 l2 c2 HF ?.
+    simplify_eq. split; [done|].
+    split; [naive_solver|]. clear. intros i []. lia.
+  - (* Unsafe case *)
+    clear. intros ?? α l1 c1 ? α2 l2 c2 HF.
+    eapply unsafe_action_stacks_changed; eauto.
+  - (* Union case *)
+    clear. intros ????????? HF0. case is_freeze.
+    + intros. simplify_eq. do 2 (split; [done|]).
+      clear. intros ? []. lia.
+    + intros UN. eapply unsafe_action_stacks_changed; eauto.
+  - clear. intros ?????? IH ??? HF. case is_freeze.
+    + intros. simplify_eq. do 2 (split; [done|]).
+      clear. intros ? []. lia.
+    + intros VS. eapply (IH _ _ _ HF); eauto.
+  - (* Sum case *)
+    clear. intros ????????? HF. case is_freeze.
+    + intros. simplify_eq. do 2 (split; [done|]).
+      clear. intros ? []. lia.
+    + intros UN. eapply unsafe_action_stacks_changed; eauto.
+  - clear. intros l f α1 l1 c1 Ts1 α2 l2 c2 α3 l3 c3 HF ?.
+    simplify_eq. split; [done|].
+    split; [naive_solver|]. clear. intros i []. lia.
+  - (* Product case *)
+    clear. intros l f α0 l0 c0 Ts1 α2 l2 c2 T Ts2 IH1 IH2 α3 l3 c3 HF.
+    case visit_freeze_sensitive' as [alc|] eqn:Eqa; [|done].
+    intros VS. destruct alc as [α1 [l1 c1]]. simpl in VS.
+    destruct (IH2 α1 l1 c1 HF eq_refl) as [Le2 [IH21 IH22]].
+    simpl in IH21, IH22.
+    destruct (IH1 (α1, (l1,c1)) α3 l3 c3) as [Le1 [IH11 IH12]];
+      [done..|simpl in Le1; split]; [lia|].
+    simpl in IH11, IH12.
+    split.
+    + intros ? NC. rewrite IH11; [rewrite IH21 //|].
+      * intros ??. apply NC. lia.
+      * intros ??. apply NC. lia.
+    + intros i [Le Lt].
+      case (decide (l1 ≤ i)%nat) => [Gel1|Ltl1].
+      * rewrite -IH21; [by apply IH12|].
+        intros j [Lej Ltj] ?%shift_loc_inj%Z_of_nat_inj. subst j. lia.
+      * apply Nat.nle_gt in Ltl1.
+        rewrite IH11; [by apply IH22|].
+        intros j [Lej Ltj] ?%shift_loc_inj%Z_of_nat_inj. subst j. lia.
+Qed.
+
+Lemma visit_freeze_sensitive_stacks_unchanged l
+  (f: stacks → _ → _ → _ → _)
+  α α' T
+  (P: option stack → option stack → bool → Prop) :
+  (∀ α1 α2 l n b, f α1 l n b = Some α2 →
+      (∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') ∧
+      (∀ (i : nat), (i < n)%nat → P (α1 !! (l +ₗ i)) (α2 !! (l +ₗ i)) b)) →
+  visit_freeze_sensitive l T f α = Some α' →
+  (∀ l', (∀ (i : nat), (i < tsize T)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l') ∧
+  (∀ (i : nat), (i < tsize T)%nat → ∃ b, P (α !! (l +ₗ i)) (α' !! (l +ₗ i)) b).
+Proof.
+  intros HF.
+  rewrite /visit_freeze_sensitive.
+  case visit_freeze_sensitive' as [[α1 [l1 c1]]|] eqn:Eq; [|done].
+  intros Eqf.
+  have Eq' := Eq.
+  apply visit_freeze_sensitive'_offsets in Eq' as [_ Eq'].
+  rewrite 2!Nat.add_0_l in Eq'.
+  eapply visit_freeze_sensitive'_stacks_changed in Eq as [_ [EQ1 EQ2]]; [|done].
+  specialize (HF _ _ _ _ _ Eqf) as [HF1 HF2].
+  split.
+  - intros l' NEq. rewrite HF1; last first.
+    { intros i Lt. rewrite shift_loc_assoc -Nat2Z.inj_add.
+      apply NEq. rewrite -Eq'. lia. }
+    rewrite EQ1 //.
+    intros i [_ Lti]. apply NEq. rewrite -Eq'. lia.
+  - intros i Lt. rewrite -Eq' in Lt.
+    case (decide (i < l1)%nat) => [Ltl1|Gel1].
+    + rewrite HF1.
+      * apply EQ2. split; [lia|done].
+      * intros j Ltj. rewrite shift_loc_assoc_nat.
+        intros ?%shift_loc_inj%Z_of_nat_inj. subst i. lia.
+    + apply Nat.nlt_ge in Gel1. rewrite -EQ1.
+      * have Ltc1: (i - l1 < c1)%nat by lia.
+        specialize (HF2 _ Ltc1).
+        have Eql: l +ₗ l1 +ₗ (i - l1)%nat = l +ₗ i.
+        { rewrite shift_loc_assoc_nat. f_equal. lia. }
+        rewrite Eql in HF2. by exists true.
+      * intros j [_ Ltj] ?%shift_loc_inj%Z_of_nat_inj. subst i. lia.
+Qed.
+
+Lemma reborrowN_lookup_case (α1 α2 : stacks) cids l n old new pm protector
+  (EQB : reborrowN α1 cids l n old new pm protector = Some α2) :
+  (∀ l', (∀ (i : nat), (i < n)%nat → l' ≠ l +ₗ i) → α2 !! l' = α1 !! l') ∧
+  (∀ i, (i < n)%nat → ∃ stk stk',
+    α1 !! (l +ₗ i) = Some stk ∧
+    α2 !! (l +ₗ i) = Some stk' ∧
+    let item := mkItem pm new protector in
+    grant stk old item cids = Some stk').
+Proof.
+  destruct (for_each_lookup_case_2 _ _ _ _ _ EQB) as [HL1 HL2].
+  split; [done|].
+  intros i Lt. destruct (HL1 _ Lt) as (stk & stk' & Eq1 & Eq2 & GR).
+  naive_solver.
+Qed.
+
+Lemma reborrowN_visit_freeze_sensitive_case α α' l T cids old new protector :
+  let permB (b: bool) := if b then SharedReadOnly else SharedReadWrite in
+  let item (b: bool) := mkItem (permB b) new protector in
+  visit_freeze_sensitive l T
+        (λ α' l' sz frozen,
+          (* If is in Unsafe, use SharedReadWrite, otherwise SharedReadOnly *)
+          reborrowN α' cids l' sz old new (permB frozen) protector) α = Some α' →
+  (∀ l', (∀ (i : nat), (i < tsize T)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l') ∧
+  (∀ i, (i < tsize T)%nat → ∃ stk stk',
+    α !! (l +ₗ i) = Some stk ∧
+    α' !! (l +ₗ i) = Some stk' ∧ ∃ b,
+    grant stk old (item b) cids = Some stk').
+Proof.
+  intros permB item VS.
+  set P: option stack → option stack → bool → Prop :=
+    λ ostk ostk' b, ∃ stk stk', ostk = Some stk ∧ ostk' = Some stk' ∧
+      grant stk old (item b) cids = Some stk'.
+  apply (visit_freeze_sensitive_stacks_unchanged _ _ _ _ _ P) in VS.
+  - destruct VS as [VS1 VS2]. split; [done|].
+    intros i Lt. destruct (VS2 _ Lt) as (b & stk & stk' & Eq1 & Eq2 & Eq3).
+    naive_solver.
+  - clear. intros α1 α2 l n b [RB1 RB2]%reborrowN_lookup_case.
+    split; [done|]. intros i Lt.
+    specialize (RB2 _ Lt) as (stk & stk' & Eq1 & Eq2 & Eq3).
+    rewrite Eq1 Eq2. exists stk, stk'. naive_solver.
+Qed.
+
+Lemma reborrow_Some α α' cids l old T rk new protector :
+  reborrow α cids l old T rk new protector = Some α' →
+  (∀ l', (∀ (i : nat), (i < tsize T)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l') ∧
+  (∀ i, (i < tsize T)%nat → ∃ stk stk',
+    α !! (l +ₗ i) = Some stk ∧
+    α' !! (l +ₗ i) = Some stk' ∧
+    match rk with
+    | SharedRef | RawRef false =>
+      ∃ b : bool, grant stk old
+                 (mkItem (if b then SharedReadOnly else SharedReadWrite)
+                          new protector) cids = Some stk'
+    | UniqueRef false =>
+      grant stk old (mkItem Unique new protector) cids = Some stk'
+    | UniqueRef true | RawRef true =>
+      grant stk old (mkItem SharedReadWrite new protector) cids = Some stk'
+    end).
+Proof.
+  destruct rk as [[]| |[]]; simpl.
+  - apply reborrowN_lookup_case.
+  - apply reborrowN_lookup_case.
+  - apply reborrowN_visit_freeze_sensitive_case.
+  - apply reborrowN_lookup_case.
+  - apply reborrowN_visit_freeze_sensitive_case.
+Qed.
+
+Lemma retag_ref_Some α cids nxtp l old T rk protector new α' nxtp' :
+  retag_ref α cids nxtp l old T rk protector = Some (new, α', nxtp') →
+  (∀ l', (∀ (i : nat), (i < tsize T)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l') ∧
+  (∀ i, (i < tsize T)%nat → ∃ stk stk',
+    α !! (l +ₗ i) = Some stk ∧
+    α' !! (l +ₗ i) = Some stk' ∧
+    match rk with
+    | SharedRef | RawRef false =>
+      ∃ b : bool, grant stk old
+                 (mkItem (if b then SharedReadOnly else SharedReadWrite)
+                          new protector) cids = Some stk'
+    | UniqueRef false =>
+      grant stk old (mkItem Unique new protector) cids = Some stk'
+    | UniqueRef true | RawRef true =>
+      grant stk old (mkItem SharedReadWrite new protector) cids = Some stk'
+    end).
+Proof.
+  rewrite /retag_ref. destruct (tsize T) eqn:EqT.
+  - intros. simplify_eq. split; [done|intros; lia].
+  - rewrite -EqT. case reborrow as [α1|] eqn:Eq; [|done]. simpl.
+    intros. simplify_eq. by apply reborrow_Some.
+Qed.
+
+Lemma retag_Some α nxtp c cids l old rk pk T new α' nxtp' :
+  retag α nxtp cids c l old rk pk T = Some (new, α', nxtp') →
+  (∀ l', (∀ (i : nat), (i < tsize T)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l') ∧
+  match pk, rk with
+  (* Mutable reference *)
+  | RefPtr Mutable, _ =>
+      (∀ i, (i < tsize T)%nat → ∃ stk stk',
+        α !! (l +ₗ i) = Some stk ∧
+        α' !! (l +ₗ i) = Some stk' ∧
+        let protector := adding_protector rk c in
+        let perm := if (is_two_phase rk) then SharedReadWrite else Unique in
+        grant stk old (mkItem perm new protector) cids = Some stk')
+  (* Immutable reference *)
+  | RefPtr Immutable, _ =>
+      (∀ i, (i < tsize T)%nat → ∃ stk stk',
+        α !! (l +ₗ i) = Some stk ∧
+        α' !! (l +ₗ i) = Some stk' ∧
+        let protector := adding_protector rk c in
+        ∃ b : bool, grant stk old
+                   (mkItem (if b then SharedReadOnly else SharedReadWrite)
+                            new protector) cids = Some stk')
+  (* If is both raw ptr and Raw retagging, no protector *)
+  | RawPtr Mutable, RawRt =>
+      (∀ i, (i < tsize T)%nat → ∃ stk stk',
+        α !! (l +ₗ i) = Some stk ∧
+        α' !! (l +ₗ i) = Some stk' ∧
+        grant stk old (mkItem SharedReadWrite new None) cids = Some stk')
+  | RawPtr Immutable, RawRt =>
+      (∀ i, (i < tsize T)%nat → ∃ stk stk',
+        α !! (l +ₗ i) = Some stk ∧
+        α' !! (l +ₗ i) = Some stk' ∧
+        ∃ b : bool, grant stk old
+                 (mkItem (if b then SharedReadOnly else SharedReadWrite)
+                          new None) cids = Some stk')
+  (* Box pointer, no protector *)
+  | BoxPtr, _ =>
+      (∀ i, (i < tsize T)%nat → ∃ stk stk',
+        α !! (l +ₗ i) = Some stk ∧
+        α' !! (l +ₗ i) = Some stk' ∧
+        grant stk old (mkItem Unique new None) cids = Some stk')
+  (* Ignore Raw pointer otherwise *)
+  | RawPtr _, _ => α' = α ∧ nxtp' = nxtp ∧ new = old
+  end.
+Proof.
+  rewrite /retag. destruct (tsize T) as [|n] eqn:ST.
+  { rewrite /retag_ref ST /=.
+    destruct pk as [[]|[]|]; [| |destruct rk|destruct rk|]; intros; simplify_eq;
+      (split; [done| intros; try done; lia]). }
+  rewrite -ST.
+  destruct pk as [[]|[]|]; [destruct rk| |destruct rk|destruct rk|];
+    try apply retag_ref_Some;
+    intros; by simplify_eq.
+Qed.
+
+Lemma grant_singleton_eq (it it': item) old cids stk' :
+  grant [it] old it' cids = Some stk' →
+  old = it.(tg).
+Proof.
+  rewrite /grant. case find_granting as [[n p]|] eqn:GR; [simpl|done].
+  intros _.
+  apply fmap_Some in GR as [[i it1] [FIND ?]]. simplify_eq.
+  move : FIND. simpl. case decide => [MT|//]. intros. simplify_eq.
+  by destruct MT.
+Qed.
+
+Lemma retag_Some_local α nxtp c cids l old rk pk T new α' nxtp' :
+  retag α nxtp cids c l old rk pk T = Some (new, α', nxtp') →
+  ∀ l' t',
+    old ≠ (Tagged t') →
+    α !! l' = Some (init_stack (Tagged t')) →
+    α' !! l' = Some (init_stack (Tagged t')).
+Proof.
+  intros RT l' t' NEQt Eqstk.
+  destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [NEQ EQ].
+  destruct (block_case l l' (tsize T)) as [?|(i & Lti & ?)].
+  { by rewrite NEQ. }
+  subst l'.
+  destruct pk as [[]|[]|].
+  - exfalso. specialize (EQ _ Lti) as (stk & stk' & Eq1 & _ & GR).
+    rewrite Eqstk in Eq1. simplify_eq. by apply grant_singleton_eq in GR.
+  - exfalso. specialize (EQ _ Lti) as (stk & stk' & Eq1 & _ & b & GR).
+    rewrite Eqstk in Eq1. simplify_eq. by apply grant_singleton_eq in GR.
+  - destruct rk; try (destruct EQ; by subst α').
+    exfalso. specialize (EQ _ Lti) as (stk & stk' & Eq1 & _ & GR).
+    rewrite Eqstk in Eq1. simplify_eq. by apply grant_singleton_eq in GR.
+  - destruct rk; try (destruct EQ; by subst α').
+    exfalso. specialize (EQ _ Lti) as (stk & stk' & Eq1 & _ & b & GR).
+    rewrite Eqstk in Eq1. simplify_eq. by apply grant_singleton_eq in GR.
+  - exfalso. specialize (EQ _ Lti) as (stk & stk' & Eq1 & _ & GR).
+    rewrite Eqstk in Eq1. simplify_eq. by apply grant_singleton_eq in GR.
+Qed.
+
+Lemma grant_in_SRW stk old it cids stk' it0
+  (SRW: it.(perm) = SharedReadWrite) (NEQ: it ≠ it0) :
+  grant stk old it cids = Some stk' →
+  it0 ∈ stk' → it0 ∈ stk.
+Proof.
+  rewrite /grant. case find_granting as [[n p]|] eqn:FR; [|done].
+  rewrite /= SRW.
+  case find_first_write_incompatible as [n'|] eqn:FI; [|done].
+  rewrite /= => ?. simplify_eq.
+  move => /item_insert_dedup_subseteq /elem_of_cons [//|//].
+Qed.
+
+Lemma grant_in_non_SRW stk old it cids stk' it0
+  (SRW: it.(perm) ≠ SharedReadWrite) (NEQ: it ≠ it0)
+  (ND: it0.(perm) ≠ Disabled) :
+  grant stk old it cids = Some stk' →
+  it0 ∈ stk' → it0 ∈ stk.
+Proof.
+  rewrite /grant. case find_granting as [[n p]|] eqn:FR; [|done].
+  case it.(perm) eqn:Eqp; [|done|..];
+    cbn -[item_insert_dedup];
+    (case access1 as [[n' stk1]|] eqn:ACC; [|done]);
+    cbn -[item_insert_dedup];
+    intros ?; simplify_eq;
+    (move => /item_insert_dedup_subseteq /elem_of_cons [//|//]);
+    intros IN;
+    apply access1_tagged_sublist in ACC;
+    specialize (ACC _ IN) as (it2 & IN2 & HT & HPR & HP); specialize (HP ND).
+    - have ?: it2 = it0. { destruct it2, it0; simpl in *; by subst. }
+      by subst it2.
+    - have ?: it2 = it0. { destruct it2, it0; simpl in *; by subst. }
+      by subst it2.
+    - have ?: it2 = it0. { destruct it2, it0; simpl in *; by subst. }
+      by subst it2.
+Qed.
+
+Lemma grant_in_preserve stk old it cids stk' it0
+  (NEQ: it ≠ it0) (ND: it0.(perm) ≠ Disabled) :
+  grant stk old it cids = Some stk' →
+  it0 ∈ stk' → it0 ∈ stk.
+Proof.
+  case (decide (it.(perm) = SharedReadWrite)) => ?.
+  - by apply grant_in_SRW.
+  - by apply grant_in_non_SRW.
+Qed.
+
+Lemma retag_item_in α nxtp c cids l old rk pk T new α' nxtp' :
+  retag α nxtp cids c l old rk pk T = Some (new, α', nxtp') →
+  ∀ l' stk' t' it',
+    α' !! l' = Some stk' →
+    it' ∈ stk' → it'.(tg) = Tagged t' → it'.(perm) ≠ Disabled →
+    (t' < nxtp)%nat →
+    ∃ stk, α !! l' = Some stk ∧ it' ∈ stk.
+Proof.
+  intros RT l' stk' t' it' Eqstk' In' Eqt' ND' Lt'.
+  destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [NEQ EQ].
+  destruct (block_case l l' (tsize T)) as [?|(i & Lti & ?)].
+  { rewrite NEQ // in Eqstk'. naive_solver. }
+  assert (∃ sz, tsize T = S sz) as [sz Eqsz].
+  { destruct (tsize T); [lia|by eexists]. }
+  subst l'.
+  move : RT. rewrite /retag /= /retag_ref Eqsz.
+  destruct pk as [[]|[]|].
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros. simplify_eq.
+    exists stk1. split; [done|].
+    move : GR In'.
+    apply grant_in_preserve; [|done].
+    intros ?; subst it'. simpl in Eqt'. simplify_eq. lia.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros. simplify_eq.
+    exists stk1. split; [done|].
+    move : GR In'.
+    apply grant_in_preserve; [|done].
+    intros ?; subst it'. simpl in Eqt'. simplify_eq. lia.
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros. simplify_eq.
+    exists stk1. split; [done|].
+    move : GR In'. apply grant_in_SRW; [done|intros ?; by subst it'].
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros. simplify_eq.
+    exists stk1. split; [done|].
+    move : GR In'. apply grant_in_preserve; [intros ?; by subst it'|done].
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros. simplify_eq.
+    exists stk1. split; [done|].
+    move : GR In'.
+    apply grant_in_preserve; [|done].
+    intros ?; subst it'. simpl in Eqt'. simplify_eq. lia.
+Qed.
+
+(* Lemma item_insert_dedup_lookup stk it i (IS: is_Some (stk !! i)):
+  ∃ j, (item_insert_dedup stk it i) !! j = Some it ∧
+    (j = i ∨ (1 ≤ i ∧ j = i - 1)%nat) ∧
+    (∀ j', (j' < j)%nat → (item_insert_dedup stk it i) !! j' = stk !! j').
+Proof.
+  destruct i as [|i]; simpl.
+  - destruct stk as [|it' stk']; [by destruct IS|]. case decide => [->|?].
+    + exists O. naive_solver.
+    + exists O. split; [done|]. split;[by left| intros; lia].
+  - destruct IS as [it1 Eq1]. rewrite Eq1.
+    destruct (stk !! i) as [it2|] eqn:Eq2; last first.
+    { apply lookup_ge_None_1 in Eq2. apply lookup_lt_Some in Eq1. lia. }
+    case decide => [->|?]; [|case decide => [->|?]].
+    + exists i. split; [done|]. rewrite Nat.sub_0_r. split; [right; lia|done].
+    + exists (S i). split; [done|]. split; [by left|done].
+    + exists (S i). rewrite Nat.sub_0_r. split; last split; [|by left|].
+      * rewrite list_lookup_middle // take_length_le //.
+        by eapply Nat.lt_le_incl, lookup_lt_Some.
+      * intros j' Lt'. rewrite lookup_app_l; [apply lookup_take; lia|].
+        rewrite take_length_le //. by eapply Nat.lt_le_incl, lookup_lt_Some.
+Qed. *)
+
+Lemma find_granting_Some stk kind bor i pi :
+  find_granting stk kind bor = Some (i, pi) →
+  is_Some (stk !! i) ∧
+  ∀ j jt, (j < i)%nat → stk !! j = Some jt →
+  ¬ (grants jt.(perm) kind ∧ jt.(tg) = bor).
+Proof.
+  move => /fmap_Some [[i' pi'] [/list_find_Some_not_earlier [Eq1 [MG LT]] Eq2]].
+  simplify_eq. simpl. split; [by eexists|by apply LT].
+Qed.
+
+Lemma item_insert_dedup_new stk new i (NIN: new ∉ stk) (IS: is_Some (stk !! i)):
+  item_insert_dedup stk new i = take i stk ++ new :: drop i stk.
+Proof.
+  destruct i as [|i]; simpl.
+  - destruct stk as [|it stk]; [done|]. rewrite decide_False //.
+    intros ?. subst. apply NIN. by left.
+  - destruct IS as [its Eqs]. rewrite Eqs.
+    destruct (stk !! i) as [it|] eqn:Eq; last first.
+    { apply lookup_ge_None_1 in Eq. apply lookup_lt_Some in Eqs. lia. }
+    rewrite decide_False; last first.
+    { intros ?. subst. by eapply NIN, elem_of_list_lookup_2. }
+    rewrite decide_False //.
+    intros ?. subst. by eapply NIN, elem_of_list_lookup_2.
+Qed.
+
+Lemma item_insert_dedup_case stk new i :
+   item_insert_dedup stk new i = take i stk ++ new :: drop i stk ∨
+   item_insert_dedup stk new i = stk.
+Proof.
+  (* intros [it Eqit]. *) destruct i as [|i]; simpl.
+  - destruct stk; simpl; [by left|].
+    case decide =>?; [subst new|]; [by right|by left].
+  - destruct (stk !! S i) eqn: Eqit.
+    + have Lt := lookup_lt_Some _ _ _ Eqit.
+      destruct (lookup_lt_is_Some_2 stk i) as [it' Eqit']; [lia|].
+      rewrite Eqit'.
+      case decide => ?; [subst new|]; [by right|].
+      case decide => ?; [subst new|]; [by right|by left].
+    + destruct (stk !! i) eqn: Eqit'; [|by left].
+      case decide => ?; [subst new|]; [by right|by left].
+Qed.
+
+Lemma find_first_write_incompatible_le stk p n :
+  find_first_write_incompatible stk p = Some n →
+  (n ≤ length stk)%nat.
+Proof.
+  destruct p; simpl; [by intros; simplify_eq| |done..].
+  case list_find as [[]|]; intros; simplify_eq; lia.
+Qed.
+
+Lemma find_granting_lt stk kind t n p :
+  find_granting stk kind t = Some (n, p) →
+  (n < length stk)%nat.
+Proof.
+  intros [[n1 p1] [[Eq%lookup_lt_Some MG]%list_find_Some ?]]%fmap_Some.
+  by simplify_eq.
+Qed.
+
+Lemma grant_active_SRO_SRW stk old it cids stk' t
+  (SRW: it.(perm) = SharedReadWrite):
+  grant stk old it cids = Some stk' →
+  t ∈ active_SRO stk → t ∈ active_SRO stk'.
+Proof.
+  rewrite /grant. case find_granting as [[n p]|] eqn:FR; [|done].
+  rewrite /= SRW.
+  case find_first_write_incompatible as [n'|] eqn:FI; [|done].
+  rewrite /= => ?. simplify_eq.
+  destruct (item_insert_dedup_case stk it n') as [EQ|EQ]; rewrite EQ; [|done].
+  rewrite SRW /= in FR. intros IN.
+  have IN' := find_granting_incompatible_active_SRO _ _ _ _ _ IN FR.
+  have IN2 := find_first_write_incompatible_active_SRO _ _ _ FI.
+  have Ltn := find_granting_lt _ _ _ _ _ FR.
+  destruct (IN2 _ IN') as (j & jt & Eqjt & Eqp & Eqt & Lt' & HL).
+  have Eqln: length (take n stk) = n by apply take_length_le; lia.
+  have Len' := find_first_write_incompatible_le _ _ _ FI. rewrite Eqln in Len'.
+  have Eqjt' : stk !! j = Some jt.
+  { rewrite lookup_take // in Eqjt. lia. }
+  apply (active_SRO_elem_of_inv j jt t); [|done|done|].
+  - rewrite lookup_app_l; [by rewrite lookup_take|].
+    rewrite take_length_le //. lia.
+  - intros k kt Ltk.
+    rewrite lookup_app_l; last by (rewrite take_length_le; lia).
+    intros Eqkt. apply (HL _ _ Ltk).
+    rewrite lookup_take; [|lia].
+    rewrite lookup_take in Eqkt; [done|lia].
+Qed.
+
+Lemma grant_active_SRO_non_SRW stk old it cids stk' t pm opro
+  (ND: stack_item_tagged_NoDup stk)
+  (SRW: it.(perm) ≠ SharedReadWrite) (NDIS: it.(perm) ≠ Disabled)
+  (IN': mkItem pm (Tagged t) opro ∈ stk')
+  (NEqt: it.(tg) ≠ Tagged t) :
+  grant stk old it cids = Some stk' →
+  t ∈ active_SRO stk → t ∈ active_SRO stk'.
+Proof.
+  rewrite /grant. case find_granting as [[n p]|] eqn:FR; [|done].
+  case it.(perm) eqn:Eqp; [|done|..|done];
+    cbn -[item_insert_dedup];
+    (case access1 as [[n' stk1]|] eqn:ACC; [|done]);
+    cbn -[item_insert_dedup];
+    intros ?; simplify_eq.
+  - intros Int. exfalso.
+    apply (access1_write_remove_incompatible_active_SRO _ _ _ _ _ _ ND
+            Int ACC pm opro).
+    move : IN' => /item_insert_dedup_subseteq /elem_of_cons [|//].
+    intros. by subst it.
+  - intros Int.
+    have IN'2: mkItem pm (Tagged t) opro ∈ stk1.
+    { move : IN' => /item_insert_dedup_subseteq /elem_of_cons [|//].
+      intros. by subst it. }
+    have IN2:= access1_active_SRO_preserving _ _ _ _ _ _ _ _ _ ND IN'2 ACC Int.
+    destruct (item_insert_dedup_case stk1 it 0) as [EQ|EQ]; rewrite EQ //.
+    apply active_SRO_cons_elem_of. split; [done|by right].
+Qed.
+
+Lemma grant_active_SRO_preserving stk old it cids stk' t pm opro
+  (ND: stack_item_tagged_NoDup stk)
+  (NDIS: it.(perm) ≠ Disabled)
+  (IN': mkItem pm (Tagged t) opro ∈ stk')
+  (NEqt: it.(tg) ≠ Tagged t) :
+  grant stk old it cids = Some stk' →
+  t ∈ active_SRO stk → t ∈ active_SRO stk'.
+Proof.
+  case (decide (it.(perm) = SharedReadWrite)) => ?.
+  - by apply grant_active_SRO_SRW.
+  - by eapply grant_active_SRO_non_SRW.
+Qed.
+
+Lemma retag_item_active_SRO_preserving α nxtp c cids l old rk pk T new α' nxtp' :
+  retag α nxtp cids c l old rk pk T = Some (new, α', nxtp') →
+  ∀ l' t' stk stk' it',
+    stack_item_tagged_NoDup stk →
+    α !! l' = Some stk →
+    α' !! l' = Some stk' →
+    it' ∈ stk → it' ∈ stk' →
+    it'.(tg) = Tagged t' → it'.(perm) ≠ Disabled →
+    (t' < nxtp)%nat →
+    t' ∈ active_SRO stk → t' ∈ active_SRO stk'.
+Proof.
+  intros RT l' t' stk stk' it' ND Eqstk Eqstk' In In' Eqt' ND' Lt'.
+  destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [NEQ EQ].
+  destruct (block_case l l' (tsize T)) as [?|(i & Lti & ?)].
+  { rewrite NEQ // in Eqstk'. naive_solver. }
+  assert (∃ sz, tsize T = S sz) as [sz Eqsz].
+  { destruct (tsize T); [lia|by eexists]. }
+  subst l'.
+  have ?: Tagged nxtp ≠ Tagged t' by intros ?; simplify_eq; lia.
+  have ?: mkItem it'.(perm) (Tagged t') it'.(protector) ∈ stk'.
+  { rewrite -Eqt'. by destruct it'. }
+  move : RT. rewrite /retag /= /retag_ref Eqsz.
+  destruct pk as [[]|[]|].
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR).
+    simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR.
+    apply (grant_active_SRO_preserving _ _ _ _ _ _ it'.(perm) it'.(protector) ND);
+      [|done..].
+    simpl. by case is_two_phase.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR).
+    simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR.
+    apply (grant_active_SRO_preserving _ _ _ _ _ _ it'.(perm) it'.(protector) ND);
+      [|done..].
+    simpl. by destruct b.
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR.
+    by apply (grant_active_SRO_preserving _ _ _ _ _ _ it'.(perm) it'.(protector) ND).
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR.
+    apply (grant_active_SRO_preserving _ _ _ _ _ _ it'.(perm) it'.(protector) ND);
+      [|done..].
+    simpl. by destruct b.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR.
+    by apply (grant_active_SRO_preserving _ _ _ _ _ _ it'.(perm) it'.(protector) ND).
+Qed.
+
+Lemma is_stack_head_app_l it stk1 stk2 (NN: stk1 ≠ []) :
+  is_stack_head it (stk1 ++ stk2) ↔ is_stack_head it stk1.
+Proof.
+  destruct stk1 as [|i stk1]; [done|].
+  split; intros [? Eq]; inversion Eq; simplify_eq; by eexists.
+Qed.
+
+Lemma grant_head_SRW stk old it cids stk' t pro
+  (SRW: it.(perm) = SharedReadWrite) (NEQ: Tagged t ≠ old) :
+  grant stk old it cids = Some stk' →
+  let it' := (mkItem Unique (Tagged t) pro) in
+  is_stack_head it' stk → is_stack_head it' stk'.
+Proof.
+  rewrite /grant. case find_granting as [[n p]|] eqn:FR; [|done].
+  rewrite /= SRW.
+  case find_first_write_incompatible as [n'|] eqn:FI; [|done].
+  rewrite /= => ?. simplify_eq.
+  destruct (item_insert_dedup_case stk it n') as [EQ|EQ]; rewrite EQ; [|done].
+  rewrite SRW /= in FR. intros IN.
+  have IN' := find_granting_incompatible_head _ _ _ _ _ _ _ _ IN NEQ FR.
+  have IN2 := find_first_write_incompatible_head _ _ _ _ _ _ IN' ltac:(done) FI.
+  have Ltn := find_granting_lt _ _ _ _ _ FR.
+  have Eqln: length (take n stk) = n by apply take_length_le; lia.
+  have Len' := find_first_write_incompatible_le _ _ _ FI. rewrite Eqln in Len'.
+  have ?: take n' stk ≠ [].
+  { destruct stk; [simpl in Ltn; lia|]. destruct n'; [lia|done]. }
+  move : IN. rewrite -{1}(take_drop n' stk).
+  by do 2 rewrite is_stack_head_app_l //.
+Qed.
+
+Lemma grant_head_non_SRW stk old it cids stk' t pro
+  (SRW: it.(perm) ≠ SharedReadWrite) (NDIS: it.(perm) ≠ Disabled)
+  (NEQ: Tagged t ≠ old)
+  (ND: stack_item_tagged_NoDup stk)
+  (NEqt: it.(tg) ≠ Tagged t) :
+  let it' := (mkItem Unique (Tagged t) pro) in
+  it' ∈ stk' →
+  grant stk old it cids = Some stk' →
+  is_stack_head it' stk → is_stack_head it' stk'.
+Proof.
+  intros it' IN'.
+  rewrite /grant. case find_granting as [[n p]|] eqn:FR; [|done].
+  case it.(perm) eqn:Eqp; [|done|..|done];
+    cbn -[item_insert_dedup];
+    (case access1 as [[n' stk1]|] eqn:ACC; [|done]);
+    cbn -[item_insert_dedup];
+    intros ?; simplify_eq.
+  - intros Int.
+    have Int': ∃ pro, is_stack_head (mkItem Unique (Tagged t) pro) stk
+      by eexists.
+    exfalso.
+    apply (access1_write_remove_incompatible_head _ _ _ _ _ _
+            ND Int' ACC NEQ Unique pro).
+    move : IN' => /item_insert_dedup_subseteq /elem_of_cons [|//].
+    intros. by subst it.
+  - intros Int.
+    have IN'2: mkItem Unique (Tagged t) pro ∈ stk1.
+    { move : IN' => /item_insert_dedup_subseteq /elem_of_cons [|//].
+      intros. by subst it. }
+    have Int': ∃ pro, is_stack_head (mkItem Unique (Tagged t) pro) stk
+      by eexists.
+    exfalso.
+    have IN2 := (access1_read_replace_incompatible_head _ _ _ _ _ _
+                  ND Int' ACC NEQ Unique pro IN'2).
+    done.
+Qed.
+
+Lemma grant_head_preserving stk old it cids stk' t pro
+  (NDIS: it.(perm) ≠ Disabled)
+  (NEQ: Tagged t ≠ old)
+  (ND: stack_item_tagged_NoDup stk)
+  (NEqt: it.(tg) ≠ Tagged t) :
+  let it' := (mkItem Unique (Tagged t) pro) in
+  it' ∈ stk' →
+  grant stk old it cids = Some stk' →
+  is_stack_head it' stk → is_stack_head it' stk'.
+Proof.
+  intros it' IN'.
+  case (decide (it.(perm) = SharedReadWrite)) => ?.
+  - by apply grant_head_SRW.
+  - by eapply grant_head_non_SRW.
+Qed.
+
+Lemma retag_item_head_preserving α nxtp c cids l old rk pk T new α' nxtp' :
+  retag α nxtp cids c l old rk pk T = Some (new, α', nxtp') →
+  ∀ l' t' stk stk' pro,
+    stack_item_tagged_NoDup stk →
+    α !! l' = Some stk →
+    α' !! l' = Some stk' →
+    Tagged t' ≠ old →
+    let it' := (mkItem Unique (Tagged t') pro) in
+    it' ∈ stk' →
+    (t' < nxtp)%nat →
+    is_stack_head it' stk → is_stack_head it' stk'.
+Proof.
+  intros RT l' t' stk stk' pro ND Eqstk Eqstk' NEqt it' In' Lt'.
+  destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [NEQ EQ].
+  destruct (block_case l l' (tsize T)) as [?|(i & Lti & ?)].
+  { rewrite NEQ // in Eqstk'. naive_solver. }
+  assert (∃ sz, tsize T = S sz) as [sz Eqsz].
+  { destruct (tsize T); [lia|by eexists]. }
+  subst l'.
+  have ?: Tagged nxtp ≠ Tagged t' by intros ?; simplify_eq; lia.
+  move : RT. rewrite /retag /= /retag_ref Eqsz.
+  destruct pk as [[]|[]|].
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR).
+    simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR. eapply grant_head_preserving; eauto.
+    simpl. by case is_two_phase.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR).
+    simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR. eapply grant_head_preserving; eauto.
+    simpl. by destruct b.
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR. eapply grant_head_preserving; eauto.
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR. eapply grant_head_preserving; eauto.
+    simpl. by destruct b.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    move : GR. eapply grant_head_preserving; eauto.
 Qed.

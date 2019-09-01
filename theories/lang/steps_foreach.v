@@ -88,7 +88,7 @@ Qed.
 
 Lemma block_case l l' n :
   (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
-  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+  ∃ i : nat, (i < n)%nat ∧ l' = l +ₗ i.
 Proof.
   case (decide (l'.1 = l.1)) => [Eql|NEql];
     [case (decide (l.2 ≤ l'.2 < l.2 + n)) => [[Le Lt]|NIN]|].
@@ -104,7 +104,7 @@ Qed.
 Lemma for_each_lookup_case α l n f α' :
   for_each α l n false f = Some α' →
   ∀ l' stk stk', α !! l' = Some stk → α' !! l' = Some stk' →
-  stk = stk' ∨ f stk = Some stk' ∧ ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+  stk = stk' ∨ f stk = Some stk' ∧ ∃ i : nat, (i < n)%nat ∧ l' = l +ₗ i.
 Proof.
   intros EQ. destruct (for_each_lookup  _ _ _ _ _ EQ) as [EQ1 [EQ2 EQ3]].
   intros l1 stk stk' Eq Eq'.
@@ -112,11 +112,9 @@ Proof.
   - left. rewrite EQ3 in Eq'; [by simplify_eq|].
     intros i Lt Eq3. by apply (NEql i).
   - right. split; [|done].
-    destruct Eql as (i & [] & Eql). subst l1.
-    destruct (EQ2 (Z.to_nat i) stk') as [stk1 [Eq1 Eq2]].
-    + rewrite -(Nat2Z.id n) -Z2Nat.inj_lt; lia.
-    + rewrite Z2Nat.id //.
-    + rewrite Z2Nat.id // Eq in Eq1. by simplify_eq.
+    destruct Eql as (i & Lt & Eql). subst l1.
+    destruct (EQ2 _ _ Lt Eq') as [stk1 [Eq1 Eq2]].
+    rewrite Eq in Eq1. by simplify_eq.
 Qed.
 
 Lemma for_each_lookup_case_2 α l n f α' :
@@ -145,7 +143,7 @@ Qed.
 Lemma for_each_true_lookup_case_2 α l n f α' :
   for_each α l n true f = Some α' →
   (∀ (i: nat), (i < n)%nat → ∃ stk stk',
-    α !! (l +ₗ i) = Some stk ∧ α' !! (l +ₗ i) = None ∧  f stk = Some stk' ) ∧
+    α !! (l +ₗ i) = Some stk ∧ α' !! (l +ₗ i) = None ∧ f stk = Some stk' ) ∧
   (∀ (l': loc), (∀ (i: nat), (i < n)%nat → l' ≠ l +ₗ i) → α' !! l' = α !! l').
 Proof.
   revert α. induction n as [|n IH]; intros α; simpl.
@@ -193,7 +191,7 @@ Qed.
 Lemma init_mem_lookup_case l n h :
   ∀ l' s', init_mem l n h !! l' = Some s' →
   h !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
-  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+  ∃ i : nat, (i < n)%nat ∧ l' = l +ₗ i.
 Proof.
   destruct (init_mem_lookup l n h) as [EQ1 EQ2].
   intros l1 s1 Eq'.
@@ -204,7 +202,7 @@ Qed.
 
 Lemma init_mem_lookup_empty l n :
   ∀ l' s', init_mem l n ∅ !! l' = Some s' →
-  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+  ∃ i : nat, (i < n)%nat ∧ l' = l +ₗ i.
 Proof. move => l' s' /init_mem_lookup_case [[//]|//]. Qed.
 
 Lemma init_stacks_lookup α l n t :
@@ -236,7 +234,7 @@ Qed.
 Lemma init_stacks_lookup_case α l n t :
   ∀ l' s', init_stacks α l n t !! l' = Some s' →
   α !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
-  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i.
+  ∃ i : nat, (i < n)%nat ∧ l' = l +ₗ i.
 Proof.
   destruct (init_stacks_lookup α l n t) as [EQ1 EQ2].
   intros l1 s1 Eq'.
@@ -248,7 +246,7 @@ Qed.
 Lemma init_stacks_lookup_case_2 α l n t :
   ∀ l' s', α !! l' = Some s' →
   init_stacks α l n t !! l' = Some s' ∧ (∀ i : nat, (i < n)%nat → l' ≠ l +ₗ i) ∨
-  ∃ i, (0 ≤ i < n) ∧ l' = l +ₗ i ∧
+  ∃ i : nat, (i < n)%nat ∧ l' = l +ₗ i ∧
     init_stacks α l n t !! l' = Some $ init_stack t.
 Proof.
   destruct (init_stacks_lookup α l n t) as [EQ1 EQ2].
@@ -256,9 +254,7 @@ Proof.
   destruct (block_case l l1 n) as [NEql|Eql].
   - left. rewrite EQ2 //.
   - right. destruct Eql as (i & Lt & ?).
-    exists i. do 2 (split; [done|]). subst l1. destruct Lt.
-    move : (EQ1 (Z.to_nat i)). rewrite Z2Nat.id //. intros EQ'. apply EQ'.
-    rewrite -(Nat2Z.id n). by apply Z2Nat.inj_lt; lia.
+    exists i. do 2 (split; [done|]). subst l1. by apply EQ1.
 Qed.
 
 Lemma for_each_dom α l n f α' :

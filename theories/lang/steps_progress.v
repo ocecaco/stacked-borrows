@@ -726,52 +726,6 @@ Proof.
     move => /reborrowN_lookup [_ [_ HL]]. by apply HL.
 Qed.
 
-Lemma item_insert_dedup_lookup stk it i (IS: is_Some (stk !! i)):
-  ∃ j, (item_insert_dedup stk it i) !! j = Some it ∧
-    (j = i ∨ (1 ≤ i ∧ j = i - 1)%nat) ∧
-    (∀ j', (j' < j)%nat → (item_insert_dedup stk it i) !! j' = stk !! j').
-Proof.
-  destruct i as [|i]; simpl.
-  - destruct stk as [|it' stk']; [by destruct IS|]. case decide => [->|?].
-    + exists O. naive_solver.
-    + exists O. split; [done|]. split;[by left| intros; lia].
-  - destruct IS as [it1 Eq1]. rewrite Eq1.
-    destruct (stk !! i) as [it2|] eqn:Eq2; last first.
-    { apply lookup_ge_None_1 in Eq2. apply lookup_lt_Some in Eq1. lia. }
-    case decide => [->|?]; [|case decide => [->|?]].
-    + exists i. split; [done|]. rewrite Nat.sub_0_r. split; [right; lia|done].
-    + exists (S i). split; [done|]. split; [by left|done].
-    + exists (S i). rewrite Nat.sub_0_r. split; last split; [|by left|].
-      * rewrite list_lookup_middle // take_length_le //.
-        by eapply Nat.lt_le_incl, lookup_lt_Some.
-      * intros j' Lt'. rewrite lookup_app_l; [apply lookup_take; lia|].
-        rewrite take_length_le //. by eapply Nat.lt_le_incl, lookup_lt_Some.
-Qed.
-
-Lemma find_granting_Some stk kind bor i pi :
-  find_granting stk kind bor = Some (i, pi) →
-  is_Some (stk !! i) ∧
-  ∀ j jt, (j < i)%nat → stk !! j = Some jt →
-  ¬ (grants jt.(perm) kind ∧ jt.(tg) = bor).
-Proof.
-  move => /fmap_Some [[i' pi'] [/list_find_Some_not_earlier [Eq1 [MG LT]] Eq2]].
-  simplify_eq. simpl. split; [by eexists|by apply LT].
-Qed.
-
-Lemma item_insert_dedup_new stk new i (NIN: new ∉ stk) (IS: is_Some (stk !! i)):
-  item_insert_dedup stk new i = take i stk ++ new :: drop i stk.
-Proof.
-  destruct i as [|i]; simpl.
-  - destruct stk as [|it stk]; [done|]. rewrite decide_False //.
-    intros ?. subst. apply NIN. by left.
-  - destruct IS as [its Eqs]. rewrite Eqs.
-    destruct (stk !! i) as [it|] eqn:Eq; last first.
-    { apply lookup_ge_None_1 in Eq. apply lookup_lt_Some in Eqs. lia. }
-    rewrite decide_False; last first.
-    { intros ?. subst. by eapply NIN, elem_of_list_lookup_2. }
-    rewrite decide_False //.
-    intros ?. subst. by eapply NIN, elem_of_list_lookup_2.
-Qed.
 
 Lemma retag_ref_is_freeze_is_Some α cids nxtp l old T kind prot
   (BLK: ∀ n, (n < tsize T)%nat → l +ₗ n ∈ dom (gset loc) α)
