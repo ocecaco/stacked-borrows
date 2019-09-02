@@ -1389,33 +1389,30 @@ Proof.
     + by eexists.
 Qed.
 
-Lemma sim_body_retag_mut_ref_default fs ft r r' rs n l told T σs σt Φ :
+Lemma sim_body_retag_mut_ref_default fs ft r n ptr T σs σt Φ :
   (0 < tsize T)%nat →
-  r ≡ r' ⋅ rs →
   let pk : pointer_kind := (RefPtr Mutable) in
-  let otg : tag := Tagged told in
-  let s_old : scalar := ScPtr l otg in
   (* Ptr(l,otg) comes from the arguments, so [otg] must be a public tag. *)
-  arel rs s_old s_old →
-  (∀ tnew hplt c cids αs' nps' αt' npt' (STACK: σt.(scs) = c :: cids),
-    retag σt.(sst) σt.(snp) σt.(scs) c l otg Default pk T
-      = Some ((Tagged tnew), αt', npt') →
-    retag σs.(sst) σs.(snp) σs.(scs) c l otg Default pk T
-      = Some ((Tagged tnew), αs', nps') →
+  arel r ptr ptr →
+  (∀ l told tnew hplt c cids α' nxtp',
+    ptr = ScPtr l told →
+    σt.(scs) = c :: cids →
+    retag σt.(sst) σt.(snp) σt.(scs) c l told Default pk T
+      = Some ((Tagged tnew), α', nxtp') →
     (* [hplt] contains all [l +ₗ i]'s and the new tag [tnew] is on top of the
       stack for each [l +ₗ i].
       TODO: we can also specify that [hplt] knows the values of [l +ₗ i]'s. *)
     (∀ i: nat, (i < tsize T) →
-      is_Some $ hplt !! (l +ₗ i) ∧ tag_on_top αt' (l +ₗ i) tnew) →
-    let σs' := mkState σs.(shp) αs' σs.(scs) nps' σs.(snc) in
-    let σt' := mkState σt.(shp) αt' σt.(scs) npt' σt.(snc) in
+      is_Some $ hplt !! (l +ₗ i) ∧ tag_on_top α' (l +ₗ i) tnew) →
+    let σs' := mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc) in
+    let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
     let s_new := ScPtr l (Tagged tnew) in
     Φ (r ⋅ res_tag tnew tkUnique hplt) n (ValR [s_new]) σs' (ValR [s_new]) σt') →
   r ⊨{n,fs,ft}
-    (Retag #[s_old] pk T Default, σs) ≥
-    (Retag #[s_old] pk T Default, σt) : Φ.
+    (Retag #[ptr] pk T Default, σs) ≥
+    (Retag #[ptr] pk T Default, σt) : Φ.
 Proof.
-  intros NZST Eqr pk otg s_old AREL POST. pfold. intros NT. intros.
+  intros NZST pk AREL POST. pfold. intros NT. intros.
   have WSAT1 := WSAT. (* back up *)
 
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
@@ -1427,72 +1424,41 @@ Proof.
     edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
     (* inversion retag of src *)
     destruct (tstep_retag_inv _ (ValR _) _ _ _ _ _ _ STEPS)
-      as (l' & otg' & c & cids & ntg & α' & nxtp' & ? & Eqs & EqT & ? & ?).
+      as (l & otg' & c & cids & ntg & α' & nxtp' & ? & Eqs & EqT & ? & ?).
     simplify_eq.
-    (* apply retag_ref_change in EqT as (l & to & Eqx' & Eqh' & Eqp' & RB); [|done..].
-    subst h' nxtp'. rewrite Eqhs Eqx' in Eqhpl. simplify_eq.
-    rewrite Eqsst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
-    (* retag of tgt *)
-    exists (#[☠])%V,
-      (mkState (<[x:=ScPtr l (Tagged σt.(snp))]> σt.(shp)) α' σt.(scs) (S σt.(snp)) σt.(snc)).
-    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
-    eapply retag_ref_reborrowN; eauto. *)
-    admit. }
+    exists (#[ScPtr l ntg])%V,
+           (mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc)).
+    eapply (head_step_fill_tstep _ []), retag_head_step'.
+    - rewrite -Eqcs; eauto.
+    - by rewrite -Eqsst -Eqnp -Eqcs. }
 
-  (* some lookup properties *)
-  (* have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
-  have HLxtr: r.(rtm) !! xt ≡ Some (to_tgkR tkLocal, {[x := to_agree (xs,xs)]}).
-  { rewrite Eqr. eapply tmap_lookup_op_local_included;
-                  [apply VALIDr|apply cmra_included_r|].
-    rewrite res_tag_lookup // fmap_insert fmap_empty //. }
-  have HLxtrf:
-    (r_f ⋅ r).(rtm) !! xt ≡ Some (to_tgkR tkLocal, {[x := to_agree (xs,xs)]}).
-  { apply tmap_lookup_op_r_local_equiv; [apply VALID|done]. }
-  have HLNxt: (r_f ⋅ r'' ⋅ rs).(rtm) !! xt = None.
-  { destruct ((r_f ⋅ r'' ⋅ rs).(rtm) !! xt) as [ls|] eqn:Eqls; [|done].
-    exfalso. move : HLxtrf.
-    rewrite Eqr Eqr' cmra_assoc (cmra_assoc r_f) lookup_op Eqls res_tag_lookup.
-    apply tagKindR_exclusive_local_heaplet. } *)
-  (* have HLxlr : (r.(rlm) !! x : optionR tagR) ≡ Some (to_tagR xt).
-  { rewrite Eqr. apply lmap_lookup_op_r; [apply VALIDr|].
-    rewrite (res_mapsto_llookup_1 x [xs]); [done|by simpl;lia]. }
-  have HLxlrf: ((r_f ⋅ r).(rlm) !! x : optionR tagR) ≡ Some (to_tagR xt).
-  { apply lmap_lookup_op_r; [apply VALID|done]. }
-  have HNxlrf : (r_f ⋅ r'' ⋅ rs).(rlm) !! x = None.
-  { destruct ((r_f ⋅ r'' ⋅ rs).(rlm) !! x) eqn:Eqx; [|done]. exfalso.
-    move : HLxlrf. rewrite Eqr Eqr' 2!(cmra_assoc r_f) lookup_op Eqx.
-    rewrite (res_mapsto_llookup_1 x [xs]). apply lmap_exclusive_2. simpl; lia. } *)
-
-  (* xt is the head of x's stack *)
-  (* destruct (LINV _ _ HLxlrf) as (Ltxt & Eqst & Eqhpl).
-  destruct (PINV _ _ _ HLxtrf) as [_ Pxt]. specialize (Pxt x xs).
-  rewrite lookup_insert in Pxt.
-  specialize (Pxt ltac:(done) _ Eqst Unique None) as (Eqhs & _ & HD).
-  { by rewrite elem_of_list_singleton. } { done. }
-
-  split; [|done|].
-  { (* tgt reducible *)
-    right.
-    edestruct NT as [[]|[es' [σs' STEPS]]]; [constructor 1|done|].
-    (* inversion retag of src *)
-    destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPS)
-      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst es'.
-    apply retag_ref_change in EqT as (l & to & Eqx' & Eqh' & Eqp' & RB); [|done..].
-    subst h' nxtp'. rewrite Eqhs Eqx' in Eqhpl. simplify_eq.
-    rewrite Eqsst Eqcs Eqnp in RB. rewrite Eqcs in Eqs.
-    (* retag of tgt *)
-    exists (#[☠])%V,
-      (mkState (<[x:=ScPtr l (Tagged σt.(snp))]> σt.(shp)) α' σt.(scs) (S σt.(snp)) σt.(snc)).
-    eapply (head_step_fill_tstep _ []), retag1_head_step'; [eauto|].
-    eapply retag_ref_reborrowN; eauto. }
   constructor 1.
   intros.
 
   (* inversion retag of tgt *)
-  destruct (tstep_retag_inv _ _ _ _ _ _ _ _ _ STEPT)
-      as (c & cids & h' & α' & nxtp' & Eqs & EqT & ? & ?). subst et'.
-  apply retag_ref_change in EqT as (li & to & Eqx' & Eqh' & Eqp' & RB); [|done..].
-  subst h' nxtp'. rewrite Eqhs in Eqx'. simplify_eq. simpl in RB.
+  destruct (tstep_retag_inv _ (ValR _) _ _ _ _ _ _ STEPT)
+      as (l & otg & c & cids & ntg & α' & nxtp' & ? & Eqs & EqRT & ? & ?).
+  simplify_eq.
+
+  set σs' := (mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc)).
+  have STEPS: (Retag #[ScPtr l otg] pk T Default, σs) ~{fs}~> ((#[ScPtr l ntg])%E, σs').
+  { eapply (head_step_fill_tstep _ []), retag_head_step'.
+    - rewrite Eqcs; eauto.
+    - by rewrite Eqsst Eqnp Eqcs. }
+
+  destruct (retag_change_ref_NZST _ _ _ _ _ _ _ _ _ _ _ _ NZST EqRT);
+    subst ntg nxtp'.
+  have InD := retag_Some_dom _ _ _ _ _ _ Default pk _ _ _ _ I EqRT.
+  destruct (read_mem_is_Some l (tsize T) σs.(shp)) as [vs Eqvs].
+  { setoid_rewrite (state_wf_dom _ WFS). by rewrite Eqsst. }
+  setoid_rewrite <-(state_wf_dom _ WFT) in InD.
+  destruct (read_mem_is_Some _ _ _ InD) as [vt Eqvt].
+  set tnew := σt.(snp).
+  set hplt : heaplet := write_hpl l (combine vs vt) ∅.
+  set r' : resUR := r ⋅ res_tag tnew tkUnique hplt.
+
+  (* some lookup properties *)
+  (* have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
 
   (* new heaplet *)
   have InDli: ∀ i, (i < tsize T)%nat → li +ₗ i ∈ dom (gset loc) σt.(shp).
@@ -1507,21 +1473,6 @@ Proof.
   set tk := tkUnique.
   set σs' :=
     (mkState (<[x:=ScPtr li (Tagged σs.(snp))]> σs.(shp)) α' σs.(scs) (S σs.(snp)) σs.(snc)).
-
-  have RETAGt :
-    retag σt.(shp) σt.(sst) σt.(snp) σt.(scs) c x Default (&mut T) =
-      Some (<[x:=ScPtr li (Tagged σt.(snp))]> σt.(shp), α', S σt.(snp)).
-  { eapply retag_ref_reborrowN; eauto. }
-  have RETAGs :
-    retag σs.(shp) σs.(sst) σs.(snp) σs.(scs) c x Default (&mut T) =
-      Some (<[x:=ScPtr li (Tagged σs.(snp))]> σs.(shp), α', S σs.(snp)).
-  { rewrite -Eqsst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
-    eapply retag_ref_reborrowN; eauto. by rewrite -Eqhpl. }
-
-  (* src makes a step *)
-  have STEPS: (Retag (Place x (Tagged xt) Tr) Default, σs) ~{fs}~> ((#[☠])%V, σs').
-  { rewrite -Eqsst -Eqcs -Eqnp in RB. rewrite -Eqcs in Eqs.
-    eapply (head_step_fill_tstep _ []), retag1_head_step'; eauto. }
 
   (* new resource validity *)
   have EQDtm:

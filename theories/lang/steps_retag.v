@@ -799,6 +799,18 @@ Proof.
     + apply retag_nxtp_change in RT as []; [lia|done..].
 Qed.
 
+Lemma retag_change_ref_NZST α nxtp cids c l otag rk mut T ntag α' nxtp':
+  (O < tsize T)%nat  →
+  retag α nxtp cids c l otag rk (RefPtr mut) T = Some (ntag, α', nxtp') →
+  ntag = Tagged nxtp ∧ nxtp' = S nxtp.
+Proof.
+  intros ST.
+  assert (∃ n, tsize T = S n) as [n EqT].
+  { destruct (tsize T); [lia|by eexists]. }
+  destruct mut; rewrite /retag /= /retag_ref EqT;
+  (case reborrow as [α1|]; [|done]); simpl; intros; by simplify_eq.
+Qed.
+
 Lemma unsafe_action_stacks_changed
   (f: stacks → _ → nat → _ → _) α l (last fsz usz: nat) α' ln cn
   (P: option stack → option stack → bool → Prop)
@@ -1095,6 +1107,17 @@ Proof.
   destruct pk as [[]|[]|]; [destruct rk| |destruct rk|destruct rk|];
     try apply retag_ref_Some;
     intros; by simplify_eq.
+Qed.
+
+Lemma retag_Some_dom α nxtp c cids l old rk pk T new α' nxtp'
+  (RK: match pk with | RawPtr _ => rk = RawRt | _ => True end) :
+  retag α nxtp cids c l old rk pk T = Some (new, α', nxtp') →
+  ∀ i, (i < tsize T)%nat → (l +ₗ i) ∈ dom (gset loc) α.
+Proof.
+  intros RT i Lti. rewrite elem_of_dom.
+  destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [_ EQ].
+  destruct pk as [[]|[]|]; [| |subst rk..|];
+    specialize (EQ _ Lti) as (?&?&?&_); by eexists.
 Qed.
 
 Lemma grant_singleton_eq (it it': item) old cids stk' :
