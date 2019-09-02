@@ -385,11 +385,14 @@ Qed.
 
 Lemma sim_simple_retag_public fs ft r n (rs rt: result) pk T rk Φ :
   rrel r rs rt →
-  (Φ r n (ValR [☠%S]) (ValR [☠%S])) →
+  (∀ l old new rt, rs = ValR [ScPtr l old] →
+    vrel (r ⋅ rt) [ScPtr l new] [ScPtr l new] →
+    Φ (r ⋅ rt) n (ValR [ScPtr l new]) (ValR [ScPtr l new])) →
   r ⊨ˢ{n,fs,ft} Retag rs pk T rk ≥ Retag rt pk T rk : Φ.
 Proof.
-  intros [Hrel ?]%rrel_with_eq. simplify_eq.
-Admitted.
+  intros [Hrel ?]%rrel_with_eq HH σs σt. simplify_eq.
+  eapply sim_body_retag_public; eauto.
+Qed.
 
 (** * Pure *)
 Lemma sim_simple_let fs ft r n x (vs1 vt1: result) es1 et1 es2 et2 Φ :

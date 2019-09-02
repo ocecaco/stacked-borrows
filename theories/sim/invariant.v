@@ -57,7 +57,7 @@ Definition tmap_inv (r: resUR) (σs σt: state) : Prop :=
     (* If [k] ls Local, then the stack is a singleton.
       If [k] is Unique, then [t] must be Unique at the top of [stk].
       Otherwise if [k] is Pub, then [t] can be among the top SRO items. *)
-    tmap_inv_post  k t l σt.
+    tmap_inv_post k t l σt.
 
 Definition cmap_inv (r: resUR) (σ: state) : Prop :=
   ∀ (c: call_id) (T: tag_locs), r.(rcm) !! c ≡ Excl' T →

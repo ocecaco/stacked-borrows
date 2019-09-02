@@ -297,8 +297,8 @@ Proof using Type*.
     sim_bind (subst_map _ e) (subst_map _ e).
     eapply sim_simple_post_mono, IHe; [|by auto..].
     intros r' n' rs rt (-> & Hrel). simpl.
-    eapply sim_simple_retag_public; eauto.
-    split; first done. constructor; done.
+    eapply sim_simple_valid_post.
+    by eapply sim_simple_retag_public; eauto.
   - (* Let *)
     move=>[Hwf1 Hwf2] xs Hxs /=. sim_bind (subst_map _ e1) (subst_map _ e1).
     eapply sim_simple_frame_core.

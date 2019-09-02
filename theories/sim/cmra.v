@@ -293,6 +293,18 @@ Proof.
   by apply cmra_included_r.
 Qed.
 
+Lemma tmap_lookup_op_l_equiv_pub (pm1 pm2: tmapUR) t h1
+  (VALID: ✓ (pm1 ⋅ pm2)):
+  pm1 !! t ≡ Some (to_tgkR tkPub, h1) →
+  ∃ h2, (pm1 ⋅ pm2) !! t ≡ Some (to_tgkR tkPub, h1 ⋅ h2).
+Proof.
+  intros HL. move : (VALID t). rewrite lookup_op.
+  destruct (pm2 !! t) as [[k2 h2]|] eqn:Eqt; rewrite Eqt; rewrite -> HL.
+  - rewrite -Some_op pair_op. move => [ VL1 ?]. exists h2. simpl in VL1.
+    rewrite HL -Some_op pair_op.
+    by rewrite -(tagKindR_incl_eq (to_tgkR tkPub) _ VL1 (cmra_included_r _ _)).
+  - intros _. exists (∅: gmap loc _). by rewrite 2!right_id HL.
+Qed.
 
 Lemma tmap_lookup_op_r_equiv_pub (pm1 pm2: tmapUR) t h2
   (VALID: ✓ (pm1 ⋅ pm2)):

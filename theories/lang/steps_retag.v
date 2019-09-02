@@ -761,6 +761,27 @@ Proof.
       right; (split; [lia|done]).
 Qed.
 
+Lemma retag_change_tag α cids c nxtp l otag ntag rk pk T α' nxtp' :
+  retag α nxtp cids c l otag rk pk T = Some (ntag, α', nxtp') →
+  ntag = otag ∨
+  match ntag with
+  | Tagged t => t = nxtp ∧ nxtp' = S nxtp
+  | _ => True
+  end.
+Proof.
+  intros RT.
+  destruct (retag_change_case _ _ _ _ _ _ _ _ _ _ _ _ RT) as [[?[?[??]]]|[? Eq]].
+  - simplify_eq; by left.
+  - destruct pk.
+    + apply retag_nxtp_change in RT as []; [|done..]. right. by destruct ntag.
+    + destruct rk.
+      * left. by destruct Eq as [_ []]; subst.
+      * left. by destruct Eq as [_ []]; subst.
+      * apply retag_nxtp_change in RT as []; [|done..]. right. by destruct ntag.
+      * left. by destruct Eq as [_ []]; subst.
+    + apply retag_nxtp_change in RT as []; [|done..]. right. by destruct ntag.
+Qed.
+
 Lemma retag_change_nxtp α cids c nxtp l otag ntag rk pk T α' nxtp' :
   retag α nxtp cids c l otag rk pk T = Some (ntag, α', nxtp') →
   (nxtp ≤ nxtp')%nat.
@@ -1545,4 +1566,91 @@ Proof.
   - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
     case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
     move : GR. eapply grant_head_preserving; eauto.
+Qed.
+
+Lemma grant_active_SRW stk old it cids stk' it'
+  (SRW: it.(perm) = SharedReadWrite) :
+  grant stk old it cids = Some stk' →
+  it' ∈ stk → it' ∈ stk'.
+Proof.
+  rewrite /grant. case find_granting as [[n p]|]; [|done].
+  rewrite /= SRW.
+  case find_first_write_incompatible as [n'|]; [|done].
+  rewrite /= => ?. simplify_eq.
+  destruct (item_insert_dedup_case stk it n') as [EQ|EQ]; rewrite EQ; [|done].
+  rewrite -{1}(take_drop n' stk). set_solver.
+Qed.
+
+Lemma grant_active_non_SRW stk old it cids stk' t pm c
+  (SRW: it.(perm) ≠ SharedReadWrite)
+  (Inc: c ∈ cids) :
+  grant stk old it cids = Some stk' →
+  let it' := mkItem pm t (Some c) in
+  it' ∈ stk → it' ∈ stk'.
+Proof.
+  rewrite /grant. case find_granting as [[n p]|] eqn:FR; [|done].
+  case it.(perm) eqn:Eqp; [|done|..|];
+    cbn -[item_insert_dedup];
+    (case access1 as [[n' stk1]|] eqn:ACC; [|done]);
+    cbn -[item_insert_dedup];
+    intros ?; simplify_eq;
+    move => /(access1_active_preserving _ _ _ _ _ _ ACC _ _ _ Inc);
+    (destruct (item_insert_dedup_case stk1 it O) as [EQ|EQ]; rewrite EQ; [|done]);
+    rewrite -{1}(take_drop 0 stk1); set_solver.
+Qed.
+
+Lemma grant_active_preserving stk old it cids stk' t pm c (Inc: c ∈ cids) :
+  grant stk old it cids = Some stk' →
+  let it' := mkItem pm t (Some c) in
+  it' ∈ stk → it' ∈ stk'.
+Proof.
+  case (decide (it.(perm) = SharedReadWrite)) => ?.
+  - by apply grant_active_SRW.
+  - by eapply grant_active_non_SRW.
+Qed.
+
+Lemma retag_item_active_preserving α nxtp c cids l old rk pk T new α' nxtp' :
+  retag α nxtp cids c l old rk pk T = Some (new, α', nxtp') →
+  ∀ l' stk t' c' pm,
+    α !! l' = Some stk →
+    c' ∈ cids →
+    let it' := mkItem pm t' (Some c') in
+    it' ∈ stk →
+    ∃ stk', α' !! l' = Some stk' ∧ it' ∈ stk'.
+Proof.
+  intros RT l' stk t' c' pm Eqstk Inc' it' IN.
+  destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [NEQ EQ].
+  destruct (block_case l l' (tsize T)) as [?|(i & Lti & ?)].
+  { rewrite NEQ //. naive_solver. }
+  assert (∃ sz, tsize T = S sz) as [sz Eqsz].
+  { destruct (tsize T); [lia|by eexists]. }
+  subst l'.
+  move : RT. rewrite /retag /= /retag_ref Eqsz.
+  destruct pk as [[]|[]|].
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR).
+    simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    exists stk2. split; [done|].
+    move : Inc' GR IN. by apply grant_active_preserving.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR).
+    simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    exists stk2. split; [done|].
+    move : Inc' GR IN. by apply grant_active_preserving.
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    exists stk2. split; [done|].
+    move : Inc' GR IN. by apply grant_active_preserving.
+  - destruct rk; [by intros; simplify_eq; naive_solver..|
+                  |intros; simplify_eq; naive_solver].
+    specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    exists stk2. split; [done|].
+    move : Inc' GR IN. by apply grant_active_preserving.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR). simplify_eq.
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    exists stk2. split; [done|].
+    move : Inc' GR IN. by apply grant_active_preserving.
 Qed.

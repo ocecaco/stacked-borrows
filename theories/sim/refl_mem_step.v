@@ -1206,13 +1206,14 @@ Qed.
 (** Retag *)
 Lemma sim_body_retag_public fs ft r n ptr pk T kind σs σt Φ
   (RREL: rrel r ptr ptr) :
-  (∀ l otg ntg α' nxtp' c cids,
+  (∀ l otg ntg α' nxtp' c cids r',
     ptr = ValR [ScPtr l otg] →
     σt.(scs) = c :: cids →
     retag σt.(sst) σt.(snp) σt.(scs) c l otg kind pk T = Some (ntg, α', nxtp') →
+    vrel (r ⋅ r') [ScPtr l ntg] [ScPtr l ntg] →
     let σs' := mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc) in
     let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
-    Φ r n (ValR [ScPtr l ntg]) σs' (ValR [ScPtr l ntg]) σt') →
+    Φ (r ⋅ r') n (ValR [ScPtr l ntg]) σs' (ValR [ScPtr l ntg]) σt') →
   r ⊨{n,fs,ft}
     (Retag ptr pk T kind, σs) ≥
     (Retag ptr pk T kind, σt) : Φ.
@@ -1250,20 +1251,65 @@ Proof.
     - rewrite Eqcs; eauto.
     - by rewrite Eqsst Eqnp Eqcs. }
 
-  exists (#[ScPtr l ntg])%V, σs', r, n. subst σt'.
+  have HNP := wsat_tmap_nxtp _ _ _ WSAT1.
+  have Eqtg := retag_change_tag _ _ _ _ _ _ _ _ _ _ _ _ EqRT.
+  set r' : resUR := if (decide (ntg = otg)) then ε else
+                    match ntg with
+                    | Tagged t => res_tag t tkPub ∅
+                    | _ => ε
+                    end.
+
+  have VALID': ✓ (r_f ⋅ r ⋅ r').
+  { rewrite /r'. case decide => ?; [by rewrite right_id|].
+    destruct Eqtg as [|Eqtg]; [by subst|].
+    destruct ntg; [destruct Eqtg; subst t|by rewrite right_id].
+    apply (local_update_discrete_valid_frame (r_f ⋅ r) ε);
+      [by rewrite right_id|]. rewrite right_id.
+    by apply res_tag_alloc_local_update. }
+  have Eqc': (r_f ⋅ r ⋅ r').(rcm)  ≡ (r_f ⋅ r).(rcm).
+  { rewrite /r'.
+    case decide => ?; [by rewrite right_id|].
+    destruct ntg; by rewrite /= right_id. }
+  have HLt: ∀ t kh, (r_f ⋅ r).(rtm) !! t ≡ Some kh →
+                    (r_f ⋅ r ⋅ r').(rtm) !! t ≡ Some kh.
+  { intros t kh Eqt. rewrite /r'.
+    case decide => ?; [by rewrite right_id|].
+    destruct Eqtg as [|Eqtg]; [by subst|].
+    destruct ntg as [t1|];
+      [destruct Eqtg; subst t1 nxtp'|by rewrite right_id].
+    rewrite lookup_op res_tag_lookup_ne.
+    - by rewrite right_id.
+    - intros ?. subst t. rewrite HNP in Eqt. inversion Eqt. }
+
+  (* unfolding rrel for place *)
+  simpl in RREL.
+  inversion RREL as [|???? AREL _]; subst; simplify_eq. clear RREL.
+
+  exists (#[ScPtr l ntg])%V, σs', (r ⋅ r'), n.
   split; last split.
   { left. by constructor. }
-  { (* unfolding rrel for place *)
-    simpl in RREL.
-    inversion RREL as [|???? AREL _]; subst; simplify_eq. clear RREL.
-
-    have Lenp: (σt.(snp) ≤ nxtp')%nat by apply retag_change_nxtp in EqRT.
+  { have Lenp: (σt.(snp) ≤ nxtp')%nat by apply retag_change_nxtp in EqRT.
     split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
-    - done.
+    - by rewrite cmra_assoc.
     - intros t' k' h' Eqt'.
-      specialize (PINV _ _ _ Eqt') as [Ltp PINV].
+      have Eqh': (r_f ⋅ r).(rtm) !! t' ≡ Some (to_tgkR k', h') ∨
+                 t' = σt.(snp) ∧ nxtp' = S σt.(snp) ∧ h' ≡ ∅.
+      { move : Eqt'. rewrite /r'.
+        case decide => ?; [by rewrite right_id; left|].
+        destruct Eqtg as [|Eqtg]; [by subst|].
+        destruct ntg as [t1|];
+          [destruct Eqtg; subst t1 nxtp'|by rewrite right_id; left].
+        rewrite cmra_assoc lookup_op.
+        case (decide (t' = σt.(snp))) => ?; [subst t'|].
+        - rewrite res_tag_lookup. rewrite HNP left_id fmap_empty.
+          intros [Eq1 Eq2]%Some_equiv_inj. by right.
+        - rewrite res_tag_lookup_ne // right_id. by left. }
+      destruct Eqh' as [Eqt|(?&?&Eqh')]; last first.
+      { subst t' nxtp'. split; [simpl; lia|].
+        intros l' ss st. rewrite Eqh' lookup_empty. by inversion 1. }
+      specialize (PINV _ _ _ Eqt) as [Ltp PINV].
       split; [by simpl; lia|].
       intros l1 ss st Eql1 PRE. specialize (PINV _ _ _ Eql1).
       destruct k'.
@@ -1272,7 +1318,7 @@ Proof.
         have NEq: otg ≠ Tagged t'.
         { intros ?. subst otg. simpl in AREL.
           destruct AREL as (_ & _ & ht & Eqh').
-          move : Eqt'. rewrite lookup_op Eqh'.
+          move : Eqt. rewrite lookup_op Eqh'.
           apply tagKindR_local_exclusive_r. }
         move : NEq Eqstk.
         by eapply retag_Some_local.
@@ -1293,7 +1339,7 @@ Proof.
         have NEq: Tagged t' ≠ otg.
         { intros ?. subst otg. simpl in AREL.
           destruct AREL as (_ & _ & ht & Eqh').
-          move : Eqt'. rewrite lookup_op Eqh'.
+          move : Eqt. rewrite lookup_op Eqh'.
           apply tagKindR_uniq_exclusive_r. }
         move : HTOP.
         by apply (retag_item_head_preserving _ _ _ _ _ _ _ _ _ _ _ _ EqRT
@@ -1310,21 +1356,38 @@ Proof.
         have ND2 := proj2 (state_wf_stack_item _ WFT _ _ Eqstk1).
         by apply (retag_item_active_SRO_preserving _ _ _ _ _ _ _ _ _ _ _ _ EqRT
                     _ _ _ _ _ ND2 Eqstk1 Eqstk' In In').
-    - intros c1 Tc Eqc. specialize (CINV _ _ Eqc) as [Ltc CINV].
+    - intros c1 Tc. rewrite cmra_assoc Eqc'. intros Eqc.
+      specialize (CINV _ _ Eqc) as [Ltc CINV].
       split; [done|].
       intros tc L EqL. specialize (CINV _ _ EqL) as [Ltp CINV].
       split; [by simpl; lia|].
       intros l1 InL. simpl.
       specialize (CINV _ InL) as (stk & pm & Eqstk & In & NDIS).
-      (* Prove that this is active (protector) preserving *)
-      (* destruct (retag_item_in _ _ _ _ _ _ _ _ _ _ _ _ EqRT _ _ t' _ Eqstk' In')
-          as (stk & Eqstk & In); [done..|]. *)
-      admit.
-    - done. }
+      destruct (retag_item_active_preserving _ _ _ _ _ _ _ _ _ _ _ _ EqRT
+                    _ _ _ _ _ Eqstk Ltc In) as (stk' & Eqstk' & In').
+      by exists stk', pm.
+    - rewrite cmra_assoc. do 4 (split; [done|]).
+      move => l' /PUBP [PB|PV].
+      + left.  move => ? /PB [? [? AREL']]. eexists. split; [done|].
+        eapply arel_mono; [done|..|exact AREL']. apply cmra_included_l.
+      + right. destruct PV as (t & k1 & h1 & Eqt & ?).
+        exists t, k1, h1. setoid_rewrite Eqc'. split; [|done].
+        by apply HLt. }
 
   left.
-  apply: sim_body_result. intros. eapply POST; eauto.
-Abort.
+  apply: sim_body_result. intros VALIDr. eapply POST; eauto.
+  constructor; [|done]. do 2 (split; [done|]).
+  destruct ntg; [|done]. destruct AREL as (_ & _ & AREL).
+  rewrite /r'.
+  case decide => ?; [subst otg|].
+  - destruct AREL as [h1 ?]. exists h1. by rewrite right_id.
+  - destruct Eqtg as [|[]]; [by subst otg|subst t].
+    destruct (tmap_lookup_op_r_equiv_pub r.(rtm)
+                (res_tag σt.(snp) tkPub ∅).(rtm) σt.(snp) (to_agree <$> ∅)).
+    + move : VALIDr. rewrite /r' decide_False // => VALIDr. apply VALIDr.
+    + apply res_tag_lookup.
+    + by eexists.
+Qed.
 
 Lemma sim_body_retag_mut_ref_default fs ft r r' rs n l told T σs σt Φ :
   (0 < tsize T)%nat →
