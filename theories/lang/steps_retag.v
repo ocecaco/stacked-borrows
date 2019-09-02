@@ -714,16 +714,27 @@ Proof.
   destruct stk1; [|case decide => ?]; intros; simplify_eq; by eexists.
 Qed.
 
-Lemma tag_on_top_reborrowN α cids l n to tn α' (NZST: (0 < n)%nat):
-  reborrowN α cids l n to (Tagged tn) Unique None = Some α' →
-  tag_on_top α' l tn.
+Lemma tag_on_top_reborrowN_uniq α cids l n to tn α' pro :
+  reborrowN α cids l n to (Tagged tn) Unique pro = Some α' →
+  ∀ i, (i < n)%nat → tag_on_top α' (l +ₗ i) tn.
 Proof.
-  intros RB.
+  intros RB i Lt.
   destruct (for_each_lookup_case_2 _ _ _ _ _ RB) as [EQ _].
-  specialize (EQ O ltac:(lia)) as (stk & stk' & Eq & Eq' & GR).
-  rewrite shift_loc_0_nat in Eq, Eq'.
+  specialize (EQ _ Lt) as (stk & stk' & Eq & Eq' & GR).
   apply tag_on_top_grant_unique in GR as [stk1 Eq1]; [|done].
   rewrite /tag_on_top Eq' Eq1 /=. by eexists.
+Qed.
+
+Lemma tag_on_top_retag_ref_uniq α cids nxtp l old T pro tn α' nxtp' :
+  retag_ref α cids nxtp l old T (UniqueRef false) pro
+    = Some (Tagged tn, α', nxtp') →
+  ∀ i, (i < tsize T)%nat → tag_on_top α' (l +ₗ i) tn.
+Proof.
+  intros RT i. destruct (tsize T) as [|n] eqn:Eqsz; [lia|].
+  rewrite -Eqsz.
+  move : RT. rewrite /retag_ref {1}Eqsz /=.
+  case reborrowN as [α1|] eqn:RB; [|done]. simpl. intros ?. simplify_eq.
+  eapply tag_on_top_reborrowN_uniq; eauto.
 Qed.
 
 Lemma retag_nxtp_change α cids c nxtp l otag ntag rk pk T α' nxtp'
