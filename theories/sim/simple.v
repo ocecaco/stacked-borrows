@@ -317,10 +317,9 @@ Proof.
   eapply sim_simple_copy_local_r; done.
 Qed.
 
-Lemma sim_simple_retag_mut_ref fs ft r r' rs n (ptr: scalar) ty Φ :
+Lemma sim_simple_retag_mut_ref fs ft r n (ptr: scalar) ty Φ :
   (0 < tsize ty)%nat →
-  r ≡ r' ⋅ rs →
-  arel rs ptr ptr →
+  arel r ptr ptr →
   (∀ l told tnew hplt,
     ptr = ScPtr l told →
     let s_new := ScPtr l (Tagged tnew) in
@@ -331,7 +330,7 @@ Lemma sim_simple_retag_mut_ref fs ft r r' rs n (ptr: scalar) ty Φ :
     end → *)
     let s_new := ScPtr l (Tagged tnew) in
     let tk := tkUnique in
-    (∀ i: nat, (i < tsize ty) → is_Some $ hplt !! (l +ₗ i)) →
+    (∀ i: nat, (i < tsize ty)%nat → is_Some $ hplt !! (l +ₗ i)) →
     Φ (r ⋅ res_tag tnew tk hplt) n (ValR [s_new]) (ValR [s_new])) →
   r ⊨ˢ{n,fs,ft}
     Retag #[ptr] (RefPtr Mutable) ty Default
@@ -339,8 +338,11 @@ Lemma sim_simple_retag_mut_ref fs ft r r' rs n (ptr: scalar) ty Φ :
     Retag #[ptr] (RefPtr Mutable) ty Default
   : Φ.
 Proof.
-  intros ??? HH σs σt.
-Admitted.
+  intros ?? HH σs σt.
+  apply sim_body_retag_mut_ref_default; eauto.
+  intros ??????????? HS. do 2 (split; [done|]). eapply HH; eauto.
+  intros ??. by apply HS.
+Qed.
 
 (** * Memory: shared *)
 Lemma sim_simple_alloc_public fs ft r n T Φ :

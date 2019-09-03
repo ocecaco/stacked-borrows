@@ -1389,6 +1389,24 @@ Proof.
     + by eexists.
 Qed.
 
+(* TODO: move *)
+Lemma lookup_combine_is_Some_length {A B} (la: list A) (lb : list B) i :
+  is_Some (combine la lb !! i) ↔ (i < length la)%nat ∧ (i < length lb)%nat.
+Proof. rewrite lookup_lt_is_Some (combine_length la lb). lia. Qed.
+Lemma lookup_combine_Some_length {A B} (la: list A) (lb : list B) i ab :
+  combine la lb !! i = Some ab → (i < length la)%nat ∧ (i < length lb)%nat.
+Proof. intros. apply lookup_combine_is_Some_length. by eexists. Qed.
+Lemma lookup_combine_Some_eq {A B} (la: list A) (lb : list B) i a b :
+  combine la lb !! i = Some (a,b) →
+  la !! i = Some a ∧ lb !! i = Some b.
+Proof.
+  revert i lb. induction la as [|?? IH]; intros i lb; simpl; [done|].
+  destruct lb; simpl; [done|].
+  destruct i; simpl.
+  - intros. by simplify_eq.
+  - by apply IH.
+Qed.
+
 Lemma sim_body_retag_mut_ref_default fs ft r n ptr T σs σt Φ :
   (0 < tsize T)%nat →
   let pk : pointer_kind := (RefPtr Mutable) in
@@ -1454,6 +1472,11 @@ Proof.
   { setoid_rewrite (state_wf_dom _ WFS). by rewrite Eqsst. }
   setoid_rewrite <-(state_wf_dom _ WFT) in InD.
   destruct (read_mem_is_Some _ _ _ InD) as [vt Eqvt].
+  destruct (read_mem_values _ _ _ _ Eqvs) as [Eqsl Eqshp].
+  destruct (read_mem_values _ _ _ _ Eqvt) as [Eqtl Eqthp].
+  have EqlT: length (combine vs vt) = tsize T.
+  { rewrite combine_length Eqsl Eqtl. lia. }
+
   set tnew := σt.(snp).
   set hplt : heaplet := write_hpl l (combine vs vt) ∅.
   set r' : resUR := r ⋅ res_tag tnew tkUnique hplt.
@@ -1472,21 +1495,48 @@ Proof.
     - by rewrite right_id.
     - intros ?. subst t. rewrite HNP in Eqt. inversion Eqt. }
 
+  clear NT.
+
   exists (#[ScPtr l (Tagged tnew)])%V, σs', r', n.
   split; last split.
   { left. by constructor. }
-  { split; last split; last split; last split; last split.
+  { clear POST.
+    split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
     - by rewrite cmra_assoc.
-    - rewrite cmra_assoc. intros t' k' h'. rewrite lookup_op.
+    - clear STEPS STEPT.
+      rewrite cmra_assoc. intros t' k' h'. rewrite lookup_op.
       case (decide (t' = tnew)) => ?; [subst t'|].
       + rewrite res_tag_lookup HNP left_id.
         intros [Eq1%leibniz_equiv_iff Eq2]%Some_equiv_inj.
         cbn -[to_tgkR] in Eq1. apply to_tgkR_inj in Eq1. subst k'.
         simpl in Eq2. split; [simpl; lia|].
-        intros l' ss st. rewrite -Eq2 lookup_fmap.
-        admit.
+        intros l' ss st. rewrite -Eq2 lookup_fmap. intros Eql'.
+        destruct (hplt !! l') as [[ss1 st1]|] eqn: Eqhl'; last first.
+        { exfalso. move : Eql'. rewrite Eqhl'. inversion 1. }
+        destruct (write_hpl_lookup_case l (combine vs vt) ∅ l')
+          as [(i & Lti & Eqi & Eqhi)|[_ EqE]]; last first.
+        { exfalso. move : EqE. by rewrite Eqhl' lookup_empty. }
+        assert (ss = ss1 ∧ st = st1) as [].
+        { move : Eql'. rewrite Eqhl' /=. clear.
+          intros Eq%Some_equiv_inj%to_agree_inj%leibniz_equiv_iff.
+          by inversion Eq. } subst ss1 st1 l'.
+        rewrite Eqhi in Eqhl'.
+        apply lookup_combine_Some_eq in Eqhl' as [Eqvs1 Eqvt1].
+        rewrite EqlT in Lti.
+        specialize (Eqshp  _ Lti). rewrite Eqvs1 in Eqshp.
+        specialize (Eqthp  _ Lti). rewrite Eqvt1 in Eqthp.
+        intros (stk' & pm & pro & Eqstk' & In' & NDIS). simpl in Eqstk'.
+        do 2 (split; [done|]).
+        exists stk'. split; [done|].
+        have EqRT':
+          retag_ref σt.(sst) σt.(scs) σt.(snp) l otg T (UniqueRef false) None =
+            Some (Tagged tnew, α', S tnew) by done.
+        destruct (tag_on_top_retag_ref_uniq _ _ _ _ _ _ _ _ _ _ EqRT' _ Lti)
+          as [pro1 Eqstk1]. rewrite Eqstk' /= in Eqstk1.
+        clear -Eqstk1. destruct stk' as [|? stk1]; [done|].
+        simpl in Eqstk1. simplify_eq. by exists pro1, stk1.
       + rewrite res_tag_lookup_ne; [|done].
         rewrite right_id => Eqt.
         (* TODO: duplicate proof with retag_public *)
@@ -1559,13 +1609,10 @@ Proof.
   left.
   apply: sim_body_result. intros VALIDr. eapply POST; eauto.
   intros i Lti. split.
-  - clear -Lti Eqvs Eqvt.
-    apply write_hpl_is_Some. rewrite combine_length.
-    destruct (read_mem_values _ _ _ _ Eqvs) as [Eqsl Eqshp].
-    destruct (read_mem_values _ _ _ _ Eqvt) as [Eqtl Eqthp].
-    rewrite Eqsl Eqtl. lia.
+  - clear -Lti EqlT.
+    apply write_hpl_is_Some. by rewrite EqlT.
   - move : Lti. eapply tag_on_top_retag_ref_uniq. exact EqRT.
-Admitted.
+Qed.
 
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :

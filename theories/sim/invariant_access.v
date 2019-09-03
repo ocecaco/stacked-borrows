@@ -130,31 +130,6 @@ Proof.
   - do 2 (rewrite lookup_insert_ne; [|done]). apply Eq.
 Qed.
 
-Lemma write_hpl_lookup (l: loc) v (h: heaplet) :
-  (∀ (i: nat) s, (i < length v)%nat →
-    write_hpl l v h !! (l +ₗ i) = Some s →
-    v !! i = Some s) ∧
-  (∀ (l': loc), (∀ (i: nat), (i < length v)%nat → l' ≠ l +ₗ i) →
-    write_hpl l v h !! l' = h !! l').
-Proof.
-  revert l h. induction v as [|s v IH]; move => l h; simpl;
-    [split; [intros; by lia|done]|].
-  destruct (IH (l +ₗ 1) (<[l:=s]> h)) as [IH1 IH2].
-  split.
-  - intros i si Lt. destruct i as [|i].
-    + rewrite shift_loc_0_nat /= IH2.
-      * by rewrite lookup_insert.
-      * move => ? _.
-        rewrite shift_loc_assoc -{1}(shift_loc_0 l) => /shift_loc_inj ?. by lia.
-    + intros Eq. rewrite /= (IH1 _ si) ; [eauto|lia|].
-      by rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
-  - intros l' Lt. rewrite IH2.
-    + rewrite lookup_insert_ne; [done|].
-      move => ?. subst l'. apply (Lt O); [lia|by rewrite shift_loc_0_nat].
-    + move => i Lti. rewrite shift_loc_assoc -(Nat2Z.inj_add 1).
-      apply Lt. by lia.
-Qed.
-
 Lemma local_unique_access_head r σs (σt: state) l stk kind n' stk' t ss st k h
   (WFT: Wf σt) (LU: k = tkLocal ∨ k = tkUnique):
   σt.(sst) !! l = Some stk →
