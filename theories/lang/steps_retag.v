@@ -1,10 +1,9 @@
-From stbor.lang Require Export defs steps_foreach steps_list steps_wf.
+From stbor.lang Require Export defs steps_foreach steps_list steps_wf steps_progress.
 
 Set Default Proof Using "Type".
 
-(* FIXME; should not require [Unique] *)
-Definition tag_on_top (stks: stacks) l tag : Prop :=
-  ∃ prot, (stks !! l) ≫= head = Some (mkItem Unique (Tagged tag) prot).
+Definition tag_on_top (stks: stacks) l t pm : Prop :=
+  ∃ prot, (stks !! l) ≫= head = Some (mkItem pm (Tagged t) prot).
 
 (** Active protector preserving *)
 Definition active_preserving (cids: call_id_stack) (stk stk': stack) :=
@@ -690,9 +689,9 @@ Qed.
 
 (** Tag-on-top *)
 Lemma tag_on_top_write σ l tg stks :
-  tag_on_top σ.(sst) l tg →
+  tag_on_top σ.(sst) l tg Unique →
   memory_written (sst σ) (scs σ) l (Tagged tg) 1 = Some stks →
-  tag_on_top stks l tg.
+  tag_on_top stks l tg Unique.
 Proof.
   rewrite /memory_written /tag_on_top /= shift_loc_0.
   destruct (sst σ !! l) eqn:Hlk; last done. simpl.
@@ -704,39 +703,65 @@ Proof.
   simpl. done.
 Qed.
 
-Lemma tag_on_top_grant_unique stk old it cids  stk'
-  (UNIQ: it.(perm) = Unique) :
+Lemma tag_on_top_grant_uniq_SRO stk old it cids  stk'
+  (UNIQ: it.(perm) = Unique ∨ it.(perm) = SharedReadOnly) :
   grant stk old it cids = Some stk' → is_stack_head it stk'.
 Proof.
   rewrite /grant.
   case find_granting as [gip|]; [|done].
-  rewrite /= UNIQ /=. case access1 => [[n1 stk1]/=|//].
-  destruct stk1; [|case decide => ?]; intros; simplify_eq; by eexists.
+  destruct UNIQ as [UNIQ|UNIQ];
+  rewrite /= UNIQ /=; (case access1 => [[n1 stk1]/=|//]);
+  (destruct stk1; [|case decide => ?]; intros; simplify_eq; by eexists).
 Qed.
 
-Lemma tag_on_top_reborrowN_uniq α cids l n to tn α' pro :
-  reborrowN α cids l n to (Tagged tn) Unique pro = Some α' →
-  ∀ i, (i < n)%nat → tag_on_top α' (l +ₗ i) tn.
+Lemma tag_on_top_reborrowN_uniq_SRO α cids l n to tn pm α' pro
+  (UNIQ: pm = Unique ∨ pm = SharedReadOnly) :
+  reborrowN α cids l n to (Tagged tn) pm pro = Some α' →
+  ∀ i, (i < n)%nat → tag_on_top α' (l +ₗ i) tn pm.
 Proof.
   intros RB i Lt.
   destruct (for_each_lookup_case_2 _ _ _ _ _ RB) as [EQ _].
   specialize (EQ _ Lt) as (stk & stk' & Eq & Eq' & GR).
-  apply tag_on_top_grant_unique in GR as [stk1 Eq1]; [|done].
+  apply tag_on_top_grant_uniq_SRO in GR as [stk1 Eq1]; [|done].
   rewrite /tag_on_top Eq' Eq1 /=. by eexists.
 Qed.
 
 Lemma tag_on_top_retag_ref_uniq α cids nxtp l old T pro tn α' nxtp' :
   retag_ref α cids nxtp l old T (UniqueRef false) pro
     = Some (Tagged tn, α', nxtp') →
-  ∀ i, (i < tsize T)%nat → tag_on_top α' (l +ₗ i) tn.
+  ∀ i, (i < tsize T)%nat → tag_on_top α' (l +ₗ i) tn Unique.
 Proof.
   intros RT i. destruct (tsize T) as [|n] eqn:Eqsz; [lia|].
   rewrite -Eqsz.
   move : RT. rewrite /retag_ref {1}Eqsz /=.
   case reborrowN as [α1|] eqn:RB; [|done]. simpl. intros ?. simplify_eq.
-  eapply tag_on_top_reborrowN_uniq; eauto.
+  eapply tag_on_top_reborrowN_uniq_SRO; eauto.
 Qed.
 
+Lemma tag_on_top_retag_ref_shr α cids nxtp l old T pro tn α' nxtp'
+  (FRZ: is_freeze T) :
+  retag_ref α cids nxtp l old T SharedRef pro
+    = Some (Tagged tn, α', nxtp') →
+  ∀ i, (i < tsize T)%nat → tag_on_top α' (l +ₗ i) tn SharedReadOnly.
+Proof.
+  intros RT i. destruct (tsize T) as [|n] eqn:Eqsz; [lia|].
+  rewrite -Eqsz.
+  move : RT. rewrite /retag_ref {1}Eqsz /= visit_freeze_sensitive_is_freeze //.
+  case reborrowN as [α1|] eqn:RB; [|done]. simpl. intros ?. simplify_eq.
+  eapply tag_on_top_reborrowN_uniq_SRO; eauto.
+Qed.
+
+Lemma tag_on_top_shr_active_SRO α l t :
+  tag_on_top α l t SharedReadOnly →
+  ∃ stk, α !! l = Some stk ∧ t ∈ active_SRO stk.
+Proof.
+  intros [pro Eq]. destruct (α !! l) as [stk|]; [|done].
+  simpl in Eq. destruct stk as [|it stk']; [done|].
+  simpl in Eq. simplify_eq. eexists. split; [done|].
+  rewrite /= elem_of_union elem_of_singleton. by left.
+Qed.
+
+(* retag *)
 Lemma retag_nxtp_change α cids c nxtp l otag ntag rk pk T α' nxtp'
   (TS: (O < tsize T)%nat)
   (RK: match pk with | RawPtr _ => rk = RawRt | _ => True end) :

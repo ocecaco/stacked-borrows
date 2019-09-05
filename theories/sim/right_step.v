@@ -49,7 +49,7 @@ Lemma sim_body_copy_local_unique_r
   fs ft (r r': resUR) (h: heaplet) n (l: loc) t k T (ss st: scalar) es σs σt Φ
   (LU: k = tkLocal ∨ k = tkUnique) :
   tsize T = 1%nat →
-  tag_on_top σt.(sst) l t →
+  tag_on_top σt.(sst) l t Unique →
   r ≡ r' ⋅ res_tag t k h →
   h !! l = Some (ss, st) →
   (r ⊨{n,fs,ft} (es, σs) ≥ (#[st], σt) : Φ : Prop) →
@@ -112,7 +112,7 @@ Qed.
 Lemma sim_body_copy_unique_r
   fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (ss st: scalar) es σs σt Φ :
   tsize T = 1%nat →
-  tag_on_top σt.(sst) l t →
+  tag_on_top σt.(sst) l t Unique →
   r ≡ r' ⋅ res_tag t tkUnique h →
   h !! l = Some (ss, st) →
   (r ⊨{n,fs,ft} (es, σs) ≥ (#[st], σt) : Φ : Prop) →
@@ -120,7 +120,7 @@ Lemma sim_body_copy_unique_r
 Proof. apply sim_body_copy_local_unique_r. by right. Qed.
 
 Lemma vsP_res_mapsto_tag_on_top (r: resUR) l t s σs σt :
-  (r ⋅ res_loc l [s] t) ={σs,σt}=> (λ _ _ σt, tag_on_top σt.(sst) l t : Prop).
+  (r ⋅ res_loc l [s] t) ={σs,σt}=> (λ _ _ σt, tag_on_top σt.(sst) l t Unique : Prop).
 Proof.
   intros r_f. rewrite cmra_assoc.
   intros (WFS & WFT & VALID & PINV & CINV & SREL).

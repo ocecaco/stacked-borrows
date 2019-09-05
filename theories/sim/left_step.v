@@ -113,7 +113,7 @@ Proof.
     - rewrite ACC1 in Eqss. simplify_eq. rewrite insert_id //. by inversion 1. }
   subst α'. rewrite Eqstk in Eqstk'. symmetry in Eqstk'. simplify_eq.
 
-  have TOT: tag_on_top σt.(sst) l t.
+  have TOT: tag_on_top σt.(sst) l t Unique.
   { destruct HDi as [stk' Eqstk'].
     rewrite /tag_on_top Eqstk Eqstk' /= -Eqpit -Eqti. destruct it. by eexists. }
 

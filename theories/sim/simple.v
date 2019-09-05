@@ -317,29 +317,25 @@ Proof.
   eapply sim_simple_copy_local_r; done.
 Qed.
 
-Lemma sim_simple_retag_mut_ref fs ft r n (ptr: scalar) ty Φ :
+Lemma sim_simple_retag_ref fs ft r n (ptr: scalar) m ty Φ :
   (0 < tsize ty)%nat →
+  (if m is Immutable then is_freeze ty else True) →
   arel r ptr ptr →
   (∀ l told tnew hplt,
     ptr = ScPtr l told →
     let s_new := ScPtr l (Tagged tnew) in
-(*    let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
-    match m with
-    | Mutable => is_Some (hplt !! l_inner)
-    | Immutable => if is_freeze ty then is_Some (hplt !! l_inner) else True
-    end → *)
+    let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
     let s_new := ScPtr l (Tagged tnew) in
-    let tk := tkUnique in
     (∀ i: nat, (i < tsize ty)%nat → is_Some $ hplt !! (l +ₗ i)) →
     Φ (r ⋅ res_tag tnew tk hplt) n (ValR [s_new]) (ValR [s_new])) →
   r ⊨ˢ{n,fs,ft}
-    Retag #[ptr] (RefPtr Mutable) ty Default
+    Retag #[ptr] (RefPtr m) ty Default
   ≥
-    Retag #[ptr] (RefPtr Mutable) ty Default
+    Retag #[ptr] (RefPtr m) ty Default
   : Φ.
 Proof.
-  intros ?? HH σs σt.
-  apply sim_body_retag_mut_ref_default; eauto.
+  intros ??? HH σs σt.
+  apply sim_body_retag_ref_default; eauto.
   intros ??????????? HS. do 2 (split; [done|]). eapply HH; eauto.
   intros ??. by apply HS.
 Qed.

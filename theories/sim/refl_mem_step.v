@@ -915,7 +915,7 @@ Lemma sim_body_write_unique_local_1 fs ft r r' n l t k T vs vt h0 σs σt Φ :
   (∀ ss st, vs = [ss] → vt = [st] →
     let σs' := mkState (<[l := ss]> σs.(shp)) σs.(sst) σs.(scs) σs.(snp) σs.(snc) in
     let σt' := mkState (<[l := st]> σt.(shp)) σt.(sst) σt.(scs) σt.(snp) σt.(snc) in
-    tag_on_top σt'.(sst) l t →
+    tag_on_top σt'.(sst) l t Unique →
     Φ (r' ⋅ res_tag t k (<[l := (ss,st)]>h0)) n (ValR [☠%S]) σs' (ValR [☠%S]) σt') →
   r ⊨{n,fs,ft}
     (Place l (Tagged t) T <- #vs, σs) ≥ (Place l (Tagged t) T <- #vt, σt) : Φ.
@@ -1004,7 +1004,7 @@ Proof.
     - rewrite ACC1 in Eqss. simplify_eq. rewrite insert_id //. by inversion 1. }
   subst α'. rewrite Eqstk in Eqstk'. symmetry in Eqstk'. simplify_eq.
 
-  have TOT: tag_on_top σt.(sst) l t.
+  have TOT: tag_on_top σt.(sst) l t Unique.
   { destruct HDi as [stk' Eqstk'].
     rewrite /tag_on_top Eqstk Eqstk' /= -Eqpit -Eqti. destruct it. by eexists. }
 
@@ -1184,7 +1184,7 @@ Lemma sim_body_write_unique_1
   r' ≡ r'' ⋅ rs →
   (let σs' := mkState (write_mem l [s] σs.(shp)) σs.(sst) σs.(scs) σs.(snp) σs.(snc) in
    let σt' := mkState (write_mem l [s] σt.(shp)) σt.(sst) σt.(scs) σt.(snp) σt.(snc) in
-    tag_on_top σt'.(sst) l tg →
+    tag_on_top σt'.(sst) l tg Unique →
     Φ (r' ⋅ res_tag tg tkUnique (<[l:=(s,s)]> h)) n (ValR [☠]%S) σs' (ValR [☠]%S) σt') →
   r ⊨{n,fs,ft}
     (Place l (Tagged tg) T <- #[s], σs) ≥ (Place l (Tagged tg) T <- #[s], σt) : Φ.
@@ -1407,9 +1407,12 @@ Proof.
   - by apply IH.
 Qed.
 
-Lemma sim_body_retag_mut_ref_default fs ft r n ptr T σs σt Φ :
+
+Lemma sim_body_retag_ref_default fs ft mut r n ptr T σs σt Φ :
   (0 < tsize T)%nat →
-  let pk : pointer_kind := (RefPtr Mutable) in
+  let pk : pointer_kind := (RefPtr mut) in
+  let pm := match mut with Mutable => Unique | Immutable => SharedReadOnly end in
+  (if mut is Immutable then is_freeze T else True) →
   (* Ptr(l,otg) comes from the arguments, so [otg] must be a public tag. *)
   arel r ptr ptr →
   (∀ l told tnew hplt c cids α' nxtp',
@@ -1421,16 +1424,17 @@ Lemma sim_body_retag_mut_ref_default fs ft r n ptr T σs σt Φ :
       stack for each [l +ₗ i].
       TODO: we can also specify that [hplt] knows the values of [l +ₗ i]'s. *)
     (∀ i: nat, (i < tsize T)%nat →
-      is_Some $ hplt !! (l +ₗ i) ∧ tag_on_top α' (l +ₗ i) tnew) →
+      is_Some $ hplt !! (l +ₗ i) ∧ tag_on_top α' (l +ₗ i) tnew pm) →
     let σs' := mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc) in
     let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
     let s_new := ScPtr l (Tagged tnew) in
-    Φ (r ⋅ res_tag tnew tkUnique hplt) n (ValR [s_new]) σs' (ValR [s_new]) σt') →
+    let tk := match mut with Mutable => tkUnique | Immutable => tkPub end in
+    Φ (r ⋅ res_tag tnew tk hplt) n (ValR [s_new]) σs' (ValR [s_new]) σt') →
   r ⊨{n,fs,ft}
     (Retag #[ptr] pk T Default, σs) ≥
     (Retag #[ptr] pk T Default, σt) : Φ.
 Proof.
-  intros NZST pk AREL POST. pfold. intros NT. intros.
+  intros NZST pk pm FRZ AREL POST. pfold. intros NT. intros.
   have WSAT1 := WSAT. (* back up *)
 
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
@@ -1479,17 +1483,18 @@ Proof.
 
   set tnew := σt.(snp).
   set hplt : heaplet := write_hpl l (combine vs vt) ∅.
-  set r' : resUR := r ⋅ res_tag tnew tkUnique hplt.
+  set tk := match mut with Mutable => tkUnique | Immutable => tkPub end.
+  set r' : resUR := r ⋅ res_tag tnew tk hplt.
 
   have HNP := wsat_tmap_nxtp _ _ _ WSAT1.
-  have VALID': ✓ (r_f ⋅ r ⋅ res_tag tnew tkUnique hplt).
+  have VALID': ✓ (r_f ⋅ r ⋅ res_tag tnew tk hplt).
   { apply (local_update_discrete_valid_frame (r_f ⋅ r) ε);
       [by rewrite right_id|]. rewrite right_id.
     by apply res_tag_alloc_local_update. }
-  have Eqc': (r_f ⋅ r ⋅ res_tag tnew tkUnique hplt).(rcm)  ≡ (r_f ⋅ r).(rcm)
+  have Eqc': (r_f ⋅ r ⋅ res_tag tnew tk hplt).(rcm)  ≡ (r_f ⋅ r).(rcm)
     by rewrite /= right_id.
   have HLt: ∀ t kh, (r_f ⋅ r).(rtm) !! t ≡ Some kh →
-                    (r_f ⋅ r ⋅ res_tag tnew tkUnique hplt).(rtm) !! t ≡ Some kh.
+                    (r_f ⋅ r ⋅ res_tag tnew tk hplt).(rtm) !! t ≡ Some kh.
   { intros t kh Eqt.
     rewrite lookup_op res_tag_lookup_ne.
     - by rewrite right_id.
@@ -1527,16 +1532,26 @@ Proof.
         rewrite EqlT in Lti.
         specialize (Eqshp  _ Lti). rewrite Eqvs1 in Eqshp.
         specialize (Eqthp  _ Lti). rewrite Eqvt1 in Eqthp.
-        intros (stk' & pm & pro & Eqstk' & In' & NDIS). simpl in Eqstk'.
-        do 2 (split; [done|]).
-        exists stk'. split; [done|].
-        have EqRT':
-          retag_ref σt.(sst) σt.(scs) σt.(snp) l otg T (UniqueRef false) None =
-            Some (Tagged tnew, α', S tnew) by done.
-        destruct (tag_on_top_retag_ref_uniq _ _ _ _ _ _ _ _ _ _ EqRT' _ Lti)
-          as [pro1 Eqstk1]. rewrite Eqstk' /= in Eqstk1.
-        clear -Eqstk1. destruct stk' as [|? stk1]; [done|].
-        simpl in Eqstk1. simplify_eq. by exists pro1, stk1.
+        destruct mut.
+        * intros (stk' & pm' & pro & Eqstk' & In' & NDIS). simpl in Eqstk'.
+          do 2 (split; [done|]).
+          exists stk'. split; [done|].
+          have EqRT':
+            retag_ref σt.(sst) σt.(scs) σt.(snp) l otg T (UniqueRef false) None =
+              Some (Tagged tnew, α', S tnew) by done.
+          destruct (tag_on_top_retag_ref_uniq _ _ _ _ _ _ _ _ _ _ EqRT' _ Lti)
+            as [pro1 Eqstk1]. rewrite Eqstk' /= in Eqstk1.
+          clear -Eqstk1. destruct stk' as [|? stk1]; [done|].
+          simpl in Eqstk1. simplify_eq. by exists pro1, stk1.
+        * intros (stk' & pm' & pro & Eqstk' & In' & NDIS). simpl in Eqstk'.
+          do 2 (split; [done|]).
+          exists stk'. split; [done|].
+          have EqRT':
+            retag_ref σt.(sst) σt.(scs) σt.(snp) l otg T SharedRef None =
+              Some (Tagged tnew, α', S tnew) by done.
+          have HTOP := (tag_on_top_retag_ref_shr _ _ _ _ _ _ _ _ _ _ FRZ EqRT' _ Lti).
+          clear -HTOP Eqstk'.
+          apply tag_on_top_shr_active_SRO in HTOP as (?&?&?). by simplify_eq.
       + rewrite res_tag_lookup_ne; [|done].
         rewrite right_id => Eqt.
         (* TODO: duplicate proof with retag_public *)
@@ -1553,7 +1568,7 @@ Proof.
             apply tagKindR_local_exclusive_r. }
           move : NEq Eqstk.
           by eapply retag_Some_local.
-        * destruct PRE as (stk' & pm & pro & Eqstk' & In' & ND).
+        * destruct PRE as (stk' & pm' & pro & Eqstk' & In' & ND).
           destruct (retag_item_in _ _ _ _ _ _ _ _ _ _ _ _ EqRT _ _ t' _ Eqstk' In')
             as (stk & Eqstk & In); [done..|].
           destruct PINV as (Eqss & Eqst & HP); [simpl; naive_solver|].
@@ -1562,11 +1577,11 @@ Proof.
           destruct HP as (stk1 & Eqstk1 & opro1 & HTOP).
           rewrite Eqstk1 in Eqstk. simplify_eq.
           have ND2 := proj2 (state_wf_stack_item _ WFT _ _ Eqstk1).
-          assert (opro1 = pro ∧ pm = Unique) as [].
+          assert (opro1 = pro ∧ pm' = Unique) as [].
           { have In1 : mkItem Unique (Tagged t') opro1 ∈ stk.
             { destruct HTOP as [? HTOP]. rewrite HTOP. by left. }
             have EQ := stack_item_tagged_NoDup_eq _ _ _ t' ND2 In1 In eq_refl eq_refl.
-            by simplify_eq. } subst opro1 pm. exists pro.
+            by simplify_eq. } subst opro1 pm'. exists pro.
           have NEq: Tagged t' ≠ otg.
           { intros ?. subst otg. simpl in AREL.
             destruct AREL as (_ & _ & ht & Eqh').
@@ -1575,7 +1590,7 @@ Proof.
           move : HTOP.
           by apply (retag_item_head_preserving _ _ _ _ _ _ _ _ _ _ _ _ EqRT
                       _ _ _ _ _ ND2 Eqstk1 Eqstk' NEq In').
-        * destruct PRE as (stk' & pm & pro & Eqstk' & In' & ND).
+        * destruct PRE as (stk' & pm' & pro & Eqstk' & In' & ND).
           destruct (retag_item_in _ _ _ _ _ _ _ _ _ _ _ _ EqRT _ _ t' _ Eqstk' In')
             as (stk & Eqstk & In); [done..|].
           destruct PINV as (Eqss & Eqst & HP); [simpl; naive_solver|].
@@ -1594,10 +1609,10 @@ Proof.
       intros tc L EqL. specialize (CINV _ _ EqL) as [Ltp CINV].
       split; [by simpl; lia|].
       intros l1 InL. simpl.
-      specialize (CINV _ InL) as (stk & pm & Eqstk & In & NDIS).
+      specialize (CINV _ InL) as (stk & pm' & Eqstk & In & NDIS).
       destruct (retag_item_active_preserving _ _ _ _ _ _ _ _ _ _ _ _ EqRT
                     _ _ _ _ _ Eqstk Ltc In) as (stk' & Eqstk' & In').
-      by exists stk', pm.
+      by exists stk', pm'.
     - (* TODO: duplicate proof with retag_public *)
       rewrite cmra_assoc. do 4 (split; [done|]).
       move => l' /PUBP [PB|PV].
@@ -1611,8 +1626,12 @@ Proof.
   intros i Lti. split.
   - clear -Lti EqlT.
     apply write_hpl_is_Some. by rewrite EqlT.
-  - move : Lti. eapply tag_on_top_retag_ref_uniq. exact EqRT.
+  - move : Lti.
+    destruct mut.
+    + eapply tag_on_top_retag_ref_uniq. exact EqRT.
+    + eapply tag_on_top_retag_ref_shr; [done|exact EqRT].
 Qed.
+
 
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :
