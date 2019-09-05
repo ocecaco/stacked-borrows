@@ -111,7 +111,7 @@ Lemma res_end_call_sat r c :
 Proof.
   intros Hval [r' EQ]. rewrite /end_call_sat EQ.
   destruct r' as [[tmap' cmap'] lmap'].
-  rewrite /res_cs !pair_op /= /rcm /= /to_cmUR fmap_insert fmap_empty insert_empty.
+  rewrite /res_cs -pair_op /= /rcm /= /to_cmUR fmap_insert fmap_empty insert_empty.
   apply cmap_lookup_op_l_equiv; last by rewrite lookup_insert.
   destruct r as [tmap cmap].
   destruct EQ as [EQt EQc]. simplify_eq/=.
