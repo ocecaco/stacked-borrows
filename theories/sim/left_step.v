@@ -52,6 +52,7 @@ Proof.
   move : STEPT. rewrite <-into_result. by rewrite to_of_result.
 Qed.
 
+(* Unique/Local copy *)
 Lemma sim_body_copy_local_unique_l
   fs ft (r r': resUR) (h: heaplet) n (l: loc) t k T (ss st: scalar) et σs σt Φ
   (LU: k = tkLocal ∨ k = tkUnique) :
@@ -169,6 +170,87 @@ Lemma sim_body_copy_local_l fs ft r r' n l tg ty ss st et σs σt Φ :
 Proof.
   intros Hty Hr. eapply sim_body_copy_local_unique_l; [by left|..]; eauto.
   by rewrite lookup_insert.
+Qed.
+
+(* Public SRO copy *)
+Lemma sim_body_copy_public_l
+  fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (ss st: scalar) et σs σt Φ :
+  tsize T = 1%nat →
+  r ≡ r' ⋅ res_tag t tkPub h →
+  h !! l = Some (ss,st) →
+  (∀ r', arel r' ss st → r ⋅ r' ⊨{n,fs,ft} (#[ss], σs) ≥ (et, σt) : Φ : Prop) →
+  r ⊨{n,fs,ft} (Copy (Place l (Tagged t) T), σs) ≥ (et, σt) : Φ.
+Proof.
+  intros LenT Eqr Eqs CONT. pfold. intros NT. intros.
+  have WSAT1 := WSAT. (* backup *)
+
+  (* making a step *)
+  edestruct (NT (Copy (Place l (Tagged t) T)) σs) as [[]|[es' [σs' STEPS]]];
+    [done..|].
+  destruct (tstep_copy_inv _ (PlaceR _ _ _) _ _ _ STEPS)
+      as (l'&t'&T'& vs & α' & EqH & ? & Eqvs & Eqα' & ?).
+  symmetry in EqH. simplify_eq.
+
+  rewrite LenT read_mem_equation_1 /= in Eqvs.
+  destruct (σs.(shp) !! l) as [s'|] eqn:Eqs'; [|done].
+  simpl in Eqvs. simplify_eq.
+
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  (* some lookup properties *)
+  have [h' HLtrf]: ∃ h', (r_f ⋅ r).(rtm) !! t ≡
+    Some (to_tgkR tkPub, h' ⋅ (to_agree <$> h)).
+  { setoid_rewrite Eqr. setoid_rewrite cmra_assoc.
+    apply tmap_lookup_op_r_equiv_pub.
+    - move : VALID. rewrite Eqr cmra_assoc => VALID. apply VALID.
+    - rewrite res_tag_lookup //. }
+  have HLl : (h' ⋅ (to_agree <$> h)) !! l ≡ Some (to_agree (ss, st)).
+  { move : (proj1 VALID t). rewrite HLtrf. move => [_ /= /(_ l)].
+    rewrite lookup_op lookup_fmap Eqs /=.
+    destruct (h' !! l) as [sst|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
+    rewrite -Some_op => /agree_op_inv ->. by rewrite agree_idemp. }
+
+  (* Public: stack unchanged *)
+  destruct (for_each_lookup_case_2 _ _ _ _ _ Eqα') as [EQ1 _].
+  specialize (EQ1 O) as (stk & stk' & Eqstk & Eqstk' & ACC1); [rewrite LenT; lia|].
+  rewrite shift_loc_0_nat in Eqstk, Eqstk'.
+  move : ACC1. case access1 as [[n1 stk1]|] eqn:ACC1; [|done].
+  simpl. intros Eqs1. symmetry in Eqs1. simplify_eq.
+
+  destruct SREL as (Eqst&Eqnp&Eqcs&Eqnc&AREL).
+  rewrite Eqst in Eqstk. rewrite Eqcs in ACC1.
+
+  destruct (public_read_head _ _ _ _ _ _ _ _ _ _ _ Eqstk ACC1 WSAT1 HLtrf HLl)
+    as (it & Init & Eqti & NDIS & HDi & Eqhpt & Eqhps & AREL').
+  apply arel_persistent in AREL'.
+  rewrite Eqs' in Eqhps. simplify_eq.
+
+  have ?: α' = σt.(sst).
+  { move : Eqα'.
+    rewrite LenT /= /memory_read /= /= shift_loc_0_nat Eqst Eqstk /= Eqcs ACC1 /=.
+    destruct (tag_SRO_top_access σt.(scs) stk t HDi) as [ns Eqss].
+    rewrite ACC1 in Eqss. simplify_eq. rewrite insert_id //. by inversion 1. }
+  subst α'. rewrite Eqstk in Eqstk'. symmetry in Eqstk'. simplify_eq.
+  rewrite (_: mkState σs.(shp) σt.(sst) σs.(scs) σs.(snp) σs.(snc) = σs) in STEPS;
+    last first. { rewrite -Eqst. by destruct σs. }
+
+  have STEPSS: (Copy (Place l (Tagged t) T), σs) ~{fs}~>* (#[ss]%E, σs)
+    by apply rtc_once.
+  have NT' := never_stuck_tstep_once _ _ _ _ _ STEPS NT.
+  (* TODO: the following is the same in most proofs, generalize it *)
+  specialize (CONT _ AREL').
+  punfold CONT.
+  move : WSAT1. rewrite -(cmra_core_r (r_f ⋅ r)) -cmra_assoc. intros WSAT.
+  specialize (CONT NT' _ WSAT) as [RE TE ST]. split; [done|..].
+  - intros. specialize (TE _ TERM) as (vs' & σs' & r1 & STEPS' & POST).
+    exists vs', σs', r1. split; [|done]. etrans; eauto.
+  - inversion ST.
+    + constructor 1. intros.
+      destruct (STEP _ _ STEPT) as (es' & σs' & r1 & n' & STEPS' & POST).
+      exists es', σs', r1, n'. split; [|done].
+      left. destruct STEPS' as [?|[]].
+      * eapply tc_rtc_l; eauto.
+      * simplify_eq. by apply tc_once.
+    + econstructor 2; eauto. by etrans.
 Qed.
 
 End left.

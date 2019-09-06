@@ -1,4 +1,6 @@
 From stbor.sim Require Import local invariant refl_step.
+From stbor.sim Require Import tactics simple program.
+From stbor.sim Require Import refl_step right_step left_step viewshift.
 
 Set Default Proof Using "Type".
 
@@ -28,4 +30,22 @@ Definition ex2_down_opt : function :=
 
 Lemma ex2_down_sim_fun : ⊨ᶠ ex2_down ≥ ex2_down_opt.
 Proof.
+  apply (sim_fun_simple1 10)=>// fs ft rarg es et arg c LOOK AREL ??.
+  simplify_eq/=.
+  (* Alloc local *)
+  sim_apply sim_simple_alloc_local=> l t /=.
+  sim_apply sim_simple_let=>/=.
+  (* Write local *)
+  sim_apply sim_simple_write_local; [solve_sim..|].
+  intros sarg ->.
+  sim_apply sim_simple_let=>/=.
+  apply: sim_simple_result.
+  (* Retag a local place *)
+  sim_apply sim_simple_let=>/=.
+  apply Forall2_cons_inv in AREL as [AREL _].
+  sim_apply sim_simple_let=>/=.
+    (* Copy local place *)
+    sim_apply sim_simple_copy_local; [solve_sim..|].
+    apply sim_simple_valid_post.
+    apply: sim_simple_result. simpl. intros VALID.
 Abort.

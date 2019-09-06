@@ -587,3 +587,14 @@ Proof.
   by apply op_local_update_frame, res_tag_uniq_dealloc_local_update.
 Qed.
 
+Lemma res_tag_public_dup t hplt:
+  res_tag t tkPub hplt ≡ res_tag t tkPub hplt ⋅ res_tag t tkPub hplt.
+Proof.
+  split.
+  - intros t'. rewrite lookup_op. case (decide (t' = t)) => ?.
+    + subst t'. rewrite res_tag_lookup.
+      rewrite -Some_op -pair_op.
+      rewrite -{2}(heaplet_core (to_agree <$> hplt)) cmra_core_l //.
+    + rewrite res_tag_lookup_ne // right_id //.
+  - rewrite /= right_id //.
+Qed.

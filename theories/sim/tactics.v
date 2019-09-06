@@ -133,7 +133,7 @@ Tactic Notation "sim_apply_r" open_constr(lem) :=
   end.
 
 Tactic Notation "sim_bind_l" open_constr(efoc) :=
-  match goal with 
+  match goal with
   | |- _ ⊨{_,_,_} (?es, _) ≥ (?et, _) : _ =>
     reshape_expr es ltac:(fun Ks es =>
       unify es efoc;

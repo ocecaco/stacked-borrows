@@ -44,7 +44,7 @@ Proof.
     intros. by eapply POST.
 Qed.
 
-
+(* Unique/Local copy *)
 Lemma sim_body_copy_local_unique_r
   fs ft (r r': resUR) (h: heaplet) n (l: loc) t k T (ss st: scalar) es σs σt Φ
   (LU: k = tkLocal ∨ k = tkUnique) :
@@ -60,18 +60,15 @@ Proof.
 
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
 
-  (* some lookup properties *)
-  have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
-  have HLtr: r.(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
-  { rewrite Eqr. destruct LU; subst k.
-    - eapply tmap_lookup_op_local_included; [apply VALIDr|apply cmra_included_r|].
-      rewrite res_tag_lookup //.
-    - eapply tmap_lookup_op_uniq_included; [apply VALIDr|apply cmra_included_r|].
-      rewrite res_tag_lookup //. }
   have HLtrf: (r_f ⋅ r).(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
-  { destruct LU; subst k.
-    - apply tmap_lookup_op_r_local_equiv; [apply VALID|done].
-    - apply tmap_lookup_op_r_uniq_equiv; [apply VALID|done]. }
+  { rewrite Eqr cmra_assoc.
+    destruct LU; subst k.
+    - apply tmap_lookup_op_r_local_equiv.
+      + move : VALID. rewrite Eqr cmra_assoc => VALID. apply VALID.
+      + rewrite res_tag_lookup //.
+    - apply tmap_lookup_op_r_uniq_equiv.
+      + move : VALID. rewrite Eqr cmra_assoc => VALID. apply VALID.
+      + rewrite res_tag_lookup //. }
 
   (* we can make the read in tgt because tag_on_top *)
   destruct TOP as [opro TOP].
@@ -150,6 +147,74 @@ Proof.
   eapply (sim_body_copy_local_unique_r _ _ _ r'); [by left|..] ; eauto.
   - by instantiate (1:= (write_hpl l [(ss, st)] ∅)).
   - by rewrite lookup_insert.
+Qed.
+
+(* Public SRO copy *)
+Lemma sim_body_copy_SRO_public_r
+  fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (ss st: scalar) es σs σt Φ :
+  tsize T = 1%nat →
+  tag_on_top σt.(sst) l t SharedReadOnly →
+  r ≡ r' ⋅ res_tag t tkPub h →
+  h !! l = Some (ss, st) →
+  (r ⊨{n,fs,ft} (es, σs) ≥ (#[st], σt) : Φ : Prop) →
+  r ⊨{S n,fs,ft} (es, σs) ≥ (Copy (Place l (Tagged t) T), σt) : Φ.
+Proof.
+  intros LenT TOP Eqr Eqs CONT. pfold.
+  intros NT r_f WSAT. have WSAT1 := WSAT.
+
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+
+  (* some lookup properties *)
+  have [h' HLtrf]: ∃ h', (r_f ⋅ r).(rtm) !! t ≡
+    Some (to_tgkR tkPub, h' ⋅ (to_agree <$> h)).
+  { setoid_rewrite Eqr. setoid_rewrite cmra_assoc.
+    apply tmap_lookup_op_r_equiv_pub.
+    - move : VALID. rewrite Eqr cmra_assoc => VALID. apply VALID.
+    - rewrite res_tag_lookup //. }
+
+  specialize (PINV _ _ _ HLtrf) as [Lt PINV].
+  specialize (PINV l ss st).
+
+  (* we can make the read in tgt because tag_on_top *)
+  have HLl : (h' ⋅ (to_agree <$> h)) !! l ≡ Some (to_agree (ss, st)).
+  { move : (proj1 VALID t). rewrite HLtrf. move => [_ /= /(_ l)].
+    rewrite lookup_op lookup_fmap Eqs /=.
+    destruct (h' !! l) as [sst|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
+    rewrite -Some_op => /agree_op_inv ->. by rewrite agree_idemp. }
+
+  destruct TOP as [opro TOP].
+  destruct (σt.(sst) !! l) as [stk|] eqn:Eqstk; [|done]. simpl in TOP.
+  specialize (PINV HLl) as [Eqss [? HD]].
+  { simpl.
+    exists stk, SharedReadOnly, opro. split; last split; [done| |done].
+    destruct stk; [done|]. simpl in TOP. simplify_eq. by left. }
+
+  destruct (tag_SRO_top_access σt.(scs) stk t)
+      as [ns Eqstk'].
+  { clear -Eqstk TOP.
+    destruct (tag_on_top_shr_active_SRO σt.(sst) l t) as (stk1 & Eq1 & ?).
+    - eexists. rewrite Eqstk //.
+    - rewrite Eq1 in Eqstk. by simplify_eq. }
+
+  have Eqα : memory_read σt.(sst) σt.(scs) l (Tagged t) (tsize T) = Some σt.(sst).
+  { rewrite LenT /memory_read /= shift_loc_0_nat Eqstk /= Eqstk' /= insert_id //. }
+  have READ: read_mem l (tsize T) σt.(shp) = Some [st].
+  { rewrite LenT read_mem_equation_1 /= Eqss //. }
+
+  have STEPT: (Copy (Place l (Tagged t) T), σt) ~{ft}~> ((#[st])%E, σt).
+  { destruct σt.
+    eapply (head_step_fill_tstep _ []); eapply copy_head_step'; eauto. }
+
+  split; [right; by do 2 eexists|done|].
+  constructor 1. intros et' σt' STEPT'.
+  destruct (tstep_copy_inv _ (PlaceR _ _ _) _ _ _ STEPT')
+      as (l1&t1&T1& vs1 & α1 & EqH & ? & Eqvs & Eqα' & ?).
+  symmetry in EqH. simplify_eq.
+  have Eqσt: mkState σt.(shp) σt.(sst) σt.(scs) σt.(snp) σt.(snc) = σt
+    by destruct σt. rewrite Eqσt. rewrite Eqσt in STEPT'. clear Eqσt.
+  exists es, σs, r, n. split; last split; [|done|].
+  - right. split; [lia|done].
+  - by left.
 Qed.
 
 End right.

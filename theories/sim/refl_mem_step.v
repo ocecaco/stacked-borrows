@@ -1407,7 +1407,6 @@ Proof.
   - by apply IH.
 Qed.
 
-
 Lemma sim_body_retag_ref_default fs ft mut r n ptr T σs σt Φ :
   (0 < tsize T)%nat →
   let pk : pointer_kind := (RefPtr mut) in
@@ -1429,6 +1428,7 @@ Lemma sim_body_retag_ref_default fs ft mut r n ptr T σs σt Φ :
     let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
     let s_new := ScPtr l (Tagged tnew) in
     let tk := match mut with Mutable => tkUnique | Immutable => tkPub end in
+    (if mut is Immutable then arel (res_tag tnew tk hplt) s_new s_new else True) →
     Φ (r ⋅ res_tag tnew tk hplt) n (ValR [s_new]) σs' (ValR [s_new]) σt') →
   r ⊨{n,fs,ft}
     (Retag #[ptr] pk T Default, σs) ≥
@@ -1505,13 +1505,12 @@ Proof.
   exists (#[ScPtr l (Tagged tnew)])%V, σs', r', n.
   split; last split.
   { left. by constructor. }
-  { clear POST.
+  { clear POST. rewrite /r' cmra_assoc.
     split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
-    - by rewrite cmra_assoc.
-    - clear STEPS STEPT.
-      rewrite cmra_assoc. intros t' k' h'. rewrite lookup_op.
+    - done.
+    - clear STEPS STEPT. intros t' k' h'. rewrite lookup_op.
       case (decide (t' = tnew)) => ?; [subst t'|].
       + rewrite res_tag_lookup HNP left_id.
         intros [Eq1%leibniz_equiv_iff Eq2]%Some_equiv_inj.
@@ -1603,7 +1602,7 @@ Proof.
           by apply (retag_item_active_SRO_preserving _ _ _ _ _ _ _ _ _ _ _ _ EqRT
                       _ _ _ _ _ ND2 Eqstk1 Eqstk' In In').
     - (* TODO: duplicate proof with retag_public *)
-      intros c1 Tc. rewrite cmra_assoc Eqc'. intros Eqc.
+      intros c1 Tc. rewrite Eqc'. intros Eqc.
       specialize (CINV _ _ Eqc) as [Ltc CINV].
       split; [done|].
       intros tc L EqL. specialize (CINV _ _ EqL) as [Ltp CINV].
@@ -1614,22 +1613,23 @@ Proof.
                     _ _ _ _ _ Eqstk Ltc In) as (stk' & Eqstk' & In').
       by exists stk', pm'.
     - (* TODO: duplicate proof with retag_public *)
-      rewrite cmra_assoc. do 4 (split; [done|]).
+      do 4 (split; [done|]).
       move => l' /PUBP [PB|PV].
-      + left.  move => ? /PB [? [? AREL']]. eexists. split; [done|].
+      + left. move => ? /PB [? [? AREL']]. eexists. split; [done|].
         eapply arel_mono; [done|..|exact AREL']. apply cmra_included_l.
       + right. destruct PV as (t & k1 & h1 & Eqt & ?).
         exists t, k1, h1. setoid_rewrite Eqc'. split; [|done].
         by apply HLt. }
   left.
   apply: sim_body_result. intros VALIDr. eapply POST; eauto.
-  intros i Lti. split.
-  - clear -Lti EqlT.
-    apply write_hpl_is_Some. by rewrite EqlT.
-  - move : Lti.
-    destruct mut.
-    + eapply tag_on_top_retag_ref_uniq. exact EqRT.
-    + eapply tag_on_top_retag_ref_shr; [done|exact EqRT].
+  - intros i Lti. split.
+    + clear -Lti EqlT. apply write_hpl_is_Some. by rewrite EqlT.
+    + move : Lti.
+      destruct mut.
+      * eapply tag_on_top_retag_ref_uniq. exact EqRT.
+      * eapply tag_on_top_retag_ref_shr; [done|exact EqRT].
+  - destruct mut; [done|]. simpl. do 2 (split; [done|]).
+    rewrite lookup_insert. by eexists.
 Qed.
 
 

@@ -163,3 +163,43 @@ Proof.
       by inversion Eq. } subst opro.
     by eexists.
 Qed.
+
+Lemma public_read_head r σs (σt: state) l stk n' stk' t ss st h:
+  σt.(sst) !! l = Some stk →
+  access1 stk AccessRead (Tagged t) σt.(scs) = Some (n', stk') →
+  wsat r σs σt →
+  r.(rtm) !! t ≡ Some (to_tgkR tkPub, h) →
+  h !! l ≡ Some $ to_agree (ss,st) →
+  ∃ it, it ∈ stk ∧ it.(tg) = Tagged t ∧ it.(perm) ≠ Disabled ∧
+    t ∈ active_SRO stk ∧
+    σt.(shp) !! l = Some st ∧ σs.(shp) !! l = Some ss ∧ arel r ss st.
+Proof.
+  intros Eqstk ACC WSAT HL Eqs.
+  have WSAT1 := WSAT.
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+  destruct SREL as (Eqst & Eqnp & Eqcs & Eqnc & PV).
+  specialize (PINV _ _ _ HL) as [? PINV].
+  specialize (PINV _ _ _ Eqs).
+  destruct (access1_in_stack _ _ _ _ _ _ ACC) as (it & Init & Eqti & NDIS).
+  destruct PINV as [Eqss [Eqss' HD]].
+  { rewrite /= -Eqti. exists stk, it.(perm), it.(protector).
+    repeat split; [done| |done]. by destruct it. }
+  destruct HD as (stk1 & Eqstk1 & InSRO).
+  rewrite Eqstk1 in Eqstk. simplify_eq.
+  exists it. repeat split; [done..|].
+  destruct (PV l) as [PB|[t' PR]]; cycle 2.
+  { exfalso.
+    have Eq :=
+      priv_loc_UB_access_eq _ _ AccessRead σs σt t' (Tagged t) _ Eqstk1
+        ltac:(by eexists) WSAT1 PR.
+    simplify_eq.
+    destruct PR as (k1 & h1 & Eqh1 & ? & CASE).
+    move : Eqh1. rewrite HL.
+    rewrite -(left_id None op (Some _)).
+    destruct CASE as [|[]]; subst k1.
+    - apply tagKindR_local_exclusive_r.
+    - apply tagKindR_uniq_exclusive_r. }
+  { rewrite (state_wf_dom _ WFT) elem_of_dom. by eexists. }
+  destruct (PB _ Eqss) as (st' & Eqst' & AREL). rewrite Eqst' in Eqss'.
+  by simplify_eq.
+Qed.
