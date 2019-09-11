@@ -12,7 +12,7 @@ Definition ex2_down : function :=
     let: "x" := new_place (& int) "i" in
     retag_place "x" (RefPtr Immutable) int FnEntry ;;
     let: "v" := Copy *{int} "x" in
-    Call #[ScFnPtr "f"] ["x"] ;;
+    Call #[ScFnPtr "f"] [Copy "x"] ;;
     Free "x" ;; Free "i" ;;
     "v"
     .
@@ -21,7 +21,7 @@ Definition ex2_down_opt : function :=
   fun: ["i"],
     let: "x" := new_place (& int) "i" in
     retag_place "x" (RefPtr Immutable) int FnEntry ;;
-    Call #[ScFnPtr "f"] ["x"] ;;
+    Call #[ScFnPtr "f"] [Copy "x"] ;;
     let: "v" := Copy *{int} "x" in
     Free "x" ;; Free "i" ;;
     "v"

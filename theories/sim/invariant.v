@@ -161,8 +161,8 @@ Proof.
   f_equal. by apply (arel_eq _ _ _ Eq1). by apply IH.
 Qed.
 
-Lemma arel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
-  r1 ≼ r2 → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
+Lemma arel_mono_l (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1.(rtm) ≼ r2.(rtm) → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
 Proof.
   intros Le s1 s2. rewrite /arel.
   destruct s1 as [| |l1 t1|], s2 as [| |l2 t2|]; auto.
@@ -170,7 +170,7 @@ Proof.
   destruct t2 as [t2|]; [|done].
   destruct PV as [h HL].
   have HL1: Some (to_tgkR tkPub, h) ≼ r2.(rtm) !! t2.
-  { rewrite -HL. by apply lookup_included, prod_included. }
+  { rewrite -HL. by apply lookup_included. }
   apply option_included in HL1 as [?|[th1 [[tk2 h2] [? [Eq1 INCL]]]]]; [done|].
   simplify_eq. exists h2. rewrite Eq1 (_: tk2 ≡ to_tgkR tkPub) //.
   apply tagKindR_incl_eq; [done|].
@@ -187,6 +187,12 @@ Proof.
     apply csum_included.
     right. right. exists (Cinr ()), (Cinr ()).
     do 2 (split; [done|]). apply csum_included. naive_solver.
+Qed.
+
+Lemma arel_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
+Proof.
+  intros Le. apply arel_mono_l; by [apply VAL|apply prod_included].
 Qed.
 
 Lemma vrel_mono (r1 r2 : resUR) (VAL: ✓ r2) :

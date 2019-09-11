@@ -598,3 +598,25 @@ Proof.
     + rewrite res_tag_lookup_ne // right_id //.
   - rewrite /= right_id //.
 Qed.
+
+(* res_cs update *)
+Lemma res_cs_local_update r c Ts Ts'
+  (EqN: r.(rcm) !! c = None) :
+  (r ⋅ res_cs c Ts, res_cs c Ts) ~l~> (r ⋅ res_cs c Ts', res_cs c Ts').
+Proof.
+  apply prod_local_update_2.
+  rewrite /= /to_cmUR 2!fmap_insert fmap_empty 2!insert_empty.
+  do 2 rewrite (cmra_comm (r).(rcm)) -insert_singleton_op //.
+  rewrite -(insert_insert r.(rcm) c (Excl Ts') (Excl Ts)).
+  eapply (singleton_local_update (<[c := _]> (r.(rcm)) : cmapUR)).
+  - by rewrite lookup_insert.
+  - by apply exclusive_local_update.
+Qed.
+
+Lemma res_cs_lookup (c: call_id) (Ts: tag_locs) :
+  (res_cs c Ts).(rcm) !! c = Some (Excl Ts).
+Proof. by rewrite /= /to_cmUR fmap_insert lookup_insert. Qed.
+
+Lemma res_cs_lookup_ne (c c': call_id) (Ts: tag_locs) (NEQ: c' ≠ c) :
+  (res_cs c Ts).(rcm) !! c' = None.
+Proof. by rewrite /= /to_cmUR fmap_insert lookup_insert_ne. Qed.
