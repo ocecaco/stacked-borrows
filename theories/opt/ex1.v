@@ -13,7 +13,7 @@ Definition ex1_unopt : function :=
     *{int} "x" <- #[42] ;;
     Call #[ScFnPtr "g"] [] ;;
     let: "v" := Copy *{int} "x" in
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
   .
 
@@ -25,7 +25,7 @@ Definition ex1_opt : function :=
     *{int} "x" <- #[42] ;;
     let: "v" := Copy *{int} "x" in
     Call #[ScFnPtr "g"] [] ;;
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
   .
 
@@ -103,12 +103,6 @@ Proof.
   (* Free stuff *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
   sim_apply sim_simple_free_local_1; [solve_sim..|]. simpl.
-  sim_apply sim_simple_let=>/=.
-  sim_apply sim_simple_free_public.
-  { simpl. constructor; [|by constructor].
-    apply: arel_mono; last fast_done.
-    apply: cmra_valid_included; first fast_done.
-    do 3 apply cmra_mono_r. solve_res. solve_res. }
   sim_apply sim_simple_let=>/=.
   (* Finishing up. *)
   apply: sim_simple_result. split.

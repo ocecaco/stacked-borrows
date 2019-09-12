@@ -13,9 +13,9 @@ Definition ex1_down : function :=
     retag_place "x" (RefPtr Mutable) int FnEntry ;;
     let: "v" := Copy *{int} "x" in
     Call #[ScFnPtr "f"] [] ;;
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
-    .
+  .
 
 Definition ex1_down_opt : function :=
   fun: ["i"],
@@ -23,9 +23,9 @@ Definition ex1_down_opt : function :=
     retag_place "x" (RefPtr Mutable) int FnEntry ;;
     Call #[ScFnPtr "f"] [] ;;
     let: "v" := Copy *{int} "x" in
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
-    .
+  .
 
 Lemma ex1_down_sim_fun : ⊨ᶠ ex1_down ≥ ex1_down_opt.
 Proof.
@@ -63,7 +63,8 @@ Proof.
     move=> l' told tnew hplt α' nxtp' r0 ? _ IS_i σs2 σt2 s_new tk _ /=.
     subst sarg.
     specialize (IS_i O ltac:(simpl; lia)). rewrite shift_loc_0_nat in IS_i.
-    destruct IS_i as [(ss & st & IS_i & Eqss & Eqst) TOP].
+    destruct IS_i as [(ss & st & IS_i & Eqss & Eqst & ARELs) TOP].
+    rewrite insert_empty.
     (* Write local *)
     sim_apply sim_body_write_local_1; [solve_sim..|].
     intros s ?. simplify_eq. simpl.
@@ -77,8 +78,9 @@ Proof.
   apply: sim_body_result=>_ /=.
   apply: sim_body_let_l=>/=.
   (* Call *)
-  rewrite -(right_id ε op ( _ ⋅ res_loc _ _ _)).
-  sim_apply (sim_body_step_over_call _ _ _ ε _ (ValR _) [] []); [constructor|done|..].
+  rewrite -(right_id ε op (_ ⋅ res_loc _ _ _)).
+  sim_bind (Call _ _) (Call _ _). (* TODO: sim_apply fails to instantiate evars *)
+  apply (sim_body_step_over_call _ _ _ ε _ (ValR _) [] []); [solve_sim..|].
   move => rf' ? _ _ frs' frt' σs3 σt3 _ /= Eqs1 Eqs2 ? _ _. simplify_eq.
   exists 5%nat.
   apply: sim_body_result=>_ /=.
@@ -90,6 +92,16 @@ Proof.
   sim_apply_r sim_body_deref_r =>/=.
   sim_apply_r sim_body_copy_protected_r;
     [solve_sim..|by rewrite lookup_insert|by eapply elem_of_dom_2|].
-  apply: sim_body_result=>Hval /=.
+  apply: sim_body_result=>_ /=.
   apply: sim_body_let_r=>/=.
+  (* Free stuff *)
+  sim_apply sim_body_free_unique_local_1;
+    [done|rewrite /res_loc /= insert_empty; solve_sim |by left|].
+  simpl => _ _ α4 _.
+  sim_apply sim_body_let=>/=.
+  (* Finishing up. *)
+  apply: sim_body_result => Hval. split.
+  - exists σt.(snc). split; [done|]. admit.
+  - constructor; [|by constructor].
+    move : ARELs. apply arel_mono; [done|solve_res].
 Abort.

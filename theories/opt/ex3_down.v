@@ -12,7 +12,7 @@ Definition ex3_down : function :=
     *{int} "x" <- #[42] ;;
     let: "v" := Call #[ScFnPtr "f"] [] in
     *{int} "x" <- #[13] ;;
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
   .
 
@@ -23,7 +23,7 @@ Definition ex3_down_opt_1 : function :=
     let: "v" := Call #[ScFnPtr "f"] [] in
     *{int} "x" <- #[42] ;;
     *{int} "x" <- #[13] ;;
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
   .
 
@@ -33,9 +33,9 @@ Definition ex3_down_opt_2 : function :=
     retag_place "x" (RefPtr Mutable) int FnEntry ;;
     let: "v" := Call #[ScFnPtr "f"] [] in
     *{int} "x" <- #[13] ;;
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
-  .
+    .
 
 Lemma ex3_down_sim_fun : ⊨ᶠ ex3_down ≥ ex3_down_opt_1.
 Proof.

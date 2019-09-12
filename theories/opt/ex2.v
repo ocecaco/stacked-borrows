@@ -12,7 +12,7 @@ Definition ex2_unopt : function :=
     retag_place "x" (RefPtr Immutable) int Default ;;
     Call #[ScFnPtr "f"] [Copy "x"] ;;
     let: "v" := Copy *{int} "x" in
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
   .
 
@@ -22,7 +22,7 @@ Definition ex2_opt : function :=
     retag_place "x" (RefPtr Immutable) int Default ;;
     let: "v" := Copy *{int} "x" in
     Call #[ScFnPtr "f"] [Copy "x"] ;;
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
   .
 
@@ -50,7 +50,7 @@ Proof.
     (* Retag *)
     sim_apply sim_body_retag_ref_default; [simpl; lia|done| |eauto|..].
     { eapply arel_mono; [done|..|exact AREL]. solve_res. } clear VALID.
-    move=> l' told tnew hplt c' cids α' nxtp' ? _ _ IS_i σs' σt' s_new
+    move=> l' told tnew hplt c' cids α' nxtp' r0 ? _ _ IS_i σs' σt' s_new
       tk ARELn /=. subst sarg.
     specialize (IS_i O ltac:(simpl; lia)). rewrite shift_loc_0_nat in IS_i.
     destruct IS_i as [(ss & st & IS_i & _) TOP].
@@ -73,9 +73,9 @@ Proof.
   sim_apply sim_simple_copy_local; [solve_sim..|].
   apply: sim_simple_result. simpl.
   (* Call *)
-  rewrite (_: rarg ⋅ res_cs c ∅ ⋅ res_tag tnew tk hplt ⋅
+  rewrite (_: rarg ⋅ res_cs c ∅ ⋅ res_tag tnew tk hplt ⋅ r0 ⋅
                 res_loc l [(ScPtr l' (Tagged tnew), ScPtr l' (Tagged tnew))] t
-              ≡ rarg ⋅ res_cs c ∅ ⋅ res_tag tnew tk hplt ⋅
+              ≡ rarg ⋅ res_cs c ∅ ⋅ res_tag tnew tk hplt ⋅ r0 ⋅
                 res_loc l [(ScPtr l' (Tagged tnew), ScPtr l' (Tagged tnew))] t ⋅
                 res_tag tnew tk hplt); last first.
   { rewrite {1}res_tag_public_dup cmra_assoc. solve_res. }
@@ -100,12 +100,6 @@ Proof.
   (* Free stuff *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
   sim_apply sim_simple_free_local_1; [solve_sim..|]. simpl.
-  sim_apply sim_simple_let=>/=.
-  sim_apply sim_simple_free_public.
-  { simpl. constructor; [|by constructor].
-    apply: arel_mono; last fast_done.
-    apply: cmra_valid_included; first fast_done.
-    do 2 apply cmra_mono_r. solve_res. solve_res. }
   sim_apply sim_simple_let=>/=.
   (* Finishing up. *)
   apply: sim_simple_result. split.

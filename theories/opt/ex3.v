@@ -13,7 +13,7 @@ Definition ex3 : function :=
     *{int} "x" <- #[42] ;;
     let: "v" := Call #[ScFnPtr "f"] [] in
     *{int} "x" <- #[13] ;;
-    Free "x" ;; Free "i" ;;
+    Free "x" ;;
     "v"
   .
 
@@ -23,8 +23,9 @@ Definition ex3_opt_1 : function :=
     retag_place "x" (RefPtr Mutable) int FnEntry ;;
     *{int} "x" <- #[42] ;;
     *{int} "x" <- #[13] ;;
-    Call #[ScFnPtr "f"] [] ;;
-    Free "x" ;; Free "i"
+    let: "v" := Call #[ScFnPtr "f"] [] in
+    Free "x" ;;
+    "v"
   .
 
 Definition ex3_opt_2 : function :=
@@ -32,8 +33,9 @@ Definition ex3_opt_2 : function :=
     let: "x" := new_place (&mut int) "i" in
     retag_place "x" (RefPtr Mutable) int FnEntry ;;
     *{int} "x" <- #[13] ;;
-    Call #[ScFnPtr "f"] [] ;;
-    Free "x" ;; Free "i"
+    let: "v" := Call #[ScFnPtr "f"] [] in
+    Free "x" ;;
+    "v"
   .
 
 Lemma ex3_sim_fun : ⊨ᶠ ex3 ≥ ex3_opt_1.
