@@ -593,39 +593,6 @@ Proof.
     rewrite /= /check_protector /= /is_active bool_decide_true //.
 Qed.
 
-(* Property of [t] that when used to access [stk], it will not change [stk] *)
-Definition stack_preserving_tag
-  (stk: stack) (t: ptr_id) (k: access_kind) : Prop :=
-  ∃ n pm, find_granting stk k (Tagged t) = Some (n, pm) ∧
-    match k with
-    | AccessRead => ∀ it, it ∈ take n stk → it.(perm) ≠ Unique
-    | AccessWrite => find_first_write_incompatible (take n stk) pm = Some O
-    end.
-
-Lemma stack_preserving_tag_elim stk t kind :
-  stack_preserving_tag stk t kind →
-  ∀ cids, ∃ n stk',
-  access1 stk kind (Tagged t) cids = Some (n, stk') ∧ stk' = stk.
-Proof.
-Abort.
-
-Lemma stack_preserving_tag_intro stk kind t cids n stk' :
-  access1 stk kind (Tagged t) cids = Some (n, stk') →
-  stack_preserving_tag stk' t kind.
-Proof.
-Abort.
-
-Lemma stack_preserving_tag_unique_head stk t opro kind :
-  is_stack_head (mkItem Unique (Tagged t) opro) stk →
-  stack_preserving_tag stk t kind.
-Proof.
-Abort.
-
-Lemma stack_preserving_tag_active_SRO stk t :
-  t ∈ active_SRO stk → stack_preserving_tag stk t AccessRead.
-Proof.
-Abort.
-
 
 Lemma tag_unique_head_access cids stk t opro kind :
   is_stack_head (mkItem Unique t opro) stk →
@@ -1154,6 +1121,41 @@ Proof.
   destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [_ EQ].
   destruct pk as [[]|[]|]; [| |subst rk..|];
     specialize (EQ _ Lti) as (?&?&?&_); by eexists.
+Qed.
+
+Lemma retag_Some_Ref α nxtp c cids l old rk T mut new α' nxtp'
+  (NZST: (0 < tsize T)%nat)
+  (FRZ: if mut is Immutable then is_freeze T else True)
+  (N2P: rk ≠ TwoPhase) :
+  retag α nxtp cids c l old rk (RefPtr mut) T = Some (new, α', nxtp') →
+  (∀ i, (i < tsize T)%nat → ∃ stk stk',
+        α !! (l +ₗ i) = Some stk ∧
+        α' !! (l +ₗ i) = Some stk' ∧
+        let protector := adding_protector rk c in
+        let pm := if mut is Immutable then SharedReadOnly else Unique in
+        grant stk old (mkItem pm new protector) cids = Some stk').
+Proof.
+  assert (∃ n, tsize T = S n) as [n EqT].
+  { destruct (tsize T); [lia|by eexists]. }
+  rewrite /retag /retag_ref EqT /=; destruct mut; rewrite -EqT.
+  - rewrite (_: is_two_phase rk = false); [|by destruct rk].
+    case reborrow as [α1|] eqn:RB; [|done]. simpl. intros ?. simplify_eq.
+    by apply reborrowN_lookup_case.
+  - case reborrow as [α1|] eqn:RB; [|done]. simpl. intros ?. simplify_eq.
+    move : RB => /=. rewrite visit_freeze_sensitive_is_freeze; [|done].
+    apply reborrowN_lookup_case.
+Qed.
+
+Lemma grant_access1 stk old new cids stk' :
+  new.(perm) ≠ SharedReadWrite →
+  grant stk old new cids = Some stk' →
+  let kind := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
+  is_Some (access1 stk kind old cids).
+Proof.
+  intros NSRW. rewrite /grant.
+  case find_granting as [[]|]; [|done].
+  simpl. destruct new.(perm); [|done|..];
+    (case access1; [by eexists|done]).
 Qed.
 
 Lemma grant_singleton_eq (it it': item) old cids stk' :
@@ -1712,4 +1714,76 @@ Proof.
     case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
     exists stk2. split; [done|].
     move : Inc' GR IN. by apply grant_active_preserving.
+Qed.
+
+Lemma item_insert_dedup_new_elem_of stk new n :
+  new ∈ item_insert_dedup stk new n.
+Proof.
+  destruct n as [|n]; simpl.
+  - destruct stk; simpl.
+    + set_solver.
+    + case decide => ?; [subst; set_solver|set_solver].
+  - case (lookup n) as [?|] eqn:Eq1; case (lookup (S n)) as [?|] eqn:Eq2;
+      [..|set_solver];
+      (case decide => ?; [subst|]).
+    + by eapply elem_of_list_lookup_2.
+    + case decide => ?; [subst|set_solver].
+      by eapply elem_of_list_lookup_2.
+    + by eapply elem_of_list_lookup_2.
+    + set_solver.
+    + by eapply elem_of_list_lookup_2.
+    + set_solver.
+Qed.
+
+Lemma grant_elem_of_SRW stk old new cids stk'
+  (SRW: new.(perm) = SharedReadWrite) :
+  grant stk old new cids = Some stk' → new ∈ stk'.
+Proof.
+  rewrite /grant. case find_granting as [[n1 p1]|]; [|done].
+  rewrite SRW. cbn -[item_insert_dedup].
+  case find_first_write_incompatible as [n2|]; [|done].
+  cbn -[item_insert_dedup]. intros. simplify_eq.
+  by apply item_insert_dedup_new_elem_of.
+Qed.
+
+Lemma grant_elem_of_non_SRW stk old new cids stk'
+  (SRW: new.(perm) ≠ SharedReadWrite) :
+  grant stk old new cids = Some stk' → new ∈ stk'.
+Proof.
+  rewrite /grant. case find_granting as [[n1 p1]|]; [|done].
+  cbn -[item_insert_dedup].
+  destruct new.(perm); [|done|..];
+    (case access1 as [[n2 stk2]|]; [|done]);
+    cbn -[item_insert_dedup]; intros; simplify_eq;
+    by apply item_insert_dedup_new_elem_of.
+Qed.
+
+Lemma grant_elem_of stk old new cids stk' :
+  grant stk old new cids = Some stk' → new ∈ stk'.
+Proof.
+  case (decide (new.(perm) = SharedReadWrite)) => ?.
+  - by apply grant_elem_of_SRW.
+  - by apply grant_elem_of_non_SRW.
+Qed.
+
+Lemma retag_fn_entry_item_active α nxtp c cids l old mut T new α' nxtp' :
+  retag α nxtp cids c l old FnEntry (RefPtr mut) T = Some (new, α', nxtp') →
+  ∀ i, (i < tsize T)%nat → ∃ stk' pm, α' !! (l +ₗ i) = Some stk' ∧
+    mkItem pm new (Some c) ∈ stk' ∧ pm ≠ Disabled.
+Proof.
+  intros RT i Lti.
+  destruct (retag_Some _ _ _ _ _ _ _ _ _ _ _ _ RT) as [_ EQ].
+  assert (∃ sz, tsize T = S sz) as [sz Eqsz].
+  { destruct (tsize T); [lia|by eexists]. }
+  move : RT. rewrite /retag /= /retag_ref Eqsz.
+  destruct mut.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & GR).
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    exists stk2, Unique. split; last split; [done| |done].
+    move : GR. by apply grant_elem_of.
+  - specialize (EQ _ Lti) as (stk1 & stk2 & Eq1 & Eq2 & b & GR).
+    case reborrow as [α1|]; [|done]. simpl. intros ?. simplify_eq.
+    exists stk2, (if b then SharedReadOnly else SharedReadWrite).
+    split; last split; [done| |by destruct b].
+    move : GR. by apply grant_elem_of.
 Qed.

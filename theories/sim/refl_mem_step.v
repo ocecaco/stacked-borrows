@@ -78,16 +78,16 @@ Proof.
         intros [Eqk1 Eqh1]%Some_equiv_inj. simpl in Eqk1, Eqh1.
         intros l1 ss1 st1. rewrite -Eqh1 /to_hplR lookup_fmap.
         destruct (write_hpl_lookup_case l vst ∅ l1)
-          as [(i & Lti & ? & Eql1)|(NEQl1 & Eql1)].
-        * subst l1. rewrite Eql1. rewrite repeat_length in Lti.
-          rewrite (repeat_lookup_lt_length _ _ _ Lti) /=.
-          intros ?%Some_equiv_inj%to_agree_inj. simplify_eq.
-          rewrite (HLmt1 _ Lti) (HLms1 _ Lti).
-          intros INVPR. do 2 (split; [done|]). destruct k1.
-          { by rewrite /= (HLst1 _ Lti). }
-          { move : INVPR. simpl. naive_solver. }
-          { by inversion Eqk1. }
-        * rewrite Eql1 lookup_empty. inversion 1.
+          as [(i & Lti & ? & Eql1)|(NEQl1 & Eql1)]; last first.
+        { rewrite Eql1 lookup_empty. inversion 1. }
+        subst l1. rewrite Eql1. rewrite repeat_length in Lti.
+        rewrite (repeat_lookup_lt_length _ _ _ Lti) /=.
+        intros ?%Some_equiv_inj%to_agree_inj. simplify_eq.
+        rewrite (HLmt1 _ Lti) (HLms1 _ Lti).
+        intros INVPR. do 2 (split; [done|]). destruct k1.
+        * by rewrite /= (HLst1 _ Lti).
+        * move : INVPR. simpl. naive_solver.
+        * by inversion Eqk1.
       + intros Eqh'.
         have Eqh1: (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tgkR k1, h1).
         { move : Eqh'. rewrite lookup_op lookup_insert_ne // right_id //. }
@@ -1414,22 +1414,24 @@ Lemma sim_body_retag_ref_default fs ft mut r n ptr T σs σt Φ :
   (if mut is Immutable then is_freeze T else True) →
   (* Ptr(l,otg) comes from the arguments, so [otg] must be a public tag. *)
   arel r ptr ptr →
-  (∀ l told tnew hplt c cids α' nxtp',
+  (∀ l told tnew hplt c cids α' nxtp' r0,
     ptr = ScPtr l told →
     σt.(scs) = c :: cids →
     retag σt.(sst) σt.(snp) σt.(scs) c l told Default pk T
       = Some ((Tagged tnew), α', nxtp') →
     (* [hplt] contains all [l +ₗ i]'s and the new tag [tnew] is on top of the
-      stack for each [l +ₗ i].
-      TODO: we can also specify that [hplt] knows the values of [l +ₗ i]'s. *)
+      stack for each [l +ₗ i]. *)
     (∀ i: nat, (i < tsize T)%nat →
-      is_Some $ hplt !! (l +ₗ i) ∧ tag_on_top α' (l +ₗ i) tnew pm) →
+      (∃ ss st, hplt !! (l +ₗ i) = Some (ss, st) ∧
+        σs.(shp) !! (l +ₗ i) = Some ss ∧ σt.(shp) !! (l +ₗ i) = Some st ∧
+        arel r0 ss st) ∧
+      tag_on_top α' (l +ₗ i) tnew pm) →
     let σs' := mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc) in
     let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
     let s_new := ScPtr l (Tagged tnew) in
     let tk := match mut with Mutable => tkUnique | Immutable => tkPub end in
     (if mut is Immutable then arel (res_tag tnew tk hplt) s_new s_new else True) →
-    Φ (r ⋅ res_tag tnew tk hplt) n (ValR [s_new]) σs' (ValR [s_new]) σt') →
+    Φ (r ⋅ res_tag tnew tk hplt ⋅ r0) n (ValR [s_new]) σs' (ValR [s_new]) σt') →
   r ⊨{n,fs,ft}
     (Retag #[ptr] pk T Default, σs) ≥
     (Retag #[ptr] pk T Default, σt) : Φ.
@@ -1485,6 +1487,12 @@ Proof.
   set hplt : heaplet := write_hpl l (combine vs vt) ∅.
   set tk := match mut with Mutable => tkUnique | Immutable => tkPub end.
   set r' : resUR := r ⋅ res_tag tnew tk hplt.
+  set r0 : resUR := (core ((r_f ⋅ r).(rtm)), ε).
+  have Eqr': r_f ⋅ (r' ⋅ r0) ≡ r_f ⋅ r'.
+  { rewrite /r' /r0 !cmra_assoc /=.
+    split; simpl; [|by rewrite right_id].
+    by rewrite -(cmra_assoc (r_f.1 ⋅ r.1))
+        (cmra_comm {[ _ := _ ]} (core (r_f.1 ⋅ r.1))) cmra_assoc cmra_core_r. }
 
   have HNP := wsat_tmap_nxtp _ _ _ WSAT1.
   have VALID': ✓ (r_f ⋅ r ⋅ res_tag tnew tk hplt).
@@ -1502,10 +1510,10 @@ Proof.
 
   clear NT.
 
-  exists (#[ScPtr l (Tagged tnew)])%V, σs', r', n.
+  exists (#[ScPtr l (Tagged tnew)])%V, σs', (r' ⋅ r0), n.
   split; last split.
   { left. by constructor. }
-  { clear POST. rewrite /r' cmra_assoc.
+  { clear POST. rewrite Eqr' /r' cmra_assoc.
     split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
@@ -1623,7 +1631,28 @@ Proof.
   left.
   apply: sim_body_result. intros VALIDr. eapply POST; eauto.
   - intros i Lti. split.
-    + clear -Lti EqlT. apply write_hpl_is_Some. by rewrite EqlT.
+    + have Lti': (i < length (combine vs vt))%nat by rewrite EqlT.
+      destruct (write_hpl_is_Some l (combine vs vt) ∅ _ Lti') as [[ss st] Eqss].
+      exists ss, st. split; [done|].
+      destruct (write_hpl_lookup l (combine vs vt) ∅) as [EQ _].
+      rewrite (EQ _ Lti') in Eqss.
+      apply lookup_combine_Some_eq in Eqss as [Eqvs1 Eqvt1].
+      specialize (Eqshp  _ Lti). rewrite Eqvs1 in Eqshp.
+      specialize (Eqthp  _ Lti). rewrite Eqvt1 in Eqthp.
+      do 2 (split; [done|]).
+      destruct (PUBP (l +ₗ i)) as [PB|[t' PV]].
+      * by eapply elem_of_dom_2.
+      * specialize (PB _ Eqthp) as (ss1 & Eqss1 & AREL1).
+        clear -Eqshp Eqss1 AREL1 VALIDr.
+        rewrite Eqss1 in Eqshp. simplify_eq. apply arel_persistent in AREL1.
+        move : AREL1. apply arel_mono_l; [|done].
+        apply (cmra_valid_included _ _ VALIDr), cmra_included_r.
+      * exfalso.
+        apply (priv_loc_UB_retag_access_eq _ _ _ _ _ _ _ _ _ Default _ _ FRZ
+                ltac:(done) EqRT WSAT1 _ _ Lti PV).
+        clear -VALID AREL.
+        apply (arel_mono _ _ VALID) in AREL; [|apply cmra_included_r].
+        move : AREL => [_ [_ //]].
     + move : Lti.
       destruct mut.
       * eapply tag_on_top_retag_ref_uniq. exact EqRT.
@@ -1641,21 +1670,23 @@ Lemma sim_body_retag_ref_fn_entry n fs ft mut r r' c cids Ts ptr T σs σt Φ :
   (if mut is Immutable then is_freeze T else True) →
   (* Ptr(l,otg) comes from the arguments, so [otg] must be a public tag. *)
   arel r ptr ptr →
-  (∀ l told tnew hplt α' nxtp',
+  (∀ l told tnew hplt α' nxtp' r0,
     ptr = ScPtr l told →
     retag σt.(sst) σt.(snp) σt.(scs) c l told FnEntry pk T
       = Some ((Tagged tnew), α', nxtp') →
     (* [hplt] contains all [l +ₗ i]'s and the new tag [tnew] is on top of the
-      stack for each [l +ₗ i].
-      TODO: we can also specify that [hplt] knows the values of [l +ₗ i]'s. *)
+      stack for each [l +ₗ i]. *)
     (∀ i: nat, (i < tsize T)%nat →
-      is_Some $ hplt !! (l +ₗ i) ∧ tag_on_top α' (l +ₗ i) tnew pm) →
+      (∃ ss st, hplt !! (l +ₗ i) = Some (ss, st) ∧
+        σs.(shp) !! (l +ₗ i) = Some ss ∧ σt.(shp) !! (l +ₗ i) = Some st ∧
+        arel r0 ss st) ∧
+      tag_on_top α' (l +ₗ i) tnew pm) →
     let σs' := mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc) in
     let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
     let s_new := ScPtr l (Tagged tnew) in
     let tk := match mut with Mutable => tkUnique | Immutable => tkPub end in
     (if mut is Immutable then arel (res_tag tnew tk hplt) s_new s_new else True) →
-    Φ (r' ⋅ res_cs c (<[tnew := dom (gset loc) hplt]> Ts) ⋅ res_tag tnew tk hplt)
+    Φ (r' ⋅ res_cs c (<[tnew := dom (gset loc) hplt]> Ts) ⋅ res_tag tnew tk hplt ⋅ r0)
       n (ValR [s_new]) σs' (ValR [s_new]) σt') →
   r ⊨{n,fs,ft}
     (Retag #[ptr] pk T FnEntry, σs) ≥
@@ -1718,8 +1749,14 @@ Proof.
   set tnew := σt.(snp).
   set hplt : heaplet := write_hpl l (combine vs vt) ∅.
   set tk := match mut with Mutable => tkUnique | Immutable => tkPub end.
+  set r0 : resUR := (core ((r_f ⋅ r).(rtm)), ε).
   set rn : resUR :=
     r' ⋅ res_cs c (<[tnew := dom (gset loc) hplt]> Ts) ⋅ res_tag tnew tk hplt.
+  have Eqrn: r_f ⋅ (rn ⋅ r0) ≡ r_f ⋅ rn.
+  { rewrite /rn /r0 !cmra_assoc Eqr /= right_id.
+    split; simpl; [|by rewrite right_id].
+    by rewrite right_id -(cmra_assoc (r_f.1 ⋅ r'.1))
+        (cmra_comm {[ _ := _ ]} (core (r_f.1 ⋅ r'.1))) cmra_assoc cmra_core_r. }
 
   have HNP := wsat_tmap_nxtp _ _ _ WSAT1.
   have HNP1 : (r_f ⋅ r').(rtm) !! tnew = None.
@@ -1750,10 +1787,10 @@ Proof.
 
   clear NT.
 
-  exists (#[ScPtr l (Tagged tnew)])%V, σs', rn, n.
+  exists (#[ScPtr l (Tagged tnew)])%V, σs', (rn ⋅ r0), n.
   split; last split.
   { left. by constructor. }
-  { clear POST. rewrite /rn 2!cmra_assoc.
+  { clear POST. rewrite Eqrn /rn 2!cmra_assoc.
     split; last split; last split; last split; last split.
     - by apply (tstep_wf _ _ _ STEPS WFS).
     - by apply (tstep_wf _ _ _ STEPT WFT).
@@ -1862,7 +1899,10 @@ Proof.
         case (decide (tc = tnew)) => ?; [subst tc|].
         * rewrite lookup_insert. intros ?%Some_inj. subst L.
           split; [simpl; lia|].
-          admit.
+          intros l1. rewrite -write_hpl_elem_of_dom_from_empty.
+          intros (i & Lti & ?). subst l1. rewrite EqlT in Lti. simpl.
+          clear -EqRT Lti.
+          eapply retag_fn_entry_item_active; eauto.
         * rewrite lookup_insert_ne; [|done]. intros Eqc.
           specialize (CINV _ _ Eqc) as [Ltc CINV].
           split; [simpl; clear -Ltc; lia|].
@@ -1912,14 +1952,35 @@ Proof.
   left.
   apply: sim_body_result. intros VALIDr. eapply POST; eauto.
   - intros i Lti. split.
-    + clear -Lti EqlT. apply write_hpl_is_Some. by rewrite EqlT.
+    + have Lti': (i < length (combine vs vt))%nat by rewrite EqlT.
+      destruct (write_hpl_is_Some l (combine vs vt) ∅ _ Lti') as [[ss st] Eqss].
+      exists ss, st. split; [done|].
+      destruct (write_hpl_lookup l (combine vs vt) ∅) as [EQ _].
+      rewrite (EQ _ Lti') in Eqss.
+      apply lookup_combine_Some_eq in Eqss as [Eqvs1 Eqvt1].
+      specialize (Eqshp  _ Lti). rewrite Eqvs1 in Eqshp.
+      specialize (Eqthp  _ Lti). rewrite Eqvt1 in Eqthp.
+      do 2 (split; [done|]).
+      destruct (PUBP (l +ₗ i)) as [PB|[t' PV]].
+      * by eapply elem_of_dom_2.
+      * specialize (PB _ Eqthp) as (ss1 & Eqss1 & AREL1).
+        clear -Eqshp Eqss1 AREL1 VALIDr.
+        rewrite Eqss1 in Eqshp. simplify_eq. apply arel_persistent in AREL1.
+        move : AREL1. apply arel_mono_l; [|done].
+        apply (cmra_valid_included _ _ VALIDr), cmra_included_r.
+      * exfalso.
+        apply (priv_loc_UB_retag_access_eq _ _ _ _ _ _ _ _ _ FnEntry _ _ FRZ
+                ltac:(done) EqRT WSAT1 _ _ Lti PV).
+        clear -VALID AREL.
+        apply (arel_mono _ _ VALID) in AREL; [|apply cmra_included_r].
+        move : AREL => [_ [_ //]].
     + move : Lti.
       destruct mut.
       * eapply tag_on_top_retag_ref_uniq. exact EqRT.
       * eapply tag_on_top_retag_ref_shr; [done|exact EqRT].
   - destruct mut; [done|]. simpl. do 2 (split; [done|]).
     rewrite lookup_insert. by eexists.
-Abort.
+Qed.
 
 (** InitCall *)
 Lemma sim_body_init_call fs ft r n es et σs σt Φ :

@@ -217,4 +217,88 @@ Proof.
   - by left.
 Qed.
 
+(* Protected copy *)
+Lemma sim_body_copy_protected_r
+  fs ft (r r' r'': resUR) (h: heaplet) n (l: loc) t k T (ss st: scalar)
+  c Ts L es σs σt Φ :
+  tsize T = 1%nat →
+  r ≡ r' ⋅ res_tag t k h →
+  r' ≡ r'' ⋅ res_cs c Ts →
+  h !! l = Some (ss, st) →
+  Ts !! t = Some L →
+  l ∈ L →
+  (r ⊨{n,fs,ft} (es, σs) ≥ (#[st], σt) : Φ : Prop) →
+  r ⊨{S n,fs,ft} (es, σs) ≥ (Copy (Place l (Tagged t) T), σt) : Φ.
+Proof.
+  intros LenT Eqr Eqr' Eqs EqTs InL CONT. pfold.
+  intros NT r_f WSAT. have WSAT1 := WSAT.
+
+  destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
+
+  have HLc: (r_f ⋅ r).(rcm) !! c ≡ Excl' Ts.
+  { rewrite Eqr Eqr' 2!cmra_assoc lookup_op right_id.
+    apply (cmap_lookup_op_unique_included (res_cs c Ts).(rcm)).
+    - move : (proj2 VALID). rewrite Eqr Eqr' 2!cmra_assoc => VALID2.
+      by apply (cmra_valid_included _ _ VALID2), cmra_included_l.
+    - by apply cmra_included_r.
+    - by rewrite res_cs_lookup. }
+  destruct (CINV _ _ HLc) as [INc CINVc].
+  specialize (CINVc _ _ EqTs) as [Ltc CINVc].
+  specialize (CINVc _ InL) as (stk & pm & Eqstk & Instk & NDIS).
+
+  have [h' HLtrf] : ∃ h', (r_f ⋅ r).(rtm) !! t ≡
+                            Some (to_tgkR k, h' ⋅ (to_agree <$> h)).
+  { rewrite ->Eqr in VALID. move : VALID. rewrite cmra_assoc => VALID.
+    setoid_rewrite Eqr. setoid_rewrite cmra_assoc. destruct k.
+    - exists ε. rewrite left_id.
+      apply tmap_lookup_op_r_local_equiv; [apply VALID|].
+      by rewrite res_tag_lookup.
+    - exists ε. rewrite left_id.
+      apply tmap_lookup_op_r_uniq_equiv; [apply VALID|].
+      by rewrite res_tag_lookup.
+    - apply tmap_lookup_op_r_equiv_pub; [apply VALID|].
+      by rewrite res_tag_lookup. }
+  have HLl : (h' ⋅ (to_agree <$> h)) !! l ≡ Some (to_agree (ss, st)).
+  { move : (proj1 VALID t). rewrite HLtrf. move => [_ /= /(_ l)].
+    rewrite lookup_op lookup_fmap Eqs /=.
+    destruct (h' !! l) as [sst|] eqn:Eql; rewrite Eql; [|by rewrite left_id].
+    rewrite -Some_op => /agree_op_inv ->. by rewrite agree_idemp. }
+
+  destruct (PINV _ _ _ HLtrf) as [Ltt Pt].
+  specialize (Pt l ss st HLl) as (Eqst & Eqss & TPO).
+  { destruct k; [done|..]; by exists stk, pm, (Some c). }
+
+  (* we can make the read in tgt *)
+  have [ns Eqstk']: ∃ n, access1 stk AccessRead (Tagged t) σt.(scs) = Some (n, stk).
+  { destruct k; simpl in TPO.
+    - rewrite Eqstk in TPO. simplify_eq.
+      eapply tag_unique_head_access. by exists [].
+    - destruct TPO as (stk' & Eq' & opro & TOP).
+      rewrite Eq' in Eqstk. simplify_eq.
+      eapply tag_unique_head_access; eauto.
+    - destruct TPO as (stk' & Eq' & SRO).
+      rewrite Eq' in Eqstk. simplify_eq.
+      by apply tag_SRO_top_access. }
+
+  have Eqα : memory_read σt.(sst) σt.(scs) l (Tagged t) (tsize T) = Some σt.(sst).
+  { rewrite LenT /memory_read /= shift_loc_0_nat Eqstk /= Eqstk' /= insert_id //. }
+  have READ: read_mem l (tsize T) σt.(shp) = Some [st].
+  { rewrite LenT read_mem_equation_1 /= Eqst //. }
+
+  have STEPT: (Copy (Place l (Tagged t) T), σt) ~{ft}~> ((#[st])%E, σt).
+  { destruct σt.
+    eapply (head_step_fill_tstep _ []); eapply copy_head_step'; eauto. }
+
+  split; [right; by do 2 eexists|done|].
+  constructor 1. intros et' σt' STEPT'.
+  destruct (tstep_copy_inv _ (PlaceR _ _ _) _ _ _ STEPT')
+      as (l1&t1&T1& vs1 & α1 & EqH & ? & Eqvs & Eqα' & ?).
+  symmetry in EqH. simplify_eq.
+  have Eqσt: mkState σt.(shp) σt.(sst) σt.(scs) σt.(snp) σt.(snc) = σt
+    by destruct σt. rewrite Eqσt. rewrite Eqσt in STEPT'. clear Eqσt.
+  exists es, σs, r, n. split; last split; [|done|].
+  - right. split; [lia|done].
+  - by left.
+Qed.
+
 End right.

@@ -118,18 +118,6 @@ Proof.
   by apply (priv_loc_not_public _ _ _ _ PV PB).
 Qed.
 
-(** For writing to heaplet *)
-Instance write_hpl_proper (l: loc) v :
-  Proper ((≡) ==> (≡)) (write_hpl l v).
-Proof.
-  intros h1 h2 Eq. revert l h1 h2 Eq.
-  induction v as [|s v IH]; intros l h1 h2 Eq; simpl; [done|].
-  apply IH. intros l'.
-  case (decide (l' = l)) => [->|?].
-  - by rewrite 2!lookup_insert.
-  - do 2 (rewrite lookup_insert_ne; [|done]). apply Eq.
-Qed.
-
 Lemma local_unique_access_head r σs (σt: state) l stk kind n' stk' t ss st k h
   (WFT: Wf σt) (LU: k = tkLocal ∨ k = tkUnique):
   σt.(sst) !! l = Some stk →
@@ -202,4 +190,26 @@ Proof.
   { rewrite (state_wf_dom _ WFT) elem_of_dom. by eexists. }
   destruct (PB _ Eqss) as (st' & Eqst' & AREL). rewrite Eqst' in Eqss'.
   by simplify_eq.
+Qed.
+
+Lemma priv_loc_UB_retag_access_eq r σs σt c l old new mut T kind α' nxtp'
+  (FRZ: if mut is Immutable then is_freeze T else True)
+  (N2P: kind ≠ TwoPhase) :
+  retag σt.(sst) σt.(snp) σt.(scs) c l old kind (RefPtr mut) T = Some (new, α', nxtp') →
+  wsat r σs σt →
+  ∀ i t, (i < tsize T)%nat →
+  priv_loc r (l +ₗ i) t →
+  (if old is (Tagged t2)
+   then ∃ (h: heapletR), r.(rtm) !! t2 ≡ Some (to_tgkR tkPub, h)
+   else True) →
+   False.
+Proof.
+  intros RT WSAT i t Lti.
+  have NZST: (0 < tsize T)%nat by lia.
+  destruct (retag_change_ref_NZST _ _ _ _ _ _ _ _ _ _ _ _ NZST RT);
+    subst new nxtp'.
+  destruct (retag_Some_Ref _ _ _ _ _ _ _ _ _ _ _ _ NZST FRZ N2P RT _ Lti)
+    as (stk & stk' & Eqstk & Eqstk' & GR).
+  apply grant_access1 in GR; [|by destruct mut].
+  revert Eqstk GR WSAT. by apply priv_pub_access_UB.
 Qed.

@@ -496,6 +496,30 @@ Proof.
   specialize (EQ _ Lt). by rewrite EQ lookup_lt_is_Some.
 Qed.
 
+Lemma write_hpl_elem_of_dom_from_empty l vl l' :
+  (∃ (i: nat), (i < length vl)%nat ∧ l' = l +ₗ i) ↔
+  l' ∈ dom (gset loc) (write_hpl l vl ∅).
+Proof.
+  split.
+  - naive_solver eauto using write_hpl_elem_of_dom.
+  - destruct (write_hpl_lookup_case l vl ∅ l')
+      as [(i & Lti & ? & Eql1)|(NEQl1 & Eql1)].
+    + naive_solver.
+    + rewrite elem_of_dom Eql1 lookup_empty. by intros [].
+Qed.
+
+(** For writing to heaplet *)
+Instance write_hpl_proper (l: loc) v :
+  Proper ((≡) ==> (≡)) (write_hpl l v).
+Proof.
+  intros h1 h2 Eq. revert l h1 h2 Eq.
+  induction v as [|s v IH]; intros l h1 h2 Eq; simpl; [done|].
+  apply IH. intros l'.
+  case (decide (l' = l)) => [->|?].
+  - by rewrite 2!lookup_insert.
+  - do 2 (rewrite lookup_insert_ne; [|done]). apply Eq.
+Qed.
+
 Lemma res_tag_alloc_local_update lsf t k h
   (FRESH: lsf.(rtm) !! t = None) :
   (lsf, ε) ~l~> (lsf ⋅ res_tag t k h, res_tag t k h).

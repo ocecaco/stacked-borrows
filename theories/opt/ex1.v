@@ -53,7 +53,7 @@ Proof.
     (* Retag *)
     sim_apply sim_simple_retag_ref; [simpl; lia|done| |eauto|..].
     { eapply arel_mono; [done|..|exact AREL]. solve_res. } clear VALID.
-    move=>l_i tg_i tg_n hplt /= ? IS_i. subst sarg.
+    move=>l_i tg_i tg_n hplt /= ?? IS_i. subst sarg.
     specialize (IS_i O ltac:(lia)). rewrite shift_loc_0_nat in IS_i.
     (* Write local *)
     sim_apply sim_simple_write_local; [solve_sim..|].

@@ -321,13 +321,13 @@ Lemma sim_simple_retag_ref fs ft r n (ptr: scalar) m ty Φ :
   (0 < tsize ty)%nat →
   (if m is Immutable then is_freeze ty else True) →
   arel r ptr ptr →
-  (∀ l told tnew hplt,
+  (∀ l told tnew hplt r0,
     ptr = ScPtr l told →
     let s_new := ScPtr l (Tagged tnew) in
     let tk := match m with Mutable => tkUnique | Immutable => tkPub end in
     let s_new := ScPtr l (Tagged tnew) in
     (∀ i: nat, (i < tsize ty)%nat → is_Some $ hplt !! (l +ₗ i)) →
-    Φ (r ⋅ res_tag tnew tk hplt) n (ValR [s_new]) (ValR [s_new])) →
+    Φ (r ⋅ res_tag tnew tk hplt ⋅ r0) n (ValR [s_new]) (ValR [s_new])) →
   r ⊨ˢ{n,fs,ft}
     Retag #[ptr] (RefPtr m) ty Default
   ≥
@@ -336,8 +336,8 @@ Lemma sim_simple_retag_ref fs ft r n (ptr: scalar) m ty Φ :
 Proof.
   intros ??? HH σs σt.
   apply sim_body_retag_ref_default; eauto.
-  intros ??????????? HS. do 2 (split; [done|]). eapply HH; eauto.
-  intros ??. by apply HS.
+  intros ???????????? HS. do 2 (split; [done|]). eapply HH; eauto.
+  clear -HS. intros ??. naive_solver.
 Qed.
 
 (** * Memory: shared *)
