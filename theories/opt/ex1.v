@@ -29,7 +29,7 @@ Definition ex1_opt : function :=
     "v"
   .
 
-Lemma ex1_sim_body :
+Lemma ex1_sim_fun :
   ⊨ᶠ ex1_unopt ≥ ex1_opt.
 Proof.
   apply (sim_fun_simple1 10)=>// fs ft rarg es et arg c LOOK AREL ??.
@@ -124,7 +124,7 @@ Proof.
   { apply has_main_insert, Hwf; done. }
   apply sim_mod_funs_local.
   apply sim_mod_funs_insert; first done.
-  - exact: ex1_sim_body.
+  - exact: ex1_sim_fun.
   - exact: sim_mod_funs_refl.
 Qed.
 

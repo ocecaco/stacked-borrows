@@ -227,7 +227,8 @@ Lemma sim_body_copy_protected_r
   h !! l = Some (ss, st) →
   Ts !! t = Some L →
   l ∈ L →
-  (r ⊨{n,fs,ft} (es, σs) ≥ (#[st], σt) : Φ : Prop) →
+  (σs.(shp) !! l = Some ss → σt.(shp) !! l = Some st →
+    r ⊨{n,fs,ft} (es, σs) ≥ (#[st], σt) : Φ : Prop) →
   r ⊨{S n,fs,ft} (es, σs) ≥ (Copy (Place l (Tagged t) T), σt) : Φ.
 Proof.
   intros LenT Eqr Eqr' Eqs EqTs InL CONT. pfold.
@@ -298,7 +299,7 @@ Proof.
     by destruct σt. rewrite Eqσt. rewrite Eqσt in STEPT'. clear Eqσt.
   exists es, σs, r, n. split; last split; [|done|].
   - right. split; [lia|done].
-  - by left.
+  - left. by apply CONT.
 Qed.
 
 End right.

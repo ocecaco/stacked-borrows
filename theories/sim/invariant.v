@@ -215,6 +215,15 @@ Proof.
   by apply (cmap_lookup_op_unique_included r1.(rcm)).
 Qed.
 
+Lemma pub_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
+  r1 ≼ r2 → ∀ l σs σt, pub_loc r1 l σs σt → pub_loc r2 l σs σt.
+Proof.
+  intros LE l σs σt PUB st Eqst.
+  destruct (PUB _ Eqst) as (ss & Eqss & AREL).
+  exists ss. split; [done|].
+  by eapply arel_mono.
+Qed.
+
 Instance tmap_inv_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) tmap_inv.
 Proof.
   intros r1 r2 [Eqt Eqc] ? σ ? ???. subst. rewrite /tmap_inv.

@@ -1681,6 +1681,7 @@ Lemma sim_body_retag_ref_fn_entry n fs ft mut r r' c cids Ts ptr T σs σt Φ :
         σs.(shp) !! (l +ₗ i) = Some ss ∧ σt.(shp) !! (l +ₗ i) = Some st ∧
         arel r0 ss st) ∧
       tag_on_top α' (l +ₗ i) tnew pm) →
+    (∀ l', l' ∈ dom (gset loc) hplt → ∃ i : nat, (i < tsize T)%nat ∧ l' = l +ₗ i) →
     let σs' := mkState σs.(shp) α' σs.(scs) nxtp' σs.(snc) in
     let σt' := mkState σt.(shp) α' σt.(scs) nxtp' σt.(snc) in
     let s_new := ScPtr l (Tagged tnew) in
@@ -1978,6 +1979,7 @@ Proof.
       destruct mut.
       * eapply tag_on_top_retag_ref_uniq. exact EqRT.
       * eapply tag_on_top_retag_ref_shr; [done|exact EqRT].
+  - move => ? /write_hpl_elem_of_dom_from_empty. by rewrite EqlT.
   - destruct mut; [done|]. simpl. do 2 (split; [done|]).
     rewrite lookup_insert. by eexists.
 Qed.

@@ -18,52 +18,60 @@ Lemma viewshift_state_frame_r r r1 r2 σs σt :
   r1 |={σs,σt}=> r2 → (r1 ⋅ r) |={σs,σt}=> (r2 ⋅ r).
 Proof. intros VS ?. rewrite (cmra_comm r1) (cmra_comm r2) 2!cmra_assoc. apply VS. Qed.
 
-(* Lemma vs_call_empty_public c :
-  res_cs c (csOwned ∅) |==> res_cs c csPub.
+Lemma vs_state_drop_protector r c t L Ts σs σt
+  (HN: Ts !! t = None)
+  (REL: ∀ l, l ∈ L → pub_loc r l σs σt) :
+  r ⋅ res_cs c (<[t := L]> Ts) |={σs, σt}=> r ⋅ res_cs c Ts.
 Proof.
-  intros r_f σs σt.
-  intros (WFS & WFT & VALID & PINV & CINV & SREL & LINV).
-  have EQtm: (r_f ⋅ res_cs c (csOwned ∅)).(rtm) ≡
-             (r_f ⋅ res_cs c csPub).(rtm) by done.
-  have EQlm: (r_f ⋅ res_cs c (csOwned ∅)).(rlm) ≡
-             (r_f ⋅ res_cs c csPub).(rlm) by done.
-  have UNIQUE: r_f.(rcm) !! c = None.
-  { move : (proj2 (proj1 VALID) c). rewrite lookup_op.
-    destruct (r_f.(rcm) !! c) as [cs|] eqn:Eqcs; [|done].
-    rewrite Eqcs /= lookup_insert -Some_op.
+  intros r_f. rewrite 2!cmra_assoc.
+  intros (WFS & WFT & VALID & PINV & CINV & SREL).
+
+  have EQtm: (r_f ⋅ r ⋅ res_cs c (<[t := L]> Ts)).(rtm) ≡
+             (r_f ⋅ r ⋅ res_cs c Ts).(rtm) by done.
+  have UNIQUE: (r_f ⋅ r).(rcm) !! c = None.
+  { destruct ((r_f ⋅ r).(rcm) !! c) eqn:Eqcs; [|done].
+    move : (proj2 VALID c). rewrite lookup_op.
+    rewrite Eqcs res_cs_lookup -Some_op.
     intros ?%exclusive_r; [done|apply _]. }
-  have EQO: (r_f ⋅ res_cs c (csOwned ∅)).(rcm) !! c ≡ Some $ to_callStateR (csOwned ∅).
-  { rewrite lookup_op UNIQUE left_id /= lookup_insert //. }
-  split; last split; last split; last split; last split; last split;
-    [done|done|..].
-  - apply (local_update_discrete_valid_frame _ _ _ VALID).
-    rewrite (cmra_comm r_f) (cmra_comm _ (res_cs _ csPub)).
-    apply prod_local_update_1, prod_local_update_2.
-    rewrite /= -insert_singleton_op // -insert_singleton_op //.
-    rewrite -(insert_insert _ c (Cinr ()) (Cinl (Excl ∅))).
-    eapply singleton_local_update; [by rewrite lookup_insert|].
-    by apply exclusive_local_update.
-  - intros t k h. rewrite -EQtm. intros Eqkh. by apply PINV.
-  - intros c' cs'. case (decide (c' = c)) => ?; [subst c'|].
-    + rewrite lookup_op UNIQUE left_id /= lookup_insert.
-      intros Eq%Some_equiv_inj.
-      specialize (CINV _ _ EQO) as [IN _].
-      have Lt := state_wf_cid_agree _ WFT _ IN.
-      destruct cs' as [[]| |]; try inversion Eq. done.
-    + intros EQcs. apply (CINV  c' cs').
-      move : EQcs. rewrite 2!lookup_op lookup_insert_ne // lookup_insert_ne //.
+  have EQO: (r_f ⋅ r ⋅ res_cs c (<[t := L]> Ts)).(rcm) !! c ≡ Excl' (<[t := L]> Ts).
+  { by rewrite lookup_op UNIQUE left_id res_cs_lookup. }
+
+  have VALID': ✓ (r_f ⋅ r ⋅ res_cs c Ts).
+  { by apply (local_update_discrete_valid_frame _ _ _ VALID), res_cs_local_update. }
+
+  split; last split; last split; last split; last split; [done|done|done|..].
+  - intros ???. rewrite -EQtm. apply PINV.
+  - intros c1 Ts1.
+    case (decide (c1 = c)) => ?; [subst c1|].
+    + rewrite lookup_op UNIQUE left_id res_cs_lookup.
+      intros Eq%Some_equiv_inj%Excl_inj%leibniz_equiv_iff. subst Ts1.
+      specialize (CINV _ _ EQO) as [IN CINV].
+      split; [done|]. intros t1 L1 Eq1.
+      apply CINV. rewrite lookup_insert_ne; [done|].
+      intros ?. subst t1. by rewrite HN in Eq1.
+    + intros EQcs. apply (CINV c1 Ts1).
+      rewrite lookup_op res_cs_lookup_ne; [|done].
+      move : EQcs. by rewrite lookup_op res_cs_lookup_ne.
   - destruct SREL as (?&?&?&?& PB). do 4 (split; [done|]).
-    intros l InD. specialize (PB _ InD) as [PB|(t & h & Eqh & PV)]; [left|right].
-    + intros st Eqst. specialize (PB _ Eqst) as (ss & ? & AREL).
-      by exists ss.
-    + exists t, h. rewrite -EQtm -EQlm. split; [done|].
-      destruct PV as [?|(c' & T' & Eqc' & InT & ?)]; [by left|right].
-      exists c', T'. split; [|done].
-      have ? : c' ≠ c.
-      { intros ?. subst c'. move : Eqc'.
-        rewrite lookup_op /= lookup_insert. intros ?%callStateR_exclusive_eq.
-        subst T'. by apply not_elem_of_empty in InT. }
-      move : Eqc'.
-      rewrite 2!lookup_op lookup_insert_ne // lookup_insert_ne //.
-  - intros l. setoid_rewrite <-EQlm. by specialize (LINV l).
-Qed. *)
+    intros l InD.
+    specialize (PB _ InD) as [PB|(t1 & k1 & h1 & Eq1 & IS1 & PV)]; [by left|].
+    rewrite ->EQtm in Eq1.
+    destruct PV as [|(Eqk1 & c1 & T1 & L1 & Eqc1 & EqT1 & InL1)].
+    { right. exists t1, k1, h1. do 2 (split; [done|]); by left. }
+    case (decide (c1 = c)) => ?; [subst c1|].
+    + move : Eqc1. rewrite lookup_op UNIQUE res_cs_lookup left_id.
+      intros ?%Some_equiv_inj%Excl_inj%leibniz_equiv_iff. subst T1.
+      case (decide (t1 = t)) => ?; [subst t1|].
+      * left. eapply pub_loc_mono; [done|..|apply REL].
+        { etrans; [|apply cmra_included_l]. apply cmra_included_r. }
+        { clear - EqT1 InL1. move : EqT1.
+          rewrite lookup_insert. intros. by simplify_eq. }
+      * right. exists t1, k1, h1. do 2 (split; [done|]).
+        right. split; [done|]. exists c, Ts, L1. split; last split; [..|done].
+        { by rewrite lookup_op UNIQUE res_cs_lookup left_id. }
+        { move : EqT1. by rewrite lookup_insert_ne. }
+    + right. exists t1, k1, h1. do 2 (split; [done|]).
+      right. split; [done|]. exists c1, T1, L1. split; [|done].
+      rewrite lookup_op res_cs_lookup_ne; [|done].
+      move : Eqc1. by rewrite lookup_op res_cs_lookup_ne.
+Qed.
