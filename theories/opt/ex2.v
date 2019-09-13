@@ -60,18 +60,18 @@ Proof.
   sim_apply sim_body_let. simplify_eq/=.
   (* Copy local (right) *)
   sim_apply_r sim_body_copy_local_r; [solve_sim..|].
-  apply: sim_body_result=>_. simpl.
+  apply: sim_body_result=>_/=.
   (* Copy public right *)
-  sim_apply_r sim_body_deref_r. simpl.
-  sim_apply_r sim_body_copy_SRO_public_r; [solve_sim..|].
-  apply: sim_body_result=>_. simpl.
-  apply: sim_body_let_r. simpl.
+  sim_apply_r sim_body_deref_r=>/=.
+  sim_apply_r sim_body_copy_public_r; [solve_sim..|].
+  apply: sim_body_result=>_/=.
+  apply: sim_body_let_r=>/=.
   (* Back to simple mode! *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
   simplify_eq/=.
-  (* Copy local *)
+  (* Copy local place *)
   sim_apply sim_simple_copy_local; [solve_sim..|].
-  apply: sim_simple_result. simpl.
+  apply: sim_simple_result=>/=.
   (* Call *)
   rewrite (_: rarg ⋅ res_cs c ∅ ⋅ res_tag tnew tk hplt ⋅ r0 ⋅
                 res_loc l [(ScPtr l' (Tagged tnew), ScPtr l' (Tagged tnew))] t
@@ -85,14 +85,14 @@ Proof.
   { constructor; [|by constructor].
     constructor; [done|by constructor]. } clear ARELn.
   intros rf' frs' frt' ??? ? _ _ FREL'. simplify_eq/=.
-  apply: sim_simple_result => /=.
+  apply: sim_simple_result=>/=.
   sim_apply sim_simple_let=>/=. clear σs' σt' nxtp' α' TOP σs σt .
   (* Copy local (left). We drop to complex just because simple does not support this yet. *)
   intros σs σt.
   sim_apply_l sim_body_copy_local_l; [solve_sim..|].
-  apply: sim_body_result=>_. simpl.
+  apply: sim_body_result=>_/=.
   (* Copy public (left) *)
-  sim_apply_l sim_body_deref_l. simpl.
+  sim_apply_l sim_body_deref_l=>/=.
   sim_apply_l sim_body_copy_public_l; [try solve_sim..|].
   intros r' AREL'.
   apply: sim_body_result=>Hval/=.

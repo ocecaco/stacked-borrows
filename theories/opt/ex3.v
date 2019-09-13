@@ -38,6 +38,7 @@ Definition ex3_opt_2 : function :=
     "v"
   .
 
+(* TODO: show refinement to be transitive *)
 Lemma ex3_sim_fun : ⊨ᶠ ex3 ≥ ex3_opt_1.
 Proof.
 Abort.

@@ -150,7 +150,7 @@ Proof.
 Qed.
 
 (* Public SRO copy *)
-Lemma sim_body_copy_SRO_public_r
+Lemma sim_body_copy_public_r
   fs ft (r r': resUR) (h: heaplet) n (l: loc) t T (ss st: scalar) es σs σt Φ :
   tsize T = 1%nat →
   tag_on_top σt.(sst) l t SharedReadOnly →

@@ -101,10 +101,10 @@ Proof.
   move => _ _ α4 _ σs4 σt4.
   sim_apply sim_body_let=>/=.
   (* Remove protection *)
-  set r1 := rarg ⋅ r0 ⋅ res_cs (snc σt) {[tnew := dom (gset loc) hplt]} ⋅
+  set r1 := rarg ⋅ r0 ⋅ res_cs σt.(snc) {[tnew := dom (gset loc) hplt]} ⋅
               res_tag tnew tk hplt ⋅ rf'.
-  set r2 := rarg ⋅ r0 ⋅ res_cs (snc σt) ∅ ⋅ res_tag tnew tk hplt ⋅ rf'.
-  rewrite (_: rarg ⋅ res_cs (snc σt) {[tnew := dom (gset loc) hplt]} ⋅
+  set r2 := rarg ⋅ r0 ⋅ res_cs σt.(snc) ∅ ⋅ res_tag tnew tk hplt ⋅ rf'.
+  rewrite (_: rarg ⋅ res_cs σt.(snc) {[tnew := dom (gset loc) hplt]} ⋅
               res_tag tnew tk hplt ⋅ r0 ⋅ rf' ≡ r1); last first.
   { rewrite -cmra_assoc (cmra_comm r0 rf') cmra_assoc (cmra_comm _ r0)
             !cmra_assoc (cmra_comm r0) //. }
@@ -123,7 +123,7 @@ Proof.
   (* Finishing up. *)
   apply: sim_body_result => Hval. split.
   - exists σt.(snc). split; [done|]. rewrite /end_call_sat.
-    apply (cmap_lookup_op_unique_included (res_cs (snc σt) ∅).(rcm));
+    apply (cmap_lookup_op_unique_included (res_cs σt.(snc) ∅).(rcm));
       [apply Hval|apply prod_included; rewrite /r2; solve_res|..].
     by rewrite res_cs_lookup.
   - constructor; [|by constructor].
