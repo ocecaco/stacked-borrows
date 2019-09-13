@@ -49,7 +49,7 @@ Proof.
     (* Copy local place *)
     sim_apply sim_simple_copy_local; [solve_sim..|].
     apply sim_simple_valid_post.
-    apply: sim_simple_result. simpl. intros VALID.
+    apply: sim_simple_result=> VALID /=.
     (* Retag *)
     sim_apply sim_simple_retag_ref; [simpl; lia|done| |eauto|..].
     { eapply arel_mono; [done|..|exact AREL]. solve_res. } clear VALID.
@@ -62,11 +62,11 @@ Proof.
   sim_apply sim_simple_let=>/=.
   sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
   intros rf frs frt ??? ? _ _ FREL. simplify_eq/=.
-  apply: sim_simple_result. simpl.
+  apply: sim_simple_result=>/=.
   sim_apply sim_simple_let=>/=.
   (* Copy local *)
   sim_apply sim_simple_copy_local; [solve_sim..|].
-  apply: sim_simple_result. simpl.
+  apply: sim_simple_result=>/=.
   sim_apply sim_simple_deref=>l' t' ?. simplify_eq/=.
   (* Write unique. We need to drop to complex mode, to preserve some local state info. *)
   intros σs σt.
@@ -75,13 +75,13 @@ Proof.
   sim_apply sim_body_let. simplify_eq/=.
   (* Copy local (right) *)
   sim_apply_r sim_body_copy_local_r; [solve_sim..|].
-  apply: sim_body_result=>_. simpl.
+  apply: sim_body_result=>_/=.
   (* Copy unique (right) *)
-  sim_apply_r sim_body_deref_r. simpl.
+  sim_apply_r sim_body_deref_r=>/=.
   sim_apply_r sim_body_copy_unique_r; [try solve_sim..|].
   { rewrite lookup_insert. done. }
-  apply: sim_body_result=>_. simpl.
-  apply: sim_body_let_r. simpl. (* FIXME: figure out why [sim_apply_r] does the wrong thing here *)
+  apply: sim_body_result=>_/=.
+  apply: sim_body_let_r=>/=. (* FIXME: figure out why [sim_apply_r] does the wrong thing here *)
   (* We can go back to simple mode! *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
   simplify_eq/=. clear- AREL FREL LOOK.
@@ -93,13 +93,13 @@ Proof.
   (* Copy local (left). We drop to complex just because simple does not support this yet. *)
   intros σs σt.
   sim_apply_l sim_body_copy_local_l; [solve_sim..|].
-  apply: sim_body_result=>_. simpl.
+  apply: sim_body_result=>_/=.
   (* Copy unique (left) *)
-  sim_apply_l sim_body_deref_l. simpl.
+  sim_apply_l sim_body_deref_l=>/=.
   sim_apply_l sim_body_copy_unique_l; [try solve_sim..|].
   { rewrite lookup_insert. done. }
-  apply: sim_body_result=>Hval. simpl.
-  apply: sim_body_let_l. simpl.
+  apply: sim_body_result=>Hval/=.
+  apply: sim_body_let_l=>/=.
   (* Free stuff *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
   sim_apply sim_simple_free_local_1; [solve_sim..|]. simpl.
