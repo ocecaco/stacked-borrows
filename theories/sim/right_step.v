@@ -304,7 +304,7 @@ Qed.
 
 
 (* Protected write *)
-Lemma sim_body_write_protected_r
+Lemma sim_body_write_non_ptr_protected_r
   fs ft (r r' r'': resUR) (h: heaplet) n (l: loc) t T (ss st st': scalar)
   c Ts L es σs σt Φ :
   (if st' is ScPtr l' t' then False else True) →

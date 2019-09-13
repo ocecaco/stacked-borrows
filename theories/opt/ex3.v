@@ -1,6 +1,6 @@
 From stbor.sim Require Import local invariant refl.
 From stbor.sim Require Import tactics simple program.
-From stbor.sim Require Import refl_step right_step left_step derived_step.
+From stbor.sim Require Import refl_step right_step left_step derived_step viewshift.
 
 Set Default Proof Using "Type".
 
@@ -40,7 +40,7 @@ Definition ex3_opt_2 : function :=
   .
 
 (* TODO: show refinement to be transitive *)
-Lemma ex3_sim_fun : ⊨ᶠ ex3_unopt ≥ ex3_opt_1.
+Lemma ex3_1_sim_fun : ⊨ᶠ ex3_unopt ≥ ex3_opt_1.
 Proof.
   (* We can't use sim_simple because we need to track our stack frame id *)
   intros fs ft LOOK rarg es et vls vlt σs σt FREL SUBSTs SUBSTt.
@@ -85,7 +85,8 @@ Proof.
   (* Copy local place *)
   sim_apply sim_body_copy_local; [solve_sim..|].
   sim_apply sim_body_result => /= VALID.
-  sim_apply (sim_body_deref _ _ _ _ (ValR _)).
+  sim_bind (Deref _ _) (Deref _ _). (* TODO: sim_apply fails to instantiate evars *)
+  apply (sim_body_deref _ _ _ _ (ValR _)).
   move => ?? Eq. symmetry in Eq. simplify_eq/=.
   (* Write unique of 42 *)
   sim_apply sim_body_write_unique_1;
@@ -97,10 +98,10 @@ Proof.
   apply: sim_body_result=>_/=.
   (* Write protected right *)
   sim_apply_r sim_body_deref_r =>/=.
-  sim_apply_r sim_body_write_protected_r;
-    [solve_sim..|by rewrite lookup_insert |by rewrite lookup_insert
+  sim_apply_r sim_body_write_non_ptr_protected_r;
+    [solve_sim..|by rewrite lookup_insert|by rewrite lookup_insert
     |by eapply (elem_of_dom_2 _ _ _ Eql')|].
-  intros Eqss3 σt3' rt'. simpl.
+  move => Eqss3 σt3' rt'.
   apply: sim_body_result=>_/=.
   sim_apply sim_body_let_r =>/=.
   (* Call *)
@@ -116,4 +117,55 @@ Proof.
   apply: sim_body_result=>_/=.
   (* Write protected left *)
   sim_apply_l sim_body_deref_l =>/=.
-Abort.
+  subst rt'. rewrite insert_insert.
+  sim_apply_l sim_body_write_non_ptr_protected_l;
+    [solve_sim..|by rewrite lookup_insert|by rewrite lookup_insert
+    |by eapply (elem_of_dom_2 _ _ _ Eql')|].
+  move => Eqst4 σt4' rt'.
+  apply: sim_body_result=>_ /=.
+  sim_apply sim_body_let_l =>/=.
+  (* Free stuff *)
+  sim_apply sim_body_free_unique_local_1;
+    [done|rewrite /res_loc /= insert_empty; solve_sim |by left|].
+  move => _ _ α5 _ σs5 σt5.
+  sim_apply sim_body_let=>/=.
+  (* Remove protection *)
+  set r1 := rarg ⋅ res_cs σt.(snc) {[tnew := dom (gset loc) hplt]} ⋅ r0 ⋅ rf' ⋅ rt'.
+  set r2 := rarg ⋅ res_cs σt.(snc) ∅ ⋅ r0 ⋅ rf' ⋅ rt'.
+  apply (viewshift_state_sim_local_body _ _ _ _ r1 r2).
+  { rewrite /r1 /r2. do 3 apply viewshift_state_frame_r.
+    apply vs_state_drop_protector; [done|].
+    move => l1 /InD [i [/= Lti ?]]. subst l1.
+    destruct i; [|clear -Lti; by lia]. rewrite shift_loc_0_nat.
+    move => ss5 /= /lookup_delete_Some [? Eqst5].
+    rewrite Eqst5 in Eqst4. simplify_eq. exists (ScInt 13).
+    rewrite lookup_delete_ne; [|done].
+    by rewrite lookup_insert. }
+  (* Finishing up. *)
+  apply: sim_body_result => Hval. split.
+  - exists σt.(snc). split; [done|]. rewrite /end_call_sat.
+    apply (cmap_lookup_op_unique_included (res_cs σt.(snc) ∅).(rcm));
+      [apply Hval|apply prod_included; rewrite /r2; solve_res|..].
+    by rewrite res_cs_lookup.
+  - move : VREL'. rewrite /r2. apply vrel_mono; [done|solve_res].
+Qed.
+
+(** Top-level theorem: Two programs that only differ in the
+"ex3" function are related. *)
+Corollary ex3_1 (prog: fn_env) :
+  stuck_decidable →
+  prog_wf prog →
+  let prog_src := <["ex3":=ex3_unopt]> prog in
+  let prog_tgt := <["ex3":=ex3_opt_1]> prog in
+  behave_prog prog_tgt <1= behave_prog prog_src.
+Proof.
+  intros Hdec Hwf. apply sim_prog_sim_classical.
+  { apply Hdec. }
+  { apply has_main_insert, Hwf; done. }
+  apply sim_mod_funs_local.
+  apply sim_mod_funs_insert; first done.
+  - exact: ex3_1_sim_fun.
+  - exact: sim_mod_funs_refl.
+Qed.
+
+Print Assumptions ex3_1.
