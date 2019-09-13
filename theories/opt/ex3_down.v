@@ -5,7 +5,7 @@ Set Default Proof Using "Type".
 (** Moving a write to a mutable reference down across unknown code. *)
 
 (* Assuming x : &mut i32 *)
-Definition ex3_down : function :=
+Definition ex3_down_unopt : function :=
   fun: ["i"],
     let: "x" := new_place (&mut int) "i" in
     retag_place "x" (RefPtr Mutable) int FnEntry ;;
@@ -37,6 +37,6 @@ Definition ex3_down_opt_2 : function :=
     "v"
     .
 
-Lemma ex3_down_sim_fun : ⊨ᶠ ex3_down ≥ ex3_down_opt_1.
+Lemma ex3_down_sim_fun : ⊨ᶠ ex3_down_unopt ≥ ex3_down_opt_1.
 Proof.
 Abort.
