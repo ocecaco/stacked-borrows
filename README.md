@@ -37,6 +37,8 @@ The directory structure is as follows:
   - Properties of the simulation with respect to the operational semantics are
   proven in `sim/body.v`, `sim/refl_pure_step.v`, `sim/refl_mem_step.v`,
   `sim/left_step.v`, `sim/right_step.v`, `sim/simple.v`.
+  - The fundamental property that the simulation is reflexive is proven in
+  `sim/refl.v`.
   - The main invariant needed for these properties is in `sim/invariant.v`.
 * `theories/opt`: Proofs of optimizations.
 
