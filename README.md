@@ -18,11 +18,37 @@ You can also run them in Miri via "Tools" - "Miri", which will show a Stacked Bo
 ## Coq Formalization
 
 We have given informal proof sketches of optimizations based on Stacked Borrows
-in the paper. To further increase confidence in the semantics, we started
-formalizing these arguments in Coq. Our simulation framework is nearly done
-(taking around 11k lines), and we have carried out the proof of one of the
-transformations (example1) on top of that framework. We expect the framework and
-the remaining proofs to be done very soon.
+in the paper. To further increase confidence in the semantics, we formalized
+these arguments in Coq (about 14KLOC). We have carried out the proofs of the
+transformations mentioned in the paper: example1, example2, example3.
+
+### What to look for
+
+The directory structure is as follows:
+* `theories/lang`: Definitions and properties of the language.
+  - The language syntax is defined in `lang/lang_base.v`.
+  - The expression and heap semantics is defined in `lang/expr_semantics.v`.
+  - The semantics of Stacked Borrows itself is in `lang/bor_semantics.v`.
+  - The complete language is then combined in `lang/lang.v`.
+* `theories/sim`: The simulation framework and its adequacy proofs.
+  - The local simulation definition is in `sim/local.v`.
+  - It is then lifted up to the global simulation definition in `sim/global.v`.
+  - Adequacy (that the simulation implies behavior inclusion) is in `sim/local_adequacy.v`, `sim/global_adequacy.v`, and `sim/program.v`.
+  - Properties of the simulation with respect to the operational semantics are
+  proven in `sim/body.v`, `sim/refl_pure_step.v`, `sim/refl_mem_step.v`,
+  `sim/left_step.v`, `sim/right_step.v`, `sim/simple.v`.
+  - The main invariant needed for these properties is in `sim/invariant.v`.
+* `theories/opt`: Proofs of optimizations.
+
+  For example, `theories/opt/ex1.v` provides the proof that the optimized
+  program refines the behavior of the unoptimized program, where the optimized
+  program simply replaces the unoptimized one's `ex1_unopt` function the
+  `ex1_opt` function.
+
+  For this proof, we need to show that (1) `ex1_opt` refines `ex1_unopt`, and (2) all other unchanged functions refine themselves.
+  The proof of (1) is in the Lemma `ex1_sim_fun`.
+  The proof of (2) is the reflexivity of our simulation relation for well-formed programs, provided in `theories/sim/refl.v`.
+
 
 ### How to build
 
@@ -52,26 +78,3 @@ See the [opam](opam) file for the exact versions you need.
 
 Once the dependencies are installed, you can `make -jN` the development,
 replacing `N` by the number of your CPU cores.
-
-### What to look for
-
-The directory structure is as follows:
-* `theories/lang`: Definition of the language, including the formalization of
-  Stacked Borrows itself in `lang/bor_semantics.v`.
-* `theories/sim`: The simulation framework and its adequacy proofs.
-* `theories/opt`: Proofs of optimizations. Everything except for `ex1.v` is a
-  stub.
-
-The actual proof of the example is in `theories/opt/ex1.v`.  The logical
-relation to establish the reflexivity of our simulation relation for well-formed
-programs is in `theories/sim/refl.v`.
-
-### Gaps in the proof
-
-The formalization is not entirely finished: our notion of well-formed
-expressions (`expr_wf`, a precondition for the reflexivity theorem) excludes not just
-programs containing literal locations and administrative instructions (which is
-standard), it also excludes deallocation and retagging.
-
-We also have one admitted lemma that gets used in the example proof:
-`sim_body_retag_local_mut_ref`, a proof rule for retagging.
