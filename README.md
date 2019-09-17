@@ -41,9 +41,6 @@ The directory structure is as follows:
   `sim/refl.v`.
   - The main invariant needed for these properties is in `sim/invariant.v`.
 * `theories/opt`: Proofs of optimizations.
-  - For `example1` (Section 3.4 in the paper), see `opt/ex1.v` and `opt/ex1_down.v`.
-  - For `example2` (Section 3.6) and `example2_down` (Section 4), see `opt/ex2.v` and `opt/ex2_down.v`.
-  - For `example3_down` (Section 4) and `example3`, see see `opt/ex3_down.v` and `opt/ex3.v`.
 
     For example, `theories/opt/ex1.v` provides the proof that the optimized
     program refines the behavior of the unoptimized program, where the optimized
@@ -53,6 +50,10 @@ The directory structure is as follows:
     For this proof, we need to show that (1) `ex1_opt` refines `ex1_unopt`, and (2) all other unchanged functions refine themselves.
     The proof of (1) is in the Lemma `ex1_sim_fun`.
     The proof of (2) is the reflexivity of our simulation relation for well-formed programs, provided in `theories/sim/refl.v`.
+
+  - For `example1` (Section 3.4 in the paper), see `opt/ex1.v`; `example1_down` did not appear in the paper but we verified it in `opt/ex1_down.v`.
+  - For `example2` (Section 3.6) and `example2_down` (Section 4), see `opt/ex2.v` and `opt/ex2_down.v`, respectively.
+  - For `example3_down` (Section 4), see `opt/ex3_down.v`; `example3` did not appear in the paper but we verified it in `opt/ex3.v`.
 
 
 ### How to build
