@@ -20,7 +20,7 @@ You can also run them in Miri via "Tools" - "Miri", which will show a Stacked Bo
 We have given informal proof sketches of optimizations based on Stacked Borrows
 in the paper. To further increase confidence in the semantics, we formalized
 these arguments in Coq (about 14KLOC). We have carried out the proofs of the
-transformations mentioned in the paper: example1, example2, example3.
+transformations mentioned in the paper: `example1`, `example2`, `example2_down`, `example3_down`.
 
 ### What to look for
 
@@ -41,15 +41,18 @@ The directory structure is as follows:
   `sim/refl.v`.
   - The main invariant needed for these properties is in `sim/invariant.v`.
 * `theories/opt`: Proofs of optimizations.
+  - For `example1` (Section 3.4 in the paper), see `opt/ex1.v` and `opt/ex1_down.v`.
+  - For `example2` (Section 3.6) and `example2_down` (Section 4), see `opt/ex2.v` and `opt/ex2_down.v`.
+  - For `example3_down` (Section 4) and `example3`, see see `opt/ex3_down.v` and `opt/ex3.v`.
 
-  For example, `theories/opt/ex1.v` provides the proof that the optimized
-  program refines the behavior of the unoptimized program, where the optimized
-  program simply replaces the unoptimized one's `ex1_unopt` function the
-  `ex1_opt` function.
+    For example, `theories/opt/ex1.v` provides the proof that the optimized
+    program refines the behavior of the unoptimized program, where the optimized
+    program simply replaces the unoptimized one's `ex1_unopt` function the
+    `ex1_opt` function.
 
-  For this proof, we need to show that (1) `ex1_opt` refines `ex1_unopt`, and (2) all other unchanged functions refine themselves.
-  The proof of (1) is in the Lemma `ex1_sim_fun`.
-  The proof of (2) is the reflexivity of our simulation relation for well-formed programs, provided in `theories/sim/refl.v`.
+    For this proof, we need to show that (1) `ex1_opt` refines `ex1_unopt`, and (2) all other unchanged functions refine themselves.
+    The proof of (1) is in the Lemma `ex1_sim_fun`.
+    The proof of (2) is the reflexivity of our simulation relation for well-formed programs, provided in `theories/sim/refl.v`.
 
 
 ### How to build
