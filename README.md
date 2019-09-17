@@ -20,7 +20,9 @@ You can also run them in Miri via "Tools" - "Miri", which will show a Stacked Bo
 We have given informal proof sketches of optimizations based on Stacked Borrows
 in the paper. To further increase confidence in the semantics, we formalized
 these arguments in Coq (about 14KLOC). We have carried out the proofs of the
-transformations mentioned in the paper: `example1`, `example2`, `example2_down`, `example3_down`.
+transformations mentioned in the paper: `example1`, `example2`, `example2_down`,
+`example3_down`; as well as two more variants to complete the picture,
+`example1_down` and `example3`.
 
 ### What to look for
 
@@ -36,10 +38,10 @@ The directory structure is as follows:
   - Adequacy (that the simulation implies behavior inclusion) is in `sim/local_adequacy.v`, `sim/global_adequacy.v`, and `sim/program.v`.
   - Properties of the simulation with respect to the operational semantics are
   proven in `sim/body.v`, `sim/refl_pure_step.v`, `sim/refl_mem_step.v`,
-  `sim/left_step.v`, `sim/right_step.v`, `sim/simple.v`.
-  - The fundamental property that the simulation is reflexive is proven in
-  `sim/refl.v`.
-  - The main invariant needed for these properties is in `sim/invariant.v`.
+  `sim/left_step.v`, `sim/right_step.v`.
+  - The main invariant needed for these properties is defined in `sim/invariant.v`.
+  - In `sim/simple.v`, we define an easier-to-use but less powerful derived simulation relation.
+  - The fundamental property that the simulation is reflexive for well-formed terms is proven in `sim/refl.v`.
 * `theories/opt`: Proofs of optimizations.
 
     For example, `theories/opt/ex1.v` provides the proof that the optimized
