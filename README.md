@@ -46,7 +46,7 @@ The directory structure is as follows:
 
     For example, `theories/opt/ex1.v` provides the proof that the optimized
     program refines the behavior of the unoptimized program, where the optimized
-    program simply replaces the unoptimized one's `ex1_unopt` function the
+    program simply replaces the unoptimized one's `ex1_unopt` function with the
     `ex1_opt` function.
 
     For this proof, we need to show that (1) `ex1_opt` refines `ex1_unopt`, and (2) all other unchanged functions refine themselves.
