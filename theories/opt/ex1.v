@@ -7,13 +7,29 @@ Set Default Proof Using "Type".
 (* Assuming x : &mut i32 *)
 Definition ex1_unopt : function :=
   fun: ["i"],
-    let: "x" := new_place (&mut int) "i" in (* put argument into place *)
+    (* "x" is the local variable that stores the pointer value "i" *)
+    let: "x" := new_place (&mut int) "i" in
+
+    (* retag_place reborrows the pointer value stored in "x" (which is "i"),
+      then updates "x" with the new pointer value *)
     retag_place "x" (RefPtr Mutable) int Default ;;
+
+    (* The unknown code is represented by a call to an unknown function "f" or
+      "g" *)
     Call #[ScFnPtr "f"] [] ;;
+
+    (* Write 42 to the cell pointed to by the pointer in "x" *)
     *{int} "x" <- #[42] ;;
+
     Call #[ScFnPtr "g"] [] ;;
+
+    (* Read the value "v" from the cell pointed to by the pointer in "x" *)
     let: "v" := Copy *{int} "x" in
+
+    (* Free the local variable *)
     Free "x" ;;
+
+    (* Finally, return the read value *)
     "v"
   .
 
@@ -58,7 +74,7 @@ Proof.
     (* Write local *)
     sim_apply sim_simple_write_local; [solve_sim..|].
     intros s ?. simplify_eq.
-  (* Call *)
+  (* Call unknown function *)
   sim_apply sim_simple_let=>/=.
   sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
   intros rf frs frt ??? ? _ _ FREL. simplify_eq/=.
@@ -85,7 +101,7 @@ Proof.
   (* We can go back to simple mode! *)
   eapply (sim_simplify (fun_post_simple c)). { by eauto. }
   simplify_eq/=. clear- AREL FREL LOOK.
-  (* Call *)
+  (* Call unknown function *)
   sim_apply (sim_simple_call 10 [] [] ε); [solve_sim..|].
   intros rf' frs' frt' ??? ? _ _ FREL'. simplify_eq/=.
   apply: sim_simple_result. simpl.

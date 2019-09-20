@@ -9,12 +9,26 @@ Set Default Proof Using "Type".
 (* Assuming x : &mut i32 *)
 Definition ex3_down_unopt : function :=
   fun: ["i"],
+    (* "x" is the local variable that stores the pointer value "i" *)
     let: "x" := new_place (&mut int) "i" in
+
+    (* retag_place reborrows the pointer value stored in "x" (which is "i"),
+      then updates "x" with the new pointer value *)
     retag_place "x" (RefPtr Mutable) int FnEntry ;;
+
+    (* Write 42 to the cell pointed to by the pointer in "x" *)
     *{int} "x" <- #[42] ;;
+
+    (* The unknown code is represented by a call to an unknown function "f" *)
     let: "v" := Call #[ScFnPtr "f"] [] in
+
+    (* Write 13 to the cell pointed to by the pointer in "x" *)
     *{int} "x" <- #[13] ;;
+
+    (* Free the local variable *)
     Free "x" ;;
+
+    (* Finally, return the value *)
     "v"
   .
 

@@ -9,11 +9,24 @@ Set Default Proof Using "Type".
 (* Assuming x : & i32 *)
 Definition ex2_down_unopt : function :=
   fun: ["i"],
+    (* "x" is the local variable that stores the pointer value "i" *)
     let: "x" := new_place (& int) "i" in
+
+    (* retag_place reborrows the pointer value stored in "x" (which is "i"),
+      then updates "x" with the new pointer value *)
     retag_place "x" (RefPtr Immutable) int FnEntry ;;
+
+    (* Read the value "v" from the cell pointed to by the pointer in "x" *)
     let: "v" := Copy *{int} "x" in
+
+    (* The unknown code is represented by a call to an unknown function "f",
+      which does take the pointer value from "x" as an argument. *)
     Call #[ScFnPtr "f"] [Copy "x"] ;;
+
+    (* Free the local variable *)
     Free "x" ;;
+
+    (* Finally, return the read value *)
     "v"
   .
 
