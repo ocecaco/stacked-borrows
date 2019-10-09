@@ -249,13 +249,13 @@ Equations read_mem (l: loc) (n: nat) h: option value :=
 
 Definition fresh_block (h : mem) : block :=
   let loclst : list loc := elements (dom (gset loc) h) in
-  let blockset : gset block := foldr (λ l, ({[l.1]} ∪)) ∅ loclst in
+  let blockset : gset block := foldr (λ l, ({[l.1]} ∪.)) ∅ loclst in
   fresh blockset.
 
 Lemma is_fresh_block h i : (fresh_block h,i) ∉ dom (gset loc) h.
 Proof.
   assert (∀ l (ls: list loc) (X : gset block),
-    l ∈ ls → l.1 ∈ foldr (λ l, ({[l.1]} ∪)) X ls) as help.
+    l ∈ ls → l.1 ∈ foldr (λ l, ({[l.1]} ∪.)) X ls) as help.
   { induction 1; set_solver. }
   rewrite /fresh_block /shift /= -elem_of_elements.
   move=> /(help _ _ ∅) /=. apply is_fresh.
