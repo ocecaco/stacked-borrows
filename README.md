@@ -136,4 +136,8 @@ The directory structure is as follows.
     `example3` did not appear in the paper but we verified it in
     [opt/ex3.v](theories/opt/ex3.v).
 
+## LICENSE
+This repository follows the BSD license.
+It is publicly accessible at the URL: https://gitlab.mpi-sws.org/FP/stacked-borrows.
+
 [appendix]: appendix.pdf
