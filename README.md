@@ -6,7 +6,7 @@
 
 A VM that comes with pre-compiled sources is provided, so that you can start the inspection immediately.
 
-* [artifact.ova](artifact.ova) can be imported in to VirtualBox.
+* [artifact.ova](artifact.ova) can be imported into VirtualBox.
   Please give it at least 4GB of RAM.
 * The username/password are both `artifact`. After logging in with `artifact`,
   please navigate to `~/sources` for the pre-compiled Coq sources.
@@ -74,7 +74,11 @@ transformations mentioned in the paper: `example1`, `example2`, `example2_down`,
 
 ### STRUCTURE
 
-The directory structure is as follows:
+**Please open files from the folder where the `_CoqProject` file is located, so
+that your favorite editing environment can make use of the `_CoqProject` file.**
+
+The directory structure is as follows.
+
 * [theories/lang](theories/lang): Definitions and properties of the language.
   - The language syntax is defined in
     [lang/lang_base.v](theories/lang/lang_base.v).
@@ -83,16 +87,18 @@ The directory structure is as follows:
   - The semantics of Stacked Borrows itself is in
     [lang/bor_semantics.v](theories/lang/bor_semantics.v).
   - The complete language is then combined in [lang/lang.v](theories/lang/lang.v).
+
 * [theories/sim](theories/sim): The simulation framework and its adequacy proofs.
-  - The *local* simulation definition is in [sim/local.v](theories/sim/local.v).
+  - The *local* simulation definition, which is the main simulation relation we
+    use to prove optimizations, is in [sim/local.v](theories/sim/local.v).
   - It is then lifted up to the *global* simulation definition in
     [sim/global.v](theories/sim/global.v).
   - Adequacy, which states that the simulation implies behavior inclusion, is in
     [sim/local_adequacy.v](theories/sim/local_adequacy.v),
     [sim/global_adequacy.v](theories/sim/global_adequacy.v),
     [sim/program.v](theories/sim/program.v).
-  - Properties of the simulation with respect to the operational semantics are
-    proven in [sim/body.v](theories/sim/body.v),
+  - Properties of the local simulation with respect to the operational semantics
+    are proven in [sim/body.v](theories/sim/body.v),
     [sim/refl_pure_step.v](theories/sim/refl_pure_step.v),
     [sim/refl_mem_step.v](theories/sim/refl_mem_step.v),
     [sim/left_step.v](theories/sim/left_step.v),
@@ -104,6 +110,7 @@ The directory structure is as follows:
     less powerful derived simulation relation.
   - The fundamental property that the simulation is reflexive for well-formed
     terms is proven in [sim/refl.v](theories/sim/refl.v).
+
 * [theories/opt](theories/opt): Proofs of optimizations.
 
     For example, [opt/ex1.v](theories/opt/ex1.v) provides the proof that the
@@ -124,7 +131,8 @@ The directory structure is as follows:
   - For `example2` (Section 3.6) and `example2_down` (Section 4),
     see [opt/ex2.v](theories/opt/ex2.v) and
     [opt/ex2_down.v](theories/opt/ex2_down.v), respectively.
-  - For `example3_down` (Section 4), see [opt/ex3_down.v](theories/opt/ex3_down.v) ;
+  - For `example3_down` (Section 4),
+    see [opt/ex3_down.v](theories/opt/ex3_down.v) ;
     `example3` did not appear in the paper but we verified it in
     [opt/ex3.v](theories/opt/ex3.v).
 
