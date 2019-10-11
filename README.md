@@ -1,6 +1,33 @@
 # STACKED BORROWS - ARTIFACT
 
-## HOW TO START
+## Technical Appendix
+
+The technical [appendix] contains a complete coherent
+description of the Stacked Borrows semantics, as well as the definition of our
+key simulation relation that we used for the Coq formalization.
+
+## Rust Counterexamples and Miri
+
+You can run the counterexamples from the paper in Rust by clicking the following links, and then selecting "Run".
+You can also run them in Miri via "Tools" - "Miri", which will show a Stacked Borrows violation.
+
+* [`example1`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=18e6931728976779452f0d489f59a71c)
+  (Section 3.4 of the paper)
+* [`example2`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=85f368db00a789caa08e2b6960ebaf01)
+  (Section 3.6)
+* [`example2_down`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=66c928ddf745a779272a73262b921a56)
+  (Section 4)
+
+## Coq Formalization
+
+We have given informal proof sketches of optimizations based on Stacked Borrows
+in the paper. To further increase confidence in the semantics, we formalized
+these arguments in Coq (about 14KLOC). We have carried out the proofs of the
+transformations mentioned in the paper: `example1`, `example2`, `example2_down`,
+`example3_down`; as well as two more variants to complete the picture,
+`example1_down` and `example3`.
+
+### HOW TO START
 
 #### Use a VM
 
@@ -44,33 +71,6 @@ replacing `N` by the number of your CPU cores.
 #### Rebuild
 If you do not trust the precompiled results, you can use `make clean` to remove
 them and follow the build instructions above to rebuild.
-
-## Technical Appendix
-
-The technical [appendix] contains a complete coherent
-description of the Stacked Borrows semantics, as well as the definition of our
-key simulation relation that we used for the Coq formalization.
-
-## Rust Counterexamples and Miri
-
-You can run the counterexamples from the paper in Rust by clicking the following links, and then selecting "Run".
-You can also run them in Miri via "Tools" - "Miri", which will show a Stacked Borrows violation.
-
-* [`example1`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=18e6931728976779452f0d489f59a71c)
-  (Section 3.4 of the paper)
-* [`example2`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=85f368db00a789caa08e2b6960ebaf01)
-  (Section 3.6)
-* [`example2_down`](https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=66c928ddf745a779272a73262b921a56)
-  (Section 4)
-
-## Coq Formalization
-
-We have given informal proof sketches of optimizations based on Stacked Borrows
-in the paper. To further increase confidence in the semantics, we formalized
-these arguments in Coq (about 14KLOC). We have carried out the proofs of the
-transformations mentioned in the paper: `example1`, `example2`, `example2_down`,
-`example3_down`; as well as two more variants to complete the picture,
-`example1_down` and `example3`.
 
 ### STRUCTURE
 
