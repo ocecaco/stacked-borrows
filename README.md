@@ -85,7 +85,22 @@ The directory structure is as follows.
   - The expression and heap semantics is defined in
     [lang/expr_semantics.v](theories/lang/expr_semantics.v).
   - The semantics of Stacked Borrows itself is in
-    [lang/bor_semantics.v](theories/lang/bor_semantics.v).
+    [lang/bor_semantics.v](theories/lang/bor_semantics.v). The following table
+    matches the definitions in the technical [appendix] with the Coq definitions.
+
+    | Definitions in [appendix]      | Coq definitions in `bor_semantics.v` |
+    |--------------------------------|--------------------------------------|
+    | `Grants`                       | `grants`                             |
+    | `FindGranting`                 | `find_granting`                      |
+    | `FindFirstWriteIncompat`       | `find_first_write_incompatible`      |
+    | `MemRead`                      | `memory_read`                        |
+    | `MemWritten`                   | `memory_written`                     |
+    | `Dealloc`                      | `dealloc1`                           |
+    | `MemDeallocated`               | `memory_deallocated`                 |
+    | `GrantTag`                     | `grant`                              |
+    | `Reborrow`                     | `reborrow`                           |
+    | `Retag`                        | `retag`                              |
+
   - The complete language is then combined in [lang/lang.v](theories/lang/lang.v).
 
 * [theories/sim](theories/sim): The simulation framework and its adequacy proofs.
