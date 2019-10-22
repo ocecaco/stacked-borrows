@@ -6,6 +6,8 @@ The technical [appendix] contains a complete coherent
 description of the Stacked Borrows semantics, as well as the definition of our
 key simulation relation that we used for the Coq formalization.
 
+[appendix]: appendix.pdf
+
 ## Rust Counterexamples and Miri
 
 You can run the counterexamples from the paper in Rust by clicking the following links, and then selecting "Run".
@@ -151,8 +153,11 @@ The directory structure is as follows.
     `example3` did not appear in the paper but we verified it in
     [opt/ex3.v](theories/opt/ex3.v).
 
-## LICENSE
-This repository follows the BSD license.
-It is publicly accessible at the URL: https://gitlab.mpi-sws.org/FP/stacked-borrows.
+## Publicly available repositories
+===============================
 
-[appendix]: appendix.pdf
+The files contained here were extracted from our [publicly available repository](https://gitlab.mpi-sws.org/FP/stacked-borrows).
+The repository is BSD-licensed.
+
+The relevant commit hashes (used when generating the artifact) can be found
+in the file [generation_data.txt](generation_data.txt).
