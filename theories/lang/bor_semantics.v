@@ -36,6 +36,7 @@ Definition find_granting (stk: stack) (access: access_kind) (bor: tag) :
 
 Definition is_active (cids: call_id_stack) (c: call_id) : bool :=
   bool_decide (c ∈ cids).
+(* FIXME: this one should exclude protectors of Disabled items *)
 Definition is_active_protector cids (it: item) :=
   match it.(protector) with
   | Some c => Is_true (is_active cids c)

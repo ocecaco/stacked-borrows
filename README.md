@@ -90,18 +90,19 @@ The directory structure is as follows.
     [lang/bor_semantics.v](theories/lang/bor_semantics.v). The following table
     matches the definitions in the technical [appendix] with the Coq definitions.
 
-    | Definitions in [appendix]      | Coq definitions in `bor_semantics.v` |
-    |--------------------------------|--------------------------------------|
-    | `Grants`                       | `grants`                             |
-    | `FindGranting`                 | `find_granting`                      |
-    | `FindFirstWIncompat`           | `find_first_write_incompatible`      |
-    | `MemRead`                      | `memory_read`                        |
-    | `MemWritten`                   | `memory_written`                     |
-    | `Dealloc`                      | `dealloc1`                           |
-    | `MemDeallocated`               | `memory_deallocated`                 |
-    | `GrantTag`                     | `grant`                              |
-    | `Reborrow`                     | `reborrow`                           |
-    | `Retag`                        | `retag`                              |
+    | Definitions in [appendix]      | Coq definitions in `bor_semantics.v` | [Implementation] in Miri |
+    |--------------------------------|--------------------------------------|--------------------------|
+    | `Grants`                       | `grants`                             | Permission::grants       |
+    | `FindGranting`                 | `find_granting`                      | Stack::find_granting     |
+    | `FindFirstWIncompat`           | `find_first_write_incompatible`      | Stack::find_first_write_incompaible |
+    | `Access`                       | `access1`                            | Stack::access            |
+    | `MemAccessed(_,_,AccessRead)`  | `memory_read`                        | Stacks::memory_read      |
+    | `MemAccessed(_,_,AccessWrite)` | `memory_written`                     | Stacks::memory_written   |
+    | `Dealloc`                      | `dealloc1`                           | Stack::dealloc           |
+    | `MemDeallocated`               | `memory_deallocated`                 | Stacks::memory_deallocated |
+    | `GrantTag`                     | `grant`                              | Stack::grant             |
+    | `Reborrow`                     | `reborrow`                           | EvalContextPrivExt::reborrow |
+    | `Retag`                        | `retag`                              | EvalContextPrivExt::retag_reference |
 
   - The complete language is then combined in [lang/lang.v](theories/lang/lang.v).
 
@@ -161,3 +162,5 @@ The repository is BSD-licensed.
 
 The relevant commit hashes (used when generating the artifact) can be found
 in the file [generation_data.txt](generation_data.txt).
+
+[Implementation]: https://github.com/rust-lang/miri/blob/8c09bfee2f44754bed46673517ba906f362d951e/src/stacked_borrows.rs
