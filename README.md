@@ -94,7 +94,7 @@ The directory structure is as follows.
     |--------------------------------|--------------------------------------|--------------------------|
     | `Grants`                       | `grants`                             | Permission::grants       |
     | `FindGranting`                 | `find_granting`                      | Stack::find_granting     |
-    | `FindFirstWIncompat`           | `find_first_write_incompatible`      | Stack::find_first_write_incompaible |
+    | `FindFirstWIncompat`           | `find_first_write_incompatible`      | Stack::find_first_write_incompatible |
     | `Access`                       | `access1`                            | Stack::access            |
     | `MemAccessed(_,_,AccessRead)`  | `memory_read`                        | Stacks::memory_read      |
     | `MemAccessed(_,_,AccessWrite)` | `memory_written`                     | Stacks::memory_written   |
@@ -105,6 +105,8 @@ The directory structure is as follows.
     | `Retag`                        | `retag`                              | EvalContextPrivExt::retag_reference |
 
   - The complete language is then combined in [lang/lang.v](theories/lang/lang.v).
+
+[Implementation]: https://github.com/rust-lang/miri/blob/d4e4fe71e6a9568f5d081d99f1c621c5a4ddd7db/src/stacked_borrows.rs
 
 * [theories/sim](theories/sim): The simulation framework and its adequacy proofs.
   - The *local* simulation definition, which is the main simulation relation we
@@ -162,5 +164,3 @@ The repository is BSD-licensed.
 
 The relevant commit hashes (used when generating the artifact) can be found
 in the file [generation_data.txt](generation_data.txt).
-
-[Implementation]: https://github.com/rust-lang/miri/blob/8c09bfee2f44754bed46673517ba906f362d951e/src/stacked_borrows.rs
