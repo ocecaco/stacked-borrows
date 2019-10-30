@@ -94,7 +94,7 @@ The directory structure is as follows.
     |--------------------------------|--------------------------------------|
     | `Grants`                       | `grants`                             |
     | `FindGranting`                 | `find_granting`                      |
-    | `FindFirstWriteIncompat`       | `find_first_write_incompatible`      |
+    | `FindFirstWIncompat`           | `find_first_write_incompatible`      |
     | `MemRead`                      | `memory_read`                        |
     | `MemWritten`                   | `memory_written`                     |
     | `Dealloc`                      | `dealloc1`                           |
