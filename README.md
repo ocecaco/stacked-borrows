@@ -88,7 +88,7 @@ The directory structure is as follows.
     [lang/expr_semantics.v](theories/lang/expr_semantics.v).
   - The semantics of Stacked Borrows itself is in
     [lang/bor_semantics.v](theories/lang/bor_semantics.v). The following table
-    matches the definitions in the technical [appendix] with the Coq definitions.
+    matches the definitions in the technical [appendix] with the Coq definitions and their [Miri implementation][Implementation].
 
     | Definitions in [appendix]      | Coq definitions in `bor_semantics.v` | [Implementation] in Miri |
     |--------------------------------|--------------------------------------|--------------------------|
