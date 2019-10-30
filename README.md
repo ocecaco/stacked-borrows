@@ -90,19 +90,19 @@ The directory structure is as follows.
     [lang/bor_semantics.v](theories/lang/bor_semantics.v). The following table
     matches the definitions in the technical [appendix] with the Coq definitions and their [Miri implementation][Implementation].
 
-    | Definitions in [appendix]      | Coq definitions in `bor_semantics.v` | [Implementation] in Miri |
-    |--------------------------------|--------------------------------------|--------------------------|
-    | `Grants`                       | `grants`                             | Permission::grants       |
-    | `FindGranting`                 | `find_granting`                      | Stack::find_granting     |
-    | `FindFirstWIncompat`           | `find_first_write_incompatible`      | Stack::find_first_write_incompatible |
-    | `Access`                       | `access1`                            | Stack::access            |
-    | `MemAccessed(_,_,AccessRead)`  | `memory_read`                        | Stacks::memory_read      |
-    | `MemAccessed(_,_,AccessWrite)` | `memory_written`                     | Stacks::memory_written   |
-    | `Dealloc`                      | `dealloc1`                           | Stack::dealloc           |
-    | `MemDeallocated`               | `memory_deallocated`                 | Stacks::memory_deallocated |
-    | `GrantTag`                     | `grant`                              | Stack::grant             |
-    | `Reborrow`                     | `reborrow`                           | EvalContextPrivExt::reborrow |
-    | `Retag`                        | `retag`                              | EvalContextPrivExt::retag_reference |
+    | Definitions in [appendix]      | Coq definitions in `bor_semantics.v` | [Implementation] in Miri   |
+    |--------------------------------|--------------------------------------|----------------------------|
+    | `Grants`                       | `grants`                             | `Permission::grants`       |
+    | `FindGranting`                 | `find_granting`                      | `Stack::find_granting`     |
+    | `FindFirstWIncompat`           | `find_first_write_incompatible`      | `Stack::find_first_write_incompatible` |
+    | `Access`                       | `access1`                            | `Stack::access`            |
+    | `MemAccessed(_,_,AccessRead)`  | `memory_read`                        | `Stacks::memory_read`      |
+    | `MemAccessed(_,_,AccessWrite)` | `memory_written`                     | `Stacks::memory_written`   |
+    | `Dealloc`                      | `dealloc1`                           | `Stack::dealloc`           |
+    | `MemDeallocated`               | `memory_deallocated`                 | `Stacks::memory_deallocated` |
+    | `GrantTag`                     | `grant`                              | `Stack::grant`             |
+    | `Reborrow`                     | `reborrow`                           | `EvalContextPrivExt::reborrow` |
+    | `Retag`                        | `retag`                              | `EvalContextPrivExt::retag_reference` |
 
   - The complete language is then combined in [lang/lang.v](theories/lang/lang.v).
 
