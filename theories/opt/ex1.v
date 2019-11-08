@@ -11,11 +11,12 @@ Definition ex1_unopt : function :=
     let: "x" := new_place (&mut int) "i" in
 
     (* retag_place reborrows the pointer value stored in "x" (which is "i"),
-      then updates "x" with the new pointer value *)
+      then updates "x" with the new pointer value.  A [Default] retag is
+      sufficient for this, we don't need the protector. *)
     retag_place "x" (RefPtr Mutable) int Default ;;
 
     (* The unknown code is represented by a call to an unknown function "f" or
-      "g" *)
+      "g". *)
     Call #[ScFnPtr "f"] [] ;;
 
     (* Write 42 to the cell pointed to by the pointer in "x" *)
@@ -60,7 +61,7 @@ Proof.
   intros sarg ->.
   sim_apply sim_simple_let=>/=.
   apply: sim_simple_result.
-  (* Step (1) in the proof sketch:
+  (* ## Step (1) in the proof sketch:
       retagging with a fresh tag `tg_n` on top of "x"'s stack. *)
   (* Retag a local place *)
   sim_apply sim_simple_let=>/=.
@@ -93,7 +94,7 @@ Proof.
   sim_apply sim_body_write_unique_1; [solve_sim..|].
   intros ?? Htop. simplify_eq/=.
   sim_apply sim_body_let. simplify_eq/=.
-  (* Step (2) in the proof sketch:
+  (* ## Step (2) in the proof sketch:
       If "x" had been accessed by "f", then "f" must have use a tag different
       from `tg_n`, which in turn implies that `tg_n` would have been popped off
       "x"'s stack. However, since the write `*{int} "x" <- #[42]` does not have
@@ -116,7 +117,7 @@ Proof.
   intros rf' frs' frt' ??? ? _ _ FREL'. simplify_eq/=.
   apply: sim_simple_result. simpl.
   sim_apply sim_simple_let=>/=.
-  (* Step (3) in the proof sketch:
+  (* ## Step (3) in the proof sketch:
     With similar reasoning to Step (2), "g" must not have accessed "x". *)
   (* Copy local (left). We drop to complex just because simple does not support this yet. *)
   intros σs σt.

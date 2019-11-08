@@ -136,7 +136,8 @@ The directory structure is as follows.
     For example, [opt/ex1.v](theories/opt/ex1.v) provides the proof that the
     optimized program refines the behavior of the unoptimized program, where the
     optimized program simply replaces the unoptimized one's `ex1_unopt` function
-    with the `ex1_opt` function.
+    with the `ex1_opt` function.  This proof also contains comments relating it
+    to the proof sketch in Section 3.4 of the paper.
 
     For this proof, we need to show that (1) `ex1_opt` refines `ex1_unopt`, and
     (2) all other unchanged functions refine themselves.
@@ -144,7 +145,8 @@ The directory structure is as follows.
     The proof of (2) is the reflexivity of our simulation relation for
     well-formed programs, provided in [theories/sim/refl.v](theories/sim/refl.v).
 
-  - For `example1` (Section 3.4 in the paper),
+  - For `example1` (Section 3.4 in the paper, except that we already generalized
+    `y` to arbitrary code as described at the end of that section),
     see [opt/ex1.v](theories/opt/ex1.v) ;
     `example1_down` did not appear in the paper but we verified it in
     [opt/ex1_down.v](theories/opt/ex1_down.v).
@@ -159,7 +161,6 @@ The directory structure is as follows.
 
 ### SIMULATION FRAMEWORK
 The simulation framework developed in this project is a standard simulation via coinduction, and is in fact a simplified version of [Hur et al.'s POPL'12 work](https://doi.org/10.1145/2103621.2103666).
-In that sense it is not novel.
 The only difference is that our framework depends on the *Iris* Coq library.
 However, note that this kind of simulation proofs has not been done in
 Iris before, and here we in fact do **not** use the Iris logic to build our simulation.
@@ -185,17 +186,17 @@ corecursive call of `behave` in the `inftau` case.
 The theorem `sim_prog_sim_classical` (in [sim/program.v](theories/sim/program.v)) proves that,
 if the program `prog_src` simulates `prog_tgt`, i.e. every function of `prog_src`
 is in the simulation relation with the corresponding function of `prog_tgt`
-(where "corresponding" means they have the same function id in both programs),
+(where "corresponding" means they have the same name in in both programs),
 then the possible behaviors of `prog_tgt` are *included* in the possible
 behaviors of `prog_src`.
 As undefined behavior subsumes any behavior, `sim_prog_sim_classical` states
 that if `prog_src` does not get stuck (no undefined behavior), then any
 observation of `prog_tgt` is also an observation of `prog_src`.
-More specifically,
+More specifically, if `prog_src` does not get stuck then
 * if `prog_tgt` can terminate to a value, `prog_src` must also be
 able to terminate to the same value, and
 * if `prog_tgt` can diverge, `prog_src` must also be able to diverge, and
-* `prog_tgt` in fact does not get stuck, because that is not an observation of `prog_src`.
+* `prog_tgt` does not get stuck, because that is not an observation of `prog_src`.
 
 #### Simulation relations
 The main simulation relation is defined (in the standard way of [paco] proofs) for language expressions in `sim_local_body` (in [sim/local.v](theories/sim/local.v)), and is then lifted to the *function simulation* relation `sim_local_fun`.
@@ -210,16 +211,6 @@ also have a post-condition.
 The resource *r* allows us to state abstractly which part of the global state
 the pair `(src,tgt)` focuses on.
 It is a rely-guarantee setup that allows us to reason locally about functions' bodies, as long as we maintain the invariant on the global state.
-
-#### `FnEntry` or `Default` Retagging?
-In the optimization directory ([opt](theories/opt)), one can find different examples, some of which use `FnEntry` retagging, while others use `Default` retagging.
-Here, `FnEntry` is used to retag arguments passed into a *Rust* function.
-Note that "functions" in our language do **not** always correspond to Rust functions.
-Functions in our language can also be used to capture some arbitrary expressions in Rust.
-In those cases, when creating new pointers, the `Default` retag is used.
-
-#### Concurrency support
-We do not target concurrency at all. This is left for future work.
 
 ## Publicly available repositories
 ===============================
