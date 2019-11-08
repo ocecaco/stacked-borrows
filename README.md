@@ -156,6 +156,71 @@ The directory structure is as follows.
     `example3` did not appear in the paper but we verified it in
     [opt/ex3.v](theories/opt/ex3.v).
 
+
+### SIMULATION FRAMEWORK
+The simulation framework developed in this project is a standard simulation via coinduction, and is in fact a simplified version of [Hur et al.'s POPL'12 work](https://doi.org/10.1145/2103621.2103666).
+In that sense it is not novel.
+The only difference is that our framework depends on the *Iris* Coq library.
+However, note that this kind of simulation proofs has not been done in
+Iris before, and here we in fact do **not** use the Iris logic to build our simulation.
+We only depend on the Iris Coq library for its *resource
+algebras* in order to obtain some modularity in our reasoning.
+
+#### Behaviors/Observations
+Since we formalize the Stacked Borrows semantics with a rather limited language without external observations (for
+example, without `syscall`'s), a program in our language only has the
+following observable behaviors:
+1. The program gets *stuck* (undefined behavior) after a finite number of steps.
+2. The program terminates to a value after finite number of steps.
+3. The program diverges with infinite number of silent steps ($\tau$-steps).
+
+The definition `behave_` (in [sim/behavior.v](theories/sim/behavior.v)) lists these cases, and
+then we take the greatest fixpoint of `behave_` (a co-induction definition) as
+`behave`, using the [paco] library.
+The greatest fixpoint is taken so that when the program diverges, its observation actually
+has infinite number of steps.
+This can be seen in the definition of `behmatch`, where we only make a
+corecursive call of `behave` in the `inftau` case.
+
+The theorem `sim_prog_sim_classical` (in [sim/program.v](theories/sim/program.v)) proves that,
+if the program `prog_src` simulates `prog_tgt`, i.e. every function of `prog_src`
+is in the simulation relation with the corresponding function of `prog_tgt`
+(where "corresponding" means they have the same function id in both programs),
+then the possible behaviors of `prog_tgt` are *included* in the possible
+behaviors of `prog_src`.
+As undefined behavior subsumes any behavior, `sim_prog_sim_classical` states
+that if `prog_src` does not get stuck (no undefined behavior), then any
+observation of `prog_tgt` is also an observation of `prog_src`.
+More specifically,
+* if `prog_tgt` can terminate to a value, `prog_src` must also be
+able to terminate to the same value, and
+* if `prog_tgt` can diverge, `prog_src` must also be able to diverge, and
+* `prog_tgt` in fact does not get stuck, because that is not an observation of `prog_src`.
+
+#### Simulation relations
+The main simulation relation is defined (in the standard way of [paco] proofs) for language expressions in `sim_local_body` (in [sim/local.v](theories/sim/local.v)), and is then lifted to the *function simulation* relation `sim_local_fun`.
+The function simulation is then lifted again to the *program simulation* relation (`sim_local_funs`), as defined above in the description of `sim_prog_sim_classical`.
+
+The main simulation relation `sim_local_body` is explained with further comments in
+[sim/local.v](theories/sim/local.v).
+Every pair of expression `(src,tgt)` in the relation is indexed with a
+*pre-condition*, which is some resource *r* (whose type is defined in our
+resource algebra *Res*---see Section 2 of the [appendix] for more detail). They
+also have a post-condition.
+The resource *r* allows us to state abstractly which part of the global state
+the pair `(src,tgt)` focuses on.
+It is a rely-guarantee setup that allows us to reason locally about functions' bodies, as long as we maintain the invariant on the global state.
+
+#### `FnEntry` or `Default` Retagging?
+In the optimization directory ([opt](theories/opt)), one can find different examples, some of which use `FnEntry` retagging, while others use `Default` retagging.
+Here, `FnEntry` is used to retag arguments passed into a *Rust* function.
+Note that "functions" in our language do **not** always correspond to Rust functions.
+Functions in our language can also be used to capture some arbitrary expressions in Rust.
+In those cases, when creating new pointers, the `Default` retag is used.
+
+#### Concurrency support
+We do not target concurrency at all. This is left for future work.
+
 ## Publicly available repositories
 ===============================
 
@@ -164,3 +229,5 @@ The repository is BSD-licensed.
 
 The relevant commit hashes (used when generating the artifact) can be found
 in the file [generation_data.txt](generation_data.txt).
+
+[paco]: https://github.com/snu-sf/paco
