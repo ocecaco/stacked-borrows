@@ -13,7 +13,8 @@ Definition ex2_down_unopt : function :=
     let: "x" := new_place (& int) "i" in
 
     (* retag_place reborrows the pointer value stored in "x" (which is "i"),
-      then updates "x" with the new pointer value *)
+      then updates "x" with the new pointer value. This relies on protectors,
+      hence [FnEntry]. *)
     retag_place "x" (RefPtr Immutable) int FnEntry ;;
 
     (* Read the value "v" from the cell pointed to by the pointer in "x" *)

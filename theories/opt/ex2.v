@@ -12,7 +12,8 @@ Definition ex2_unopt : function :=
     let: "x" := new_place (& int) "i" in
 
     (* retag_place reborrows the pointer value stored in "x" (which is "i"),
-      then updates "x" with the new pointer value *)
+      then updates "x" with the new pointer value. A [Default] retag is
+      sufficient for this, we don't need the protector. *)
     retag_place "x" (RefPtr Immutable) int Default ;;
 
     (* The unknown code is represented by a call to an unknown function "f",
