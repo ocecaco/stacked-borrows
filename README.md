@@ -160,12 +160,10 @@ The directory structure is as follows.
 
 
 ### SIMULATION FRAMEWORK
+
 The simulation framework developed in this project is a standard simulation via coinduction, and is in fact a simplified version of [Hur et al.'s POPL'12 work](https://doi.org/10.1145/2103621.2103666).
-The only difference is that our framework depends on the *Iris* Coq library.
-However, note that this kind of simulation proofs has not been done in
-Iris before, and here we in fact do **not** use the Iris logic to build our simulation.
-We only depend on the Iris Coq library for its *resource
-algebras* in order to obtain some modularity in our reasoning.
+Additionally, our framework depends on the *Iris* Coq library -- however, only the Iris model of *resource algebras* is used in order to obtain some modularity in our reasoning.
+The iris logic is not involved in this at all (and, in particular, we do not use step-indexing).
 
 #### Behaviors/Observations
 Since we formalize the Stacked Borrows semantics with a rather limited language without external observations (for
