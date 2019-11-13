@@ -158,6 +158,14 @@ The directory structure is as follows.
     `example3` did not appear in the paper but we verified it in
     [opt/ex3.v](theories/opt/ex3.v).
 
+#### Difference from the paper in indexing stacks
+In the paper, we present stacks with bottom-to-top as left-to-right of a list.
+That is, by indexing, 0 is the bottom of the stack `stk`, and `|stk| - 1` is the
+top of `stk`.
+In Coq, however, to conveniently perform induction on stacks, we pick the left
+of the list as top, and the right of the list as bottom of the stack.
+By indexing, 0 is thus top of the stack, and `|stk| - 1` is the bottom.
+In this case, a smaller index means a higher item in the stack.
 
 ### SIMULATION FRAMEWORK
 

@@ -27,9 +27,16 @@ Definition matched_grant (access: access_kind) (bor: tag) (it: item) :=
 Instance matched_grant_dec (access: access_kind) (bor: tag) :
   Decision (matched_grant access bor it) := _.
 
-(* This is different from Miri's implementation: left-to-right is top-to-bottom
-  of the stack. So 0 is top of the stack. The index returned by this function
-  also follows this scheme (smaller means higher in the stack). *)
+(** Difference from the paper/Miri in indexing of stacks: *)
+(*  In the paper, we present stacks with bottom-to-top as left-to-right of a
+  list. That is, by indexing, 0 is the bottom of the stack `stk`, and
+  `|stk| - 1` is the top of `stk`.
+  In Coq, however, to conveniently perform induction on stacks, we pick the left
+  of the list as top, and the right of the list as bottom of the stack.
+  By indexing, 0 is thus top of the stack, and `|stk| - 1` is the bottom.
+  In this case, a smaller index means a higher item in the stack. *)
+
+(* Return the index of the granting item *)
 Definition find_granting (stk: stack) (access: access_kind) (bor: tag) :
   option (nat * permission) :=
   (λ nit, (nit.1, nit.2.(perm))) <$> (list_find (matched_grant access bor) stk).
@@ -57,7 +64,8 @@ Definition dealloc1 (stk: stack) (bor: tag) cids : option unit :=
   (* Step 2: Check that there are no active protectors left. *)
   if find_top_active_protector cids stk then None else Some ().
 
-(* Find the index RIGHT BEFORE the first incompatiable item *)
+(* Find the index RIGHT BEFORE the first incompatiable item.
+   Remember that 0 is the top of the stack. *)
 Definition find_first_write_incompatible
   (stk: stack) (pm: permission) : option nat :=
   match pm with
