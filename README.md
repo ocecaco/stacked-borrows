@@ -161,8 +161,8 @@ The directory structure is as follows.
 #### Difference from the paper formalization: stack indexing
 
 In the paper, we represent stacks as lists with their bottom at the left end
-(head) of the list. That is, in terms of indexing indexing, 0 is the bottom of
-the stack `stk`, and `|stk| - 1` is the top of `stk`.
+(head) of the list. That is, in terms of indexing, 0 is the bottom of the stack
+`stk`, and `|stk| - 1` is the top of `stk`.
 
 In Coq, however, to conveniently perform induction on stacks, we pick the head
 of the list as the top, and the tail of the list as the bottom of the stack.  In
