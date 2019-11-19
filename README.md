@@ -1,5 +1,7 @@
 # STACKED BORROWS - ARTIFACT
 
+This is the git repository for the artifact to the [Stacked Borrows paper](https://plv.mpi-sws.org/rustbelt/stacked-borrows/).
+
 ## Technical Appendix
 
 The technical [appendix] contains a complete coherent
