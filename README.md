@@ -6,7 +6,7 @@ The technical [appendix] contains a complete coherent
 description of the Stacked Borrows semantics, as well as the definition of our
 key simulation relation that we used for the Coq formalization.
 
-[appendix]: appendix.pdf
+[appendix]: https://plv.mpi-sws.org/rustbelt/stacked-borrows/appendix.pdf
 
 ## Rust Counterexamples and Miri
 
