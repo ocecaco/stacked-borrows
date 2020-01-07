@@ -79,14 +79,14 @@ Proof.
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   (* some lookup properties *)
   have VALIDr := cmra_valid_op_r _ _ VALID. rewrite ->Eqr in VALIDr.
-  have HLtr: r.(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
+  have HLtr: rtm r !! t ≡ Some (to_tgkR k, to_agree <$> h).
   { rewrite Eqr.
     destruct LU; subst k.
     - eapply tmap_lookup_op_local_included; [apply VALIDr|apply cmra_included_r|].
       rewrite res_tag_lookup //.
     - eapply tmap_lookup_op_uniq_included; [apply VALIDr|apply cmra_included_r|].
       rewrite res_tag_lookup //. }
-  have HLtrf: (r_f ⋅ r).(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
+  have HLtrf: rtm (r_f ⋅ r) !! t ≡ Some (to_tgkR k, to_agree <$> h).
   { destruct LU; subst k.
     - apply tmap_lookup_op_r_local_equiv; [apply VALID|done].
     - apply tmap_lookup_op_r_uniq_equiv; [apply VALID|done]. }
@@ -197,7 +197,7 @@ Proof.
 
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
   (* some lookup properties *)
-  have [h' HLtrf]: ∃ h', (r_f ⋅ r).(rtm) !! t ≡
+  have [h' HLtrf]: ∃ h', rtm (r_f ⋅ r) !! t ≡
     Some (to_tgkR tkPub, h' ⋅ (to_agree <$> h)).
   { setoid_rewrite Eqr. setoid_rewrite cmra_assoc.
     apply tmap_lookup_op_r_equiv_pub.
@@ -276,9 +276,9 @@ Proof.
 
   destruct WSAT as (WFS & WFT & VALID & PINV & CINV & SREL).
 
-  have HLc: (r_f ⋅ r).(rcm) !! c ≡ Excl' Ts.
+  have HLc: rcm (r_f ⋅ r) !! c ≡ Excl' Ts.
   { rewrite Eqr Eqr' 2!cmra_assoc lookup_op right_id.
-    apply (cmap_lookup_op_unique_included (res_cs c Ts).(rcm)).
+    apply (cmap_lookup_op_unique_included (rcm $ res_cs c Ts)).
     - move : (proj2 VALID). rewrite Eqr Eqr' 2!cmra_assoc => VALID2.
       by apply (cmra_valid_included _ _ VALID2), cmra_included_l.
     - by apply cmra_included_r.
@@ -287,7 +287,7 @@ Proof.
   specialize (CINVc _ _ EqTs) as [Ltc CINVc].
   specialize (CINVc _ InL) as (stk & pm & Eqstk & Instk & NDIS).
 
-  have HLtrf : (r_f ⋅ r).(rtm) !! t ≡ Some (to_tgkR tk, to_agree <$> h).
+  have HLtrf : rtm (r_f ⋅ r) !! t ≡ Some (to_tgkR tk, to_agree <$> h).
   { rewrite ->Eqr in VALID. move : VALID. rewrite cmra_assoc => VALID.
     rewrite Eqr cmra_assoc.
     apply tmap_lookup_op_r_uniq_equiv; [apply VALID|].
@@ -319,15 +319,14 @@ Proof.
     by apply rtc_once.
 
   set rt' := res_tag t tk (<[l := (ss', st)]> h).
-  have EQrcm: (r_f ⋅ r).(rcm) ≡ (r_f ⋅ r' ⋅ rt').(rcm)
-    by rewrite Eqr cmra_assoc.
-  have HLNt: (r_f ⋅ r').(rtm) !! t = None.
-  { destruct ((r_f ⋅ r').(rtm) !! t) as [ls|] eqn:Eqls; [|done].
+  have EQrcm: rcm (r_f ⋅ r) ≡ rcm (r_f ⋅ r' ⋅ rt') by rewrite Eqr cmra_assoc.
+  have HLNt: rtm (r_f ⋅ r') !! t = None.
+  { destruct (rtm (r_f ⋅ r') !! t) as [ls|] eqn:Eqls; [|done].
     exfalso. move : HLtrf.
     rewrite Eqr cmra_assoc lookup_op Eqls res_tag_lookup.
     apply tagKindR_exclusive_heaplet. }
   have HLtrf' :
-    (r_f ⋅ r' ⋅ rt').(rtm) !! t ≡ Some (to_tgkR tk, to_hplR (<[l:=(ss', st)]> h)).
+    rtm (r_f ⋅ r' ⋅ rt') !! t ≡ Some (to_tgkR tk, to_hplR (<[l:=(ss', st)]> h)).
   { by rewrite lookup_op HLNt res_tag_lookup left_id. }
 
   have VALIDr: ✓ (r_f ⋅ r' ⋅ rt').
@@ -359,7 +358,7 @@ Proof.
         intros Eq. specialize (PINV _ _ _ Eq).
         by rewrite /σs' lookup_insert_ne.
 
-    + have Eqh : (r_f ⋅ r).(rtm) !! t1 ≡ Some (to_tgkR k1, h1).
+    + have Eqh : rtm (r_f ⋅ r) !! t1 ≡ Some (to_tgkR k1, h1).
       { rewrite Eqr cmra_assoc lookup_op res_tag_lookup_ne; [|done].
         move : Eqh1. by rewrite lookup_op res_tag_lookup_ne. }
       specialize (PINV _ _ _ Eqh) as [Ltt1 PINV].

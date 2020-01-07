@@ -217,7 +217,7 @@ Lemma list_find_proper {A : Type}  (P Q : A → Prop)
   list_find P l = list_find Q l.
 Proof.
   intros HPQ. induction l as [|x y IH]; [done|]. simpl.
-  erewrite decide_iff by done. by rewrite IH.
+  erewrite (decide_iff (P x) (Q x)) by done. by rewrite IH.
 Qed.
 
 Lemma list_fmap_omap {A B C : Type} (f : A → option B) (g : B → C) (l : list A) :

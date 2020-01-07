@@ -590,7 +590,7 @@ Lemma find_granting_write stk bor i pi:
   pi ≠ Disabled ∧ pi ≠ SharedReadOnly.
 Proof.
   move => /fmap_Some [[??] /= [IS ?]]. simplify_eq.
-  apply list_find_Some in IS as [? [IS ?]].
+  apply list_find_Some in IS as (? & [IS ?] & ?).
   move : IS. rewrite /grants. case perm; naive_solver.
 Qed.
 

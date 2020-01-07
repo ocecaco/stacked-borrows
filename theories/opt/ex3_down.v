@@ -70,6 +70,8 @@ Proof.
   exists 10%nat. apply sim_body_init_call=>/= Eqcs.
   (* Alloc local *)
   sim_apply sim_body_alloc_local => /=.
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_body_let=>/=.
   (* Write local *)
   sim_apply sim_body_write_local_1; [solve_sim..|].
@@ -79,6 +81,8 @@ Proof.
   (* Retag a local place *)
   sim_apply sim_body_let=>/=.
   apply Forall2_cons_inv in VREL as [AREL _].
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_body_let=>/=.
     (* Copy local place *)
     sim_apply sim_body_copy_local; [solve_sim..|].
@@ -158,7 +162,7 @@ Proof.
   (* Finishing up. *)
   apply: sim_body_result => Hval. split.
   - exists σt.(snc). split; [done|]. rewrite /end_call_sat.
-    apply (cmap_lookup_op_unique_included (res_cs σt.(snc) ∅).(rcm));
+    apply (cmap_lookup_op_unique_included (rcm $ res_cs σt.(snc) ∅));
       [apply Hval|apply prod_included; rewrite /r2; solve_res|..].
     by rewrite res_cs_lookup.
   - move : VREL'. rewrite /r2. apply vrel_mono; [done|solve_res].
@@ -201,6 +205,8 @@ Proof.
   exists 10%nat. apply sim_body_init_call=>/= Eqcs.
   (* Alloc local *)
   sim_apply sim_body_alloc_local => /=.
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_body_let=>/=.
   (* Write local *)
   sim_apply sim_body_write_local_1; [solve_sim..|].
@@ -210,6 +216,8 @@ Proof.
   (* Retag a local place *)
   sim_apply sim_body_let=>/=.
   apply Forall2_cons_inv in VREL as [AREL _].
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_body_let=>/=.
     (* Copy local place *)
     sim_apply sim_body_copy_local; [solve_sim..|].
@@ -278,7 +286,7 @@ Proof.
   (* Finishing up. *)
   apply: sim_body_result => Hval. split.
   - exists σt.(snc). split; [done|]. rewrite /end_call_sat.
-    apply (cmap_lookup_op_unique_included (res_cs σt.(snc) ∅).(rcm));
+    apply (cmap_lookup_op_unique_included (rcm $ res_cs σt.(snc) ∅));
       [apply Hval|apply prod_included; rewrite /r2; solve_res|..].
     by rewrite res_cs_lookup.
   - move : VREL'. rewrite /r2. apply vrel_mono; [done|solve_res].

@@ -46,6 +46,8 @@ Proof.
   simplify_eq/=.
   (* Alloc local *)
   sim_apply sim_simple_alloc_local=> l t /=.
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_simple_let=>/=.
   (* Write local *)
   sim_apply sim_simple_write_local; [solve_sim..|].
@@ -57,6 +59,8 @@ Proof.
   apply Forall2_cons_inv in AREL as [AREL _].
   (* We need to drop to complex mode, to preserve some local state info. *)
   intros σs σt.
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_body_let=>/=.
     (* Copy local place *)
     sim_apply sim_body_copy_local; [solve_sim..|].

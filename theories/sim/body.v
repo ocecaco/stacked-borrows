@@ -205,7 +205,7 @@ Proof.
   intros r1 r2 EQr n ? <- es ? <- σs ? <- et ? <- σt ? <- Φ ? <-.
   split; eapply sim_body_res_ext; done.
 Qed.
-Global Instance: Params (@sim_local_body) 5.
+Global Instance : Params (@sim_local_body) 5 := {}.
 
 Lemma sim_body_frame_r' fs ft n (rf r: resUR) es σs et σt Φ :
   r ⊨{n,fs,ft} (es, σs) ≥ (et, σt) : Φ →

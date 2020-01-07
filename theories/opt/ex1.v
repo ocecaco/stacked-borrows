@@ -1,4 +1,5 @@
-From stbor.sim Require Import local invariant refl tactics simple program refl_step right_step left_step viewshift.
+From stbor.sim Require Import local invariant refl tactics simple program
+                              refl_step right_step left_step viewshift.
 
 Set Default Proof Using "Type".
 
@@ -55,6 +56,8 @@ Proof.
   simplify_eq/=.
   (* Alloc local *)
   sim_apply sim_simple_alloc_local=> l t /=.
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_simple_let=>/=.
   (* Write local *)
   sim_apply sim_simple_write_local; [solve_sim..|].
@@ -66,6 +69,8 @@ Proof.
   (* Retag a local place *)
   sim_apply sim_simple_let=>/=.
   apply Forall2_cons_inv in AREL as [AREL _].
+  (* TODO: sim_apply's bind cannot disambiguate the right "let" *)
+  sim_bind (let: _ := Place _ _ _ in _)%E (let: _ := Place _ _ _ in _)%E.
   sim_apply sim_simple_let=>/=.
     (* Copy local place *)
     sim_apply sim_simple_copy_local; [solve_sim..|].

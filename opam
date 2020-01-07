@@ -7,7 +7,7 @@ synopsis: "The Coq artifact for 'Stacked Borrows'"
 build: [make "-j%{jobs}%"]
 install: [make "install"]
 depends: [
-  "coq-iris" { (= "dev.2019-09-19.3.aa7871c7") | (= "dev") }
-  "coq-paco" { (= "3.0.0") }
-  "coq-equations" { (= "1.2~beta+8.8") | (= "1.2~beta+8.9") }
+  "coq-iris" { (= "dev.2019-12-20.0.62798412") | (= "dev") }
+  "coq-paco" { (= "4.0.0") }
+  "coq-equations" { (="1.2+8.8") | (="1.2.1+8.9") | (= "1.2.1+9.10") }
 ]

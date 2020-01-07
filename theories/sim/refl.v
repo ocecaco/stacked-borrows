@@ -353,6 +353,6 @@ Proof.
   intros [_ WF]. induction prog using map_ind.
   { intros ??. rewrite lookup_empty. done. }
   apply sim_mod_funs_insert; first done.
-  - apply sim_mod_fun_refl. eapply WF. erewrite lookup_insert. done.
+  - apply sim_mod_fun_refl. eapply WF. by erewrite (lookup_insert m).
   - apply IHprog. eapply map_Forall_insert_12; done.
 Qed.

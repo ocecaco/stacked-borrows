@@ -33,7 +33,7 @@ Proof.
   - rewrite -EQr. exact: HH.
   - rewrite EQr. exact: HH.
 Qed.
-Global Instance: Params sim_simple 2.
+Global Instance: Params sim_simple 2 := {}.
 
 Lemma sim_simplify
   (Φnew: resUR → nat → result → result → Prop)

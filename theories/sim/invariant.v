@@ -20,7 +20,7 @@ Definition arel (r: resUR) (s1 s2: scalar) : Prop :=
       l1 = l2 ∧ tg1 = tg2 ∧
       match tg1 with
       | Untagged => True
-      | Tagged t => ∃ h, r.(rtm) !! t ≡ Some (to_tgkR tkPub, h)
+      | Tagged t => ∃ h, rtm r !! t ≡ Some (to_tgkR tkPub, h)
       end
   | _, _ => False
   end.
@@ -45,7 +45,7 @@ Definition tmap_inv_post (k: tag_kind) (t: ptr_id) (l: loc) (σt: state) : Prop 
   end.
 
 Definition tmap_inv (r: resUR) (σs σt: state) : Prop :=
-  ∀ (t: ptr_id) (k: tag_kind) h, r.(rtm) !! t ≡ Some (to_tgkR k, h) →
+  ∀ (t: ptr_id) (k: tag_kind) h, rtm r !! t ≡ Some (to_tgkR k, h) →
   (t < σt.(snp))%nat ∧
   ∀ (l: loc) (ss st: scalar),
     h !! l ≡ Some (to_agree (ss, st)) →
@@ -60,7 +60,7 @@ Definition tmap_inv (r: resUR) (σs σt: state) : Prop :=
     tmap_inv_post k t l σt.
 
 Definition cmap_inv (r: resUR) (σ: state) : Prop :=
-  ∀ (c: call_id) (T: tag_locs), r.(rcm) !! c ≡ Excl' T →
+  ∀ (c: call_id) (T: tag_locs), rcm r !! c ≡ Excl' T →
   c ∈ σ.(scs) ∧
   (* for any tag [t] owned by [c] *)
   ∀ (t: ptr_id) (L : gset loc), T !! t = Some L →
@@ -74,12 +74,12 @@ Definition cmap_inv (r: resUR) (σ: state) : Prop :=
 (* [l] is private w.r.t to some tag [t] if [t] is uniquely owned and protected
   by some call id [c] and [l] is in [t]'s heaplet [h]. *)
 Definition priv_loc (r: resUR) (l: loc) (t: ptr_id) :=
-  ∃ k h, r.(rtm) !! t ≡ Some (to_tgkR k, h) ∧ is_Some (h !! l) ∧
+  ∃ k h, rtm r !! t ≡ Some (to_tgkR k, h) ∧ is_Some (h !! l) ∧
   ((* local *)
     k = tkLocal ∨
    (* protector *)
     (k = tkUnique ∧ ∃ (c: call_id) T L,
-        r.(rcm) !! c ≡ Excl' T ∧ T !! t = Some L ∧ l ∈ L)).
+        rcm r !! c ≡ Excl' T ∧ T !! t = Some L ∧ l ∈ L)).
 
 Definition pub_loc (r: resUR) (l: loc) (σs σt: state) :=
   ∀ st, σt.(shp) !! l = Some st → ∃ ss, σs.(shp) !! l = Some ss ∧ arel r ss st.
@@ -104,7 +104,7 @@ Definition vrel (r: resUR) (v1 v2: value) := Forall2 (arel r) v1 v2.
 (** Condition for resource before EndCall *)
 (* The call id [c] to be end must not have any privately protected locations. *)
 Definition end_call_sat (r: resUR) (c: call_id) : Prop :=
-  r.(rcm) !! c ≡ Some (Excl ∅).
+  rcm r !! c ≡ Some (Excl ∅).
 
 Lemma res_end_call_sat r c :
   ✓ r → res_cs c ∅ ≼ r → end_call_sat r c.
@@ -162,14 +162,14 @@ Proof.
 Qed.
 
 Lemma arel_mono_l (r1 r2 : resUR) (VAL: ✓ r2) :
-  r1.(rtm) ≼ r2.(rtm) → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
+  rtm r1 ≼ rtm r2 → ∀ s1 s2, arel r1 s1 s2 → arel r2 s1 s2.
 Proof.
   intros Le s1 s2. rewrite /arel.
   destruct s1 as [| |l1 t1|], s2 as [| |l2 t2|]; auto.
   intros [Eql [Eqt PV]]. subst. repeat split.
   destruct t2 as [t2|]; [|done].
   destruct PV as [h HL].
-  have HL1: Some (to_tgkR tkPub, h) ≼ r2.(rtm) !! t2.
+  have HL1: Some (to_tgkR tkPub, h) ≼ rtm r2 !! t2.
   { rewrite -HL. by apply lookup_included. }
   apply option_included in HL1 as [?|[th1 [[tk2 h2] [? [Eq1 INCL]]]]]; [done|].
   simplify_eq. exists h2. rewrite Eq1 (_: tk2 ≡ to_tgkR tkPub) //.
@@ -179,7 +179,7 @@ Proof.
     do 2 (split; [done|]). apply csum_included. naive_solver.
   - have VL2: ✓ tk2.
     { apply (pair_valid tk2 h2). rewrite -pair_valid.
-      apply (lookup_valid_Some r2.(rtm) t2); [apply VAL|]. by rewrite Eq1. }
+      apply (lookup_valid_Some (rtm r2) t2); [apply VAL|]. by rewrite Eq1. }
     destruct Eq as [|[|Eq]]; [by subst|naive_solver|].
     destruct Eq as [b [[|[]|] [? [? Eq%csum_included]]]]; simplify_eq;
       [naive_solver| |done].
@@ -207,12 +207,12 @@ Proof.
   apply pair_valid in VAL as [VAL ].
   exists k, h. split; last split; [|done|].
   { destruct PRIV as [|[]]; subst k.
-    - by apply (tmap_lookup_op_local_included r1.(rtm)).
-    - by apply (tmap_lookup_op_uniq_included r1.(rtm)). }
+    - by apply (tmap_lookup_op_local_included (rtm r1)).
+    - by apply (tmap_lookup_op_uniq_included (rtm r1)). }
   destruct PRIV as [|(? & c & T & L & ? & ?)]; [by left|right].
   subst k. split; [done|].
   exists c, T, L. split; [|done].
-  by apply (cmap_lookup_op_unique_included r1.(rcm)).
+  by apply (cmap_lookup_op_unique_included (rcm r1)).
 Qed.
 
 Lemma pub_loc_mono (r1 r2 : resUR) (VAL: ✓ r2) :
@@ -256,14 +256,14 @@ Instance wsat_proper : Proper ((≡) ==> (=) ==> (=) ==> iff) wsat.
 Proof. solve_proper. Qed.
 
 Lemma cinv_lookup_in (r: resUR) (σ: state) c T:
-  Wf σ → cmap_inv r σ → r.(rcm) !! c ≡ Excl' T → (c < σ.(snc))%nat.
+  Wf σ → cmap_inv r σ → rcm r !! c ≡ Excl' T → (c < σ.(snc))%nat.
 Proof.
   intros WF CINV EQ. specialize (CINV c T EQ).
   destruct CINV. by apply WF.
 Qed.
 
 Lemma cinv_lookup_in_eq (r: resUR) (σ: state) c T:
-  Wf σ → cmap_inv r σ → r.(rcm) !! c = Excl' T → (c < σ.(snc))%nat.
+  Wf σ → cmap_inv r σ → rcm r !! c = Excl' T → (c < σ.(snc))%nat.
 Proof.
   intros WF CINV EQ. eapply cinv_lookup_in; eauto. by rewrite EQ.
 Qed.
@@ -289,9 +289,7 @@ Proof.
   exists (core h). move: Hlk.
   destruct r as [tmap cmap].
   change (core (tmap, cmap)) with (core tmap, core cmap).
-  rewrite /rtm /=. rewrite lookup_core=>->.
-  rewrite /core /core' /=.
-  rewrite {1}/pcore /cmra_pcore /=. rewrite /prod_pcore //.
+  rewrite /rtm /=. by rewrite lookup_core=>->.
 Qed.
 
 Lemma vrel_persistent r v1 v2 :

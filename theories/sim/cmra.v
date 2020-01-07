@@ -521,7 +521,7 @@ Proof.
 Qed.
 
 Lemma res_tag_alloc_local_update lsf t k h
-  (FRESH: lsf.(rtm) !! t = None) :
+  (FRESH: rtm lsf !! t = None) :
   (lsf, ε) ~l~> (lsf ⋅ res_tag t k h, res_tag t k h).
 Proof.
   destruct lsf as [[tm cm] lm]. rewrite -pair_op right_id.
@@ -552,7 +552,7 @@ Qed.
 
 Lemma res_tag_uniq_local_update (r: resUR) t k h k' h'
   (UNIQ: k = tkLocal ∨ k = tkUnique)
-  (NONE: r.(rtm) !! t = None) :
+  (NONE: rtm r !! t = None) :
   (r ⋅ res_tag t k h, res_tag t k h) ~l~> (r ⋅ res_tag t k' h', res_tag t k' h').
 Proof.
   destruct r as [tm cm].
@@ -562,17 +562,17 @@ Qed.
 
 Lemma res_tag_1_insert_local_update (r: resUR) (l: loc) k s1 s2 (t: ptr_id)
   (UNIQ: k = tkLocal ∨ k = tkUnique)
-  (NONE: r.(rtm) !! t = None) :
+  (NONE: rtm r !! t = None) :
   (r ⋅ res_tag t k {[l := s1]}, res_tag t k {[l := s1]}) ~l~>
   (r ⋅ res_tag t k {[l := s2]}, res_tag t k {[l := s2]}).
 Proof. by apply res_tag_uniq_local_update. Qed.
 
 Lemma res_tag_lookup (k: tag_kind) (h: heaplet) (t: ptr_id) :
-  (res_tag t k h).(rtm) !! t ≡ Some (to_tgkR k, to_agree <$> h).
+  rtm (res_tag t k h) !! t ≡ Some (to_tgkR k, to_agree <$> h).
 Proof. by rewrite lookup_insert. Qed.
 
 Lemma res_tag_lookup_ne (k: tag_kind) (h: heaplet) (t t': ptr_id) (NEQ: t' ≠ t) :
-  (res_tag t k h).(rtm) !! t' ≡ None.
+  rtm (res_tag t k h) !! t' ≡ None.
 Proof. by rewrite lookup_insert_ne. Qed.
 
 
@@ -592,7 +592,7 @@ Qed.
 
 Lemma res_tag_uniq_dealloc_local_update (r: resUR) t k h
   (UNIQ: k = tkLocal ∨ k = tkUnique)
-  (NONE: r.(rtm) !! t = None) :
+  (NONE: rtm r !! t = None) :
   (r ⋅ res_tag t k h, res_tag t k h) ~l~> (r, ε : resUR).
 Proof.
   destruct r as [tm cm]. rewrite -pair_op right_id.
@@ -602,7 +602,7 @@ Qed.
 
 Lemma res_tag_uniq_dealloc_local_update_r (r: resUR) r' t k h
   (UNIQ: k = tkLocal ∨ k = tkUnique)
-  (NONE: (r ⋅ r').(rtm) !! t = None) :
+  (NONE: rtm (r ⋅ r') !! t = None) :
   (r ⋅ r' ⋅ res_tag t k h, r' ⋅ res_tag t k h) ~l~>
   (r ⋅ r', r').
 Proof.
@@ -625,22 +625,22 @@ Qed.
 
 (* res_cs update *)
 Lemma res_cs_local_update r c Ts Ts'
-  (EqN: r.(rcm) !! c = None) :
+  (EqN: rcm r !! c = None) :
   (r ⋅ res_cs c Ts, res_cs c Ts) ~l~> (r ⋅ res_cs c Ts', res_cs c Ts').
 Proof.
   apply prod_local_update_2.
   rewrite /= /to_cmUR 2!fmap_insert fmap_empty 2!insert_empty.
-  do 2 rewrite (cmra_comm (r).(rcm)) -insert_singleton_op //.
-  rewrite -(insert_insert r.(rcm) c (Excl Ts') (Excl Ts)).
-  eapply (singleton_local_update (<[c := _]> (r.(rcm)) : cmapUR)).
+  do 2 rewrite (cmra_comm (rcm r)) -insert_singleton_op //.
+  rewrite -(insert_insert (rcm r) c (Excl Ts') (Excl Ts)).
+  eapply (singleton_local_update (<[c := _]> (rcm r) : cmapUR)).
   - by rewrite lookup_insert.
   - by apply exclusive_local_update.
 Qed.
 
 Lemma res_cs_lookup (c: call_id) (Ts: tag_locs) :
-  (res_cs c Ts).(rcm) !! c = Some (Excl Ts).
+  rcm (res_cs c Ts) !! c = Some (Excl Ts).
 Proof. by rewrite /= /to_cmUR fmap_insert lookup_insert. Qed.
 
 Lemma res_cs_lookup_ne (c c': call_id) (Ts: tag_locs) (NEQ: c' ≠ c) :
-  (res_cs c Ts).(rcm) !! c' = None.
+  rcm (res_cs c Ts) !! c' = None.
 Proof. by rewrite /= /to_cmUR fmap_insert lookup_insert_ne. Qed.

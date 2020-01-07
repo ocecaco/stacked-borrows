@@ -48,7 +48,7 @@ A VM that comes with pre-compiled sources is provided, so that you can start the
 #### Build dependencies (via opam)
 
 The easiest way to install the correct versions of the dependencies is through
-opam (1.2.2 or newer).  You will need the Coq and Iris opam repositories:
+opam (1.2.2 or newer).  You will need the Coq (tested with 8.9.1 and 8.10.2) and Iris opam repositories:
 
     opam repo add coq-released https://coq.inria.fr/opam/released
     opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
@@ -63,6 +63,7 @@ Run `opam update` to update your opam package registry.
 
 Otherwise, you need to build and install the following dependencies yourself.
 See the [opam](opam) file for the exact versions you need.
+- Coq 8.9.1 or 8.10.2
 - Iris
 - Paco
 - Equations

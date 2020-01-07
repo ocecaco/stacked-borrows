@@ -26,14 +26,14 @@ Proof.
   intros r_f. rewrite 2!cmra_assoc.
   intros (WFS & WFT & VALID & PINV & CINV & SREL).
 
-  have EQtm: (r_f ⋅ r ⋅ res_cs c (<[t := L]> Ts)).(rtm) ≡
-             (r_f ⋅ r ⋅ res_cs c Ts).(rtm) by done.
-  have UNIQUE: (r_f ⋅ r).(rcm) !! c = None.
-  { destruct ((r_f ⋅ r).(rcm) !! c) eqn:Eqcs; [|done].
+  have EQtm: rtm (r_f ⋅ r ⋅ res_cs c (<[t := L]> Ts)) ≡
+             rtm (r_f ⋅ r ⋅ res_cs c Ts) by done.
+  have UNIQUE: rcm (r_f ⋅ r) !! c = None.
+  { destruct (rcm (r_f ⋅ r) !! c) eqn:Eqcs; [|done].
     move : (proj2 VALID c). rewrite lookup_op.
     rewrite Eqcs res_cs_lookup -Some_op.
     intros ?%exclusive_r; [done|apply _]. }
-  have EQO: (r_f ⋅ r ⋅ res_cs c (<[t := L]> Ts)).(rcm) !! c ≡ Excl' (<[t := L]> Ts).
+  have EQO: rcm (r_f ⋅ r ⋅ res_cs c (<[t := L]> Ts)) !! c ≡ Excl' (<[t := L]> Ts).
   { by rewrite lookup_op UNIQUE left_id res_cs_lookup. }
 
   have VALID': ✓ (r_f ⋅ r ⋅ res_cs c Ts).

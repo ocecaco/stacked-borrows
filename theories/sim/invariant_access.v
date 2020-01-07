@@ -13,7 +13,7 @@ Qed.
 
 Lemma priv_loc_not_public r l t t' :
   priv_loc r l t →
-  (∃ (h: heapletR), r.(rtm) !! t' ≡ Some (to_tgkR tkPub, h)) →
+  (∃ (h: heapletR), rtm r !! t' ≡ Some (to_tgkR tkPub, h)) →
   t ≠ t'.
 Proof.
   intros [k1 [h1 [Eqh1 [Inl Eqk]]]] [h2 Eqh2] ?. subst t'. move : Eqh2. rewrite Eqh1.
@@ -27,7 +27,7 @@ Lemma local_access_eq r l (h: heapletR) t t' stk n stk' kind σs σt :
   σt.(sst) !! l = Some stk →
   access1 stk kind t' σt.(scs) = Some (n, stk') →
   wsat r σs σt →
-  r.(rtm) !! t ≡ Some (to_tgkR tkLocal, h) →
+  rtm r !! t ≡ Some (to_tgkR tkLocal, h) →
   is_Some (h !! l) →
   t' = Tagged t ∧ stk' = stk.
 Proof.
@@ -56,9 +56,9 @@ Lemma protector_access_eq r l (h: heapletR) t t' stk n stk' kind σs σt :
   σt.(sst) !! l = Some stk →
   access1 stk kind t' σt.(scs) = Some (n, stk') →
   wsat r σs σt →
-  r.(rtm) !! t ≡ Some (to_tgkR tkUnique, h) →
+  rtm r !! t ≡ Some (to_tgkR tkUnique, h) →
   is_Some (h !! l) →
-  (∃ (c: call_id) T L, r.(rcm) !! c ≡ Excl' T ∧ T !! t = Some L ∧ l ∈ L) →
+  (∃ (c: call_id) T L, rcm r !! c ≡ Excl' T ∧ T !! t = Some L ∧ l ∈ L) →
   t' = Tagged t.
 Proof.
   intros Eql Eqstk WSAT Eqh Inl PRO.
@@ -108,7 +108,7 @@ Lemma priv_pub_access_UB (r: resUR) l kind σs σt t t' stk :
   wsat r σs σt →
   priv_loc r l t →
   (if t' is (Tagged t2)
-   then ∃ (h: heapletR), r.(rtm) !! t2 ≡ Some (to_tgkR tkPub, h)
+   then ∃ (h: heapletR), rtm r !! t2 ≡ Some (to_tgkR tkPub, h)
    else True) →
   False.
 Proof.
@@ -123,7 +123,7 @@ Lemma local_unique_access_head r σs (σt: state) l stk kind n' stk' t ss st k h
   σt.(sst) !! l = Some stk →
   access1 stk kind (Tagged t) σt.(scs) = Some (n', stk') →
   tmap_inv r σs σt →
-  r.(rtm) !! t ≡ Some (to_tgkR k, h) →
+  rtm r !! t ≡ Some (to_tgkR k, h) →
   h !! l ≡ Some $ to_agree (ss,st) →
   ∃ it, it.(perm) = Unique ∧ it.(tg) = Tagged t ∧ is_stack_head it stk ∧
     σt.(shp) !! l = Some st ∧ σs.(shp) !! l = Some ss.
@@ -156,7 +156,7 @@ Lemma public_read_head r σs (σt: state) l stk n' stk' t ss st h:
   σt.(sst) !! l = Some stk →
   access1 stk AccessRead (Tagged t) σt.(scs) = Some (n', stk') →
   wsat r σs σt →
-  r.(rtm) !! t ≡ Some (to_tgkR tkPub, h) →
+  rtm r !! t ≡ Some (to_tgkR tkPub, h) →
   h !! l ≡ Some $ to_agree (ss,st) →
   ∃ it, it ∈ stk ∧ it.(tg) = Tagged t ∧ it.(perm) ≠ Disabled ∧
     t ∈ active_SRO stk ∧
@@ -200,7 +200,7 @@ Lemma priv_loc_UB_retag_access_eq r σs σt c l old new mut T kind α' nxtp'
   ∀ i t, (i < tsize T)%nat →
   priv_loc r (l +ₗ i) t →
   (if old is (Tagged t2)
-   then ∃ (h: heapletR), r.(rtm) !! t2 ≡ Some (to_tgkR tkPub, h)
+   then ∃ (h: heapletR), rtm r !! t2 ≡ Some (to_tgkR tkPub, h)
    else True) →
    False.
 Proof.
