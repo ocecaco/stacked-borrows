@@ -1,8 +1,3 @@
-Change retag semantics! Don't prove anything about this crazy monster.
-
-Things in the "logical" side of the model that could be made better:
-- Free and Retag should be WF!
-
 More speculative:
 - Can the separate private/local things be better integrated to the notion of a "private location" for the purposes of stating lemmas about them?
   Basically, can "protected" become another state of the tag? How can we make sure a call ID protects nothing when EndCall happens?
