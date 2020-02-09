@@ -44,8 +44,6 @@ Notation "'&mut' T" := (Reference RefPtr T%T)
   (at level 8, format "&mut  T") : lrust_type.
 Notation "'*mut' T" := (Reference RawPtr T%T)
   (at level 8, format "*mut  T") : lrust_type.
-Notation "'Box<' T '>'" := (Reference RawPtr T%T)
-  (at level 8, format "Box< T >") : lrust_type.
 
 (** Pointer operations *)
 Notation "& e" := (Ref e%E) (at level 8, format "& e") : expr_scope.

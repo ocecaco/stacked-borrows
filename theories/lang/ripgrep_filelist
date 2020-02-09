@@ -3,3 +3,5 @@ type.v
 lang_base.v
 notation.v
 bor_semantics.v
+expr_semantics.v
+lang.v
