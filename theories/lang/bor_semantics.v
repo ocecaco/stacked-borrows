@@ -161,17 +161,17 @@ Inductive bor_step α (nxtp: ptr_id) :
               (AllocEvt x (Tagged nxtp) Tsize)
               (init_stacks α x Tsize (Tagged nxtp)) (S nxtp)
 (* This implements AllocationExtra::memory_read. *)
-| CopyIS α' l lbor Tsize vl
+| UseIS α' l lbor Tsize vl
     (ACC: memory_use α l lbor Tsize = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp):
-    bor_step α nxtp (CopyEvt l lbor Tsize vl) α' nxtp
-(* This implements AllocationExtra::memory_written. *)
-| WriteIS α' l lbor Tsize vl
-    (ACC: memory_use α l lbor Tsize = Some α')
-    (* This comes from wellformedness, but for convenience we require it here *)
-    (BOR: vl <<t nxtp) :
-    bor_step α nxtp (WriteEvt l lbor Tsize vl) α' nxtp
+    bor_step α nxtp (UseEvt l lbor Tsize vl) α' nxtp
+(* (* This implements AllocationExtra::memory_written. *) *)
+(* | WriteIS α' l lbor Tsize vl *)
+(*     (ACC: memory_use α l lbor Tsize = Some α') *)
+(*     (* This comes from wellformedness, but for convenience we require it here *) *)
+(*     (BOR: vl <<t nxtp) : *)
+(*     bor_step α nxtp (WriteEvt l lbor Tsize vl) α' nxtp *)
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor Tsize
     (ACC: memory_deallocated α l lbor Tsize = Some α') :
