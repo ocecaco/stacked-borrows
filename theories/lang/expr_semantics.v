@@ -303,18 +303,18 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
     Forall (λ ei, is_Some (to_value ei)) el →
     subst_l xl el e = Some e' →
     pure_expr_step FNs h (Call #[ScFnPtr fid] el)
-                         (NewCallEvt fid) (EndCall (InitCall e')).
+                         SilentEvt (EndCall (InitCall e')).
 
 
 Inductive mem_expr_step (h: mem) : expr → event → mem → expr → Prop :=
-| InitCallBS e (c: call_id):
-    mem_expr_step
-              h (InitCall e)
-              (InitCallEvt c)
-              h e
-| EndCallBS (call: call_id) e v :
-    to_result e = Some (ValR v) →
-    mem_expr_step h (EndCall e) (EndCallEvt call v) h #v
+(* | InitCallBS e (c: call_id): *)
+(*     mem_expr_step *)
+(*               h (InitCall e) *)
+(*               (InitCallEvt c) *)
+(*               h e *)
+(* | EndCallBS (call: call_id) e v : *)
+(*     to_result e = Some (ValR v) → *)
+(*     mem_expr_step h (EndCall e) (EndCallEvt call v) h #v *)
 | CopyBS l lbor T (v: value)
     (READ: read_mem l (tsize T) h = Some v)
     (* (LEN: length v = tsize T) : true by read_mem_values *)
@@ -322,30 +322,30 @@ Inductive mem_expr_step (h: mem) : expr → event → mem → expr → Prop :=
         : true by read_mem_values *) :
     mem_expr_step
               h (Copy (Place l lbor T))
-              (CopyEvt l lbor T v)
+              (UseEvt l lbor (tsize T) v)
               h (Val v)
 | WriteBS l lbor T v (LEN: length v = tsize T)
     (DEFINED: ∀ (i: nat), (i < length v)%nat → l +ₗ i ∈ dom (gset loc) h) :
     mem_expr_step
               h (Place l lbor T <- Val v)
-              (WriteEvt l lbor T v)
+              (UseEvt l lbor (tsize T) v)
               (write_mem l v h) #[☠]
 | AllocBS lbor T :
     let l := (fresh_block h, 0) in
     mem_expr_step
               h (Alloc T)
-              (AllocEvt l lbor T)
+              (AllocEvt l lbor (tsize T))
               (init_mem l (tsize T) h) (Place l lbor T)
 | DeallocBS T l lbor :
     (∀ m, is_Some (h !! (l +ₗ m)) ↔ 0 ≤ m < tsize T) →
     mem_expr_step
               h (Free (Place l lbor T))
-              (DeallocEvt l lbor T)
+              (DeallocEvt l lbor (tsize T))
               (free_mem l (tsize T) h) #[☠]
 | RetagBS l otag ntag pkind T kind :
     mem_expr_step
               h (Retag #[ScPtr l otag] pkind T kind)
-              (RetagEvt l otag ntag pkind T kind)
+              (RetagEvt l otag ntag pkind (tsize T) kind)
               h #[ScPtr l ntag]
 (* | ForkBS e h:
     expr_step (Fork e) h SilentEvt (Lit LitPoison) h [e] *)

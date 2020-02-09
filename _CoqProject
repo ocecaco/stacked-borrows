@@ -6,8 +6,9 @@ theories/lang/type.v
 theories/lang/lang_base.v
 theories/lang/notation.v
 theories/lang/bor_semantics.v
-# theories/lang/expr_semantics.v
-# theories/lang/lang.v
+theories/lang/expr_semantics.v
+theories/lang/lang.v
+
 # theories/lang/defs.v
 # theories/lang/steps_foreach.v
 # theories/lang/steps_list.v

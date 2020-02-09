@@ -104,16 +104,12 @@ Instance retag_kind_countable : Countable retag_kind.
 Proof.
   refine (inj_countable
           (λ k, match k with
-              | FnEntry => inl $ inl ()
-              | TwoPhase => inl $ inr ()
-              | RawRt => inr $ inl ()
-              | Default => inr $ inr ()
+              | RawRt => inl ()
+              | Default => inr ()
               end)
           (λ s, match s with
-              | inl (inl _) => Some $ FnEntry
-              | inl (inr _) => Some TwoPhase
-              | inr (inl _) => Some RawRt
-              | inr (inr _) => Some Default
+              | inl () => Some RawRt
+              | inr _ => Some Default
               end) _); by intros [].
 Qed.
 
@@ -329,11 +325,11 @@ Inductive head_step :
   | HeadPureS σ e e' ev
       (ExprStep: pure_expr_step fns σ.(shp) e ev e')
     : head_step e σ [ev] e' σ []
-  | HeadImpureS σ e e' ev h' α' cids' nxtp' nxtc'
+  | HeadImpureS σ e e' ev h' α' nxtp'
       (ExprStep : mem_expr_step σ.(shp) e ev h' e')
-      (InstrStep: bor_step σ.(sst) σ.(scs) σ.(snp) σ.(snc)
-                           ev α' cids' nxtp' nxtc')
-    : head_step e σ [ev] e' (mkState h' α' cids' nxtp' nxtc') [].
+      (InstrStep: bor_step σ.(sst) σ.(snp)
+                           ev α' nxtp')
+    : head_step e σ [ev] e' (mkState h' α' nxtp') [].
 
 Lemma result_head_stuck e1 σ1 κ e2 σ2 efs :
   head_step e1 σ1 κ e2 σ2 efs → to_result e1 = None.
