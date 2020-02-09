@@ -1,4 +1,3 @@
-From Equations Require Import Equations.
 From stdpp Require Export gmap.
 
 From stbor.lang Require Export lang_base notation.
@@ -11,8 +10,10 @@ Implicit Type (α: stacks) (t: ptr_id).
 
 (** CORE SEMANTICS *)
 
-(* TODO: Coq doesn't like it if I leave out the true. Then
-find_granting fails to find a typeclass instance for Decision. *)
+(* TODO: Coq doesn't like it if I leave out the true. Then it seems to
+not be able to figure out how to decide the proposition. Also
+solve_decision doesn't work for this, but I am not even sure if it's
+intended for this situation. *)
 Definition matched_grant (bor: tag) (it: item) :=
   true ∧ it.(tg) = bor.
 Instance matched_grant_dec (bor: tag) :
@@ -29,53 +30,19 @@ Instance matched_grant_dec (bor: tag) :
 
 (* Return the index of the granting item *)
 Definition find_granting (stk: stack) (bor: tag) :
-  option (nat * permission) :=
-  (λ nit, (nit.1, nit.2.(perm))) <$> (list_find (matched_grant bor) stk).
-
-(* Checks to deallocate a location: Like a write access, but also there must be
-  no active protectors at all. *)
-Definition dealloc1 (stk: stack) (bor: tag) : option unit :=
-  (* Check that there is indeed a granting item. *)
-  found ← find_granting stk bor;
-  Some ().
-
-(* Find the index RIGHT BEFORE the first incompatiable item.
-   Remember that 0 is the top of the stack. *)
-Definition find_first_write_incompatible
-  (stk: stack) (pm: permission) : option nat :=
-  match pm with
-  | Unique => Some (length stk)
-  | SharedReadWrite =>
-      match (list_find (λ it, it.(perm) ≠ SharedReadWrite) (reverse stk)) with
-      | Some (idx, _) => Some ((length stk) - idx)%nat
-      | _ => Some O
-      end
-  end.
-
-(* Remove from `stk` the items before `idx`.
-  Check that removed items do not have active protectors.
-  The check is run from the top to before the `idx`. *)
-Fixpoint remove_check (stk: stack) (idx: nat) : option stack :=
-  match idx, stk with
-  (* Assumption: idx ≤ length stk *)
-  | S _, [] => None
-  | O, stk => Some stk
-  | S idx, it :: stk =>
-      remove_check stk idx
-  end.
+  option nat :=
+  (λ nit, nit.1) <$> (list_find (matched_grant bor) stk).
 
 (* Test if a memory `access` using pointer tagged `tg` is granted.
    If yes, return the index (in the old stack) of the item that granted it,
    as well as the new stack. *)
 Definition access1 (stk: stack) (tg: tag)
-  : option (nat * stack) :=
+  : option stack :=
   (* Step 1: Find granting item. *)
-  idx_p ← find_granting stk tg;
-  (* Step 2: Remove incompatiable items. *)
-  (* Remove everything above the write-compatible items, like a proper stack. *)
-  incompat_idx ← find_first_write_incompatible (take idx_p.1 stk) idx_p.2;
-  stk' ← remove_check (take idx_p.1 stk) incompat_idx;
-  Some (idx_p.1, stk' ++ drop idx_p.1 stk).
+  idx ← find_granting stk tg;
+  (* Step 2: Remove incompatable items. *)
+  (* Remove everything above the granting item, like a proper stack. *)
+  Some (drop idx stk).
 
 (* Initialize [l, l + n) with singleton stacks of `tg` *)
 Definition init_stack (t: tag) : stack := [mkItem Unique t].
@@ -99,51 +66,19 @@ Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)
 
 (* Perform the access check on a block of continuous memory.
  * This implements Stacks::memory_read/memory_written/memory_deallocated. *)
-Definition memory_read α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, nstk' ← access1 stk tg; Some nstk'.2).
-Definition memory_written α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, nstk' ← access1 stk tg ; Some nstk'.2).
+Definition memory_use α l (tg: tag) (n: nat) : option stacks :=
+  for_each α l n false (λ stk, nstk' ← access1 stk tg; Some nstk').
 Definition memory_deallocated α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n true (λ stk, dealloc1 stk tg ;; Some []).
+  for_each α l n true (λ stk, access1 stk tg ;; Some []).
 
 (** Reborrow *)
 
-(* Insert `it` into `stk` at `idx` unless `it` is equal to its neighbors. *)
-Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) : stack :=
-  match idx with
-  | O =>
-    match stk with
-    | [] => [new]
-    | it' :: stk' => if decide (new = it') then stk else new :: stk
-    end
-  | S idx' =>
-    match stk !! idx', stk !! idx with
-    | None, None => take (S idx') stk ++ [new] ++ drop (S idx') stk
-    | Some it_l, Some it_r =>
-        if decide (new = it_l) then stk
-        else if decide (new = it_r) then stk
-             else take (S idx') stk ++ [new] ++ drop (S idx') stk
-    | Some it, None | None, Some it =>
-        if decide (new = it) then stk
-        else take (S idx') stk ++ [new] ++ drop (S idx') stk
-    end
-  end.
-
-(* Insert a `new` tag derived from a parent tag `derived_from`. *)
+(* Push a `new` tag derived from a parent tag `derived_from`. *)
 Definition grant
   (stk: stack) (derived_from: tag) (new: item) : option stack :=
-  (* Figure out which item grants our parent (`derived_from`) this kind of access *)
-  idx_p ← find_granting stk derived_from;
-  match new.(perm) with
-  | SharedReadWrite =>
-    (* access is AccessWrite *)
-    new_idx ← find_first_write_incompatible (take idx_p.1 stk) idx_p.2;
-    Some (item_insert_dedup stk new new_idx)
-  | _ =>
     (* an actual access check! *)
     nstk' ← access1 stk derived_from;
-    Some (item_insert_dedup nstk'.2 new O)
-  end.
+    Some (new :: nstk').
 
 Definition reborrowN α l n old_tag new_tag pm :=
   let it := mkItem pm new_tag in
@@ -153,14 +88,10 @@ Definition reborrowN α l n old_tag new_tag pm :=
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
 Definition reborrow α l (old_tag: tag) (Tsize : nat) (kind: ref_kind)
   (new_tag: tag) :=
-  match kind with
-  | UniqueRef =>
-      (* mutable refs or Box use Unique *)
-      reborrowN α l Tsize old_tag new_tag Unique
-  | RawRef =>
-      (* mutable raw pointer uses SharedReadWrite *)
-      reborrowN α l Tsize old_tag new_tag SharedReadWrite
-  end.
+  (* mutable refs use Unique *)
+  (* mutable raw pointer uses SharedReadWrite *)
+  let pm := match kind with UniqueRef => Unique | RawRef => SharedReadWrite end in
+  reborrowN α l Tsize old_tag new_tag pm.
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
@@ -191,13 +122,9 @@ Definition retag α (nxtp: ptr_id)
     let qualify : option ref_kind :=
       match pk, kind with
       (* Mutable reference *)
-      | RefPtr, _ =>
-          Some UniqueRef
-      (* If is both raw ptr and Raw retagging, no protector *)
+      | RefPtr, _ => Some UniqueRef
+      (* Raw pointer only causes actual retagging if it's a retag[raw] *)
       | RawPtr, RawRt => Some RawRef
-      (* Box pointer, no protector *)
-      | BoxPtr, _ => Some UniqueRef
-      (* Ignore Raw pointer otherwise *)
       | RawPtr, _ => None
       end in
     match qualify with
@@ -231,13 +158,13 @@ Inductive bor_step α (nxtp: ptr_id) :
               (init_stacks α x Tsize (Tagged nxtp)) (S nxtp)
 (* This implements AllocationExtra::memory_read. *)
 | CopyIS α' l lbor Tsize vl
-    (ACC: memory_read α l lbor Tsize = Some α')
+    (ACC: memory_use α l lbor Tsize = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp):
     bor_step α nxtp (CopyEvt l lbor Tsize vl) α' nxtp
 (* This implements AllocationExtra::memory_written. *)
 | WriteIS α' l lbor Tsize vl
-    (ACC: memory_written α l lbor Tsize = Some α')
+    (ACC: memory_use α l lbor Tsize = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp) :
     bor_step α nxtp (WriteEvt l lbor Tsize vl) α' nxtp

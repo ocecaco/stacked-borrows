@@ -96,7 +96,7 @@ Definition stack := list item.
 Definition stacks := gmap loc stack.
 
 (** Retag kinds *)
-Inductive retag_kind := FnEntry | TwoPhase | RawRt | Default.
+Inductive retag_kind := RawRt | Default.
 
 (** Language base constructs -------------------------------------------------*)
 

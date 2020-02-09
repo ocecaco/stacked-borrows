@@ -10,7 +10,7 @@ Inductive ref_kind :=
   | RawRef.
 
 Inductive pointer_kind :=
-  RefPtr | RawPtr | BoxPtr.
+  RefPtr | RawPtr.
 
 Inductive type :=
   | FixedSize (sz: nat)
@@ -175,14 +175,12 @@ Instance pointer_kind_countable : Countable pointer_kind.
 Proof.
   refine (inj_countable
           (λ k, match k with
-              | RefPtr => inl $ inl ()
-              | RawPtr => inl $ inr ()
-              | BoxPtr => inr ()
+              | RefPtr => inl ()
+              | RawPtr => inr ()
               end)
           (λ s, match s with
-              | inl (inl ()) => Some $ RefPtr
-              | inl (inr ()) => Some $ RawPtr
-              | inr _ => Some BoxPtr
+              | inl () => Some $ RefPtr
+              | inr _ => Some $ RawPtr
               end) _); by intros [].
 Qed.
 
