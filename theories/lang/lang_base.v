@@ -98,9 +98,6 @@ Definition stacks := gmap loc stack.
 (** Retag kinds *)
 Inductive retag_kind := FnEntry | TwoPhase | RawRt | Default.
 
-Definition is_two_phase (kind: retag_kind) : bool :=
-  match kind with TwoPhase => true | _ => false end.
-
 (** Language base constructs -------------------------------------------------*)
 
 (** Unary/Binary ops *)
@@ -292,11 +289,11 @@ Definition mem := gmap loc scalar.
 
 (** Internal events *)
 Inductive event :=
-| AllocEvt (l : loc) (lbor: tag) (T: type)
-| DeallocEvt (l: loc) (lbor: tag) (T: type)
-| CopyEvt (l: loc) (lbor: tag) (T: type) (v: value)
-| WriteEvt (l: loc) (lbor: tag) (T: type) (v: value)
-| RetagEvt (l: loc) (otag ntag: tag) (pk: pointer_kind) (T: type) (kind: retag_kind)
+| AllocEvt (l : loc) (lbor: tag) (Tsize: nat)
+| DeallocEvt (l: loc) (lbor: tag) (Tsize: nat)
+| CopyEvt (l: loc) (lbor: tag) (Tsize: nat) (v: value)
+| WriteEvt (l: loc) (lbor: tag) (Tsize: nat) (v: value)
+| RetagEvt (l: loc) (otag ntag: tag) (pk: pointer_kind) (Tsize: nat) (kind: retag_kind)
 (* | SysCallEvt (id: nat) *)
 | SilentEvt
 .

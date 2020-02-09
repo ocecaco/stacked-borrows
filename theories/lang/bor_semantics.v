@@ -7,7 +7,7 @@ Set Default Proof Using "Type".
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
-Implicit Type (α: stacks) (t: ptr_id) (T: type).
+Implicit Type (α: stacks) (t: ptr_id).
 
 (** CORE SEMANTICS *)
 
@@ -169,23 +169,23 @@ Definition reborrowN α l n old_tag new_tag pm :=
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
-Definition reborrow α l (old_tag: tag) T (kind: ref_kind)
+Definition reborrow α l (old_tag: tag) (Tsize : nat) (kind: ref_kind)
   (new_tag: tag) :=
   match kind with
   | UniqueRef =>
       (* mutable refs or Box use Unique *)
-      reborrowN α l (tsize T) old_tag new_tag Unique
+      reborrowN α l Tsize old_tag new_tag Unique
   | RawRef =>
       (* mutable raw pointer uses SharedReadWrite *)
-      reborrowN α l (tsize T) old_tag new_tag SharedReadWrite
+      reborrowN α l Tsize old_tag new_tag SharedReadWrite
   end.
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
-Definition retag_ref α (nxtp: ptr_id) l (old_tag: tag) T
+Definition retag_ref α (nxtp: ptr_id) l (old_tag: tag) Tsize
   (kind: ref_kind)
   : option (tag * stacks * ptr_id) :=
-  match tsize T with
+  match Tsize with
   | O => (* Nothing to do for zero-sized types *)
       (* TODO: this can be handled by reborrow *)
       Some (old_tag, α, nxtp)
@@ -195,7 +195,7 @@ Definition retag_ref α (nxtp: ptr_id) l (old_tag: tag) T
                      | _ => Tagged nxtp
                      end in
       (* reborrow old_tag with new_tag *)
-      α' ← reborrow α l old_tag T kind new_tag;
+      α' ← reborrow α l old_tag Tsize kind new_tag;
       (* TODO: this always increments the [nxtp] field, even though that is not
         necessary when new_tag = Untagged *)
       Some (new_tag, α', S nxtp)
@@ -241,28 +241,28 @@ Inductive bor_step α (nxtp: ptr_id) :
 (* | SysCallIS id :
     bor_step h α β nxtp (SysCallEvt id) h α β nxtp *)
 (* This implements EvalContextExt::new_allocation. *)
-| AllocIS x T :
+| AllocIS x Tsize :
     (* Tagged nxtp is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
     bor_step α nxtp
-              (AllocEvt x (Tagged nxtp) T)
-              (init_stacks α x (tsize T) (Tagged nxtp)) (S nxtp)
+              (AllocEvt x (Tagged nxtp) Tsize)
+              (init_stacks α x Tsize (Tagged nxtp)) (S nxtp)
 (* This implements AllocationExtra::memory_read. *)
-| CopyIS α' l lbor T vl
-    (ACC: memory_read α l lbor (tsize T) = Some α')
+| CopyIS α' l lbor Tsize vl
+    (ACC: memory_read α l lbor Tsize = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp):
-    bor_step α nxtp (CopyEvt l lbor T vl) α' nxtp
+    bor_step α nxtp (CopyEvt l lbor Tsize vl) α' nxtp
 (* This implements AllocationExtra::memory_written. *)
-| WriteIS α' l lbor T vl
-    (ACC: memory_written α l lbor (tsize T) = Some α')
+| WriteIS α' l lbor Tsize vl
+    (ACC: memory_written α l lbor Tsize = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp) :
-    bor_step α nxtp (WriteEvt l lbor T vl) α' nxtp
+    bor_step α nxtp (WriteEvt l lbor Tsize vl) α' nxtp
 (* This implements AllocationExtra::memory_deallocated. *)
-| DeallocIS α' l lbor T
-    (ACC: memory_deallocated α l lbor (tsize T) = Some α') :
-    bor_step α nxtp (DeallocEvt l lbor T) α' nxtp
-| RetagIS α' nxtp' l otag ntag T kind pkind
-    (RETAG: retag α nxtp l otag kind pkind T = Some (ntag, α', nxtp')) :
-    bor_step α nxtp (RetagEvt l otag ntag pkind T kind) α' nxtp'.
+| DeallocIS α' l lbor Tsize
+    (ACC: memory_deallocated α l lbor Tsize = Some α') :
+    bor_step α nxtp (DeallocEvt l lbor Tsize) α' nxtp
+| RetagIS α' nxtp' l otag ntag Tsize kind pkind
+    (RETAG: retag α nxtp l otag kind pkind Tsize = Some (ntag, α', nxtp')) :
+    bor_step α nxtp (RetagEvt l otag ntag pkind Tsize kind) α' nxtp'.
