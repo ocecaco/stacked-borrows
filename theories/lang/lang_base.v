@@ -140,8 +140,8 @@ Inductive expr :=
 (* function calls *)
 | Call (e: expr) (el: list expr)  (* Call a function through a FnPtr `e` with
                                      arguments `el` *)
-| InitCall (e: expr)              (* Initializing a stack frame for e *)
-| EndCall (e: expr)               (* End the current call with value `e` *)
+(* | InitCall (e: expr)              (* Initializing a stack frame for e *) *)
+(* | EndCall (e: expr)               (* End the current call with value `e` *) *)
 (* operations on value *)
 | Proj (e1 e2 : expr)             (* Projection out sub value *)
 | Conc (e1 e2: expr)
@@ -186,8 +186,8 @@ Arguments Val _%E.
 (* Arguments App _%E _%E. *)
 Arguments BinOp _ _%E _%E.
 Arguments Call _%E _%E.
-Arguments InitCall _%E.
-Arguments EndCall _%E.
+(* Arguments InitCall _%E. *)
+(* Arguments EndCall _%E. *)
 Arguments Proj _%E _%E.
 Arguments Conc _%E _%E.
 Arguments Deref _%E _%T.
@@ -217,7 +217,7 @@ Fixpoint is_closed (X : list string) (e : expr) : bool :=
   | Case e el | Call e el (* | App e el  *)
       => is_closed X e && forallb (is_closed X) el
   | Copy e | Retag e _ _ _ | Deref e _ | Ref e (* | Field e _ *)
-      | Free e | InitCall e | EndCall e (* | AtomRead e | Fork e *)
+      | Free e (* | InitCall e | EndCall e *) (* | AtomRead e | Fork e *)
       => is_closed X e
   (* | CAS e0 e1 e2 => is_closed X e0 && is_closed X e1 && is_closed X e2 *)
   end.
@@ -274,6 +274,8 @@ Proof.
     move:EQ=> [= -> EQ]. constructor; first by eauto.
     apply IHes. eexists. done.
 Qed.
+
+Check app_binder.
 
 (** Global static function table *)
 Record function := FunV {

@@ -15,8 +15,8 @@ Fixpoint subst (x : string) (es : expr) (e : expr) : expr :=
   (* | Rec f xl e =>
     Rec f xl $ if bool_decide (BNamed x ≠ f ∧ BNamed x ∉ xl) then subst x es e else e *)
   | Call e el => Call (subst x es e) (fmap (subst x es) el)
-  | InitCall e => InitCall (subst x es e)
-  | EndCall e => EndCall (subst x es e)
+  (* | InitCall e => InitCall (subst x es e) *)
+  (* | EndCall e => EndCall (subst x es e) *)
   | Place l tag T => Place l tag T
   (* | App e1 el => App (subst x es e1) (fmap (subst x es) el) *)
   | BinOp op e1 e2 => BinOp op (subst x es e1) (subst x es e2)
@@ -87,7 +87,7 @@ Inductive ectx_item :=
 (* | AppRCtx (r : result) (rl : list result) (el : list expr) *)
 | CallLCtx (el: list expr)
 | CallRCtx (r : result) (rl : list result) (el : list expr)
-| EndCallCtx
+(* | EndCallCtx *)
 | BinOpLCtx (op : bin_op) (e2 : expr)
 | BinOpRCtx (op : bin_op) (r1 : result)
 | ProjLCtx (e : expr)
@@ -117,7 +117,7 @@ Definition fill_item (Ki : ectx_item) (e : expr) : expr :=
   (* | AppRCtx r rl el => App (of_result r) ((of_result <$> rl) ++ e :: el) *)
   | CallLCtx el => Call e el
   | CallRCtx r rl el => Call (of_result r) ((of_result <$> rl) ++ e :: el)
-  | EndCallCtx => EndCall e
+  (* | EndCallCtx => EndCall e *)
   | BinOpLCtx op e2 => BinOp op e e2
   | BinOpRCtx op r1 => BinOp op (of_result r1) e
   | ProjLCtx e2 => Proj e e2
@@ -303,7 +303,7 @@ Inductive pure_expr_step (FNs: fn_env) (h: mem) : expr → event → expr → Pr
     Forall (λ ei, is_Some (to_value ei)) el →
     subst_l xl el e = Some e' →
     pure_expr_step FNs h (Call #[ScFnPtr fid] el)
-                         SilentEvt (EndCall (InitCall e')).
+                         SilentEvt e'.
 
 
 Inductive mem_expr_step (h: mem) : expr → event → mem → expr → Prop :=

@@ -137,8 +137,8 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
   | Retag e pk T kind, Retag e' pk' T' kind' =>
      bool_decide (pk = pk') && bool_decide (T = T') &&
      bool_decide (kind = kind') && expr_beq e e'
-  | Copy e, Copy e' | Ref e, Ref e' | InitCall e, InitCall e'
-  (* | AtomRead e, AtomRead e' *) | EndCall e, EndCall e' => expr_beq e e'
+  | Copy e, Copy e' | Ref e, Ref e' (* | InitCall e, InitCall e' *)
+  (* | AtomRead e, AtomRead e' *) (* | EndCall e, EndCall e' *) => expr_beq e e'
   | Let x e1 e2, Let x' e1' e2' =>
     bool_decide (x = x') && expr_beq e1 e1' && expr_beq e2 e2'
   | Proj e1 e2, Proj e1' e2' | Conc e1 e2, Conc e1' e2'
@@ -157,8 +157,8 @@ Fixpoint expr_beq (e : expr) (e' : expr) : bool :=
 Lemma expr_beq_correct (e1 e2 : expr) : expr_beq e1 e2 ↔ e1 = e2.
 Proof.
   revert e1 e2; fix FIX 1;
-    destruct e1 as [| |? el1| | | | | | | | | | (* | *) | | | | |? el1],
-             e2 as [| |? el2| | | | | | | | | | (* | *) | | | | |? el2];
+    destruct e1 as [| |? el1| | | | | | | | (* | *) | | | | |? el1],
+             e2 as [| |? el2| | (* | | *) | | | | | | (* | *) | | | | |? el2];
     simpl; try done;
     rewrite ?andb_True ?bool_decide_spec ?FIX;
     try (split; intro; [destruct_and?|split_and?]; congruence).
@@ -186,28 +186,28 @@ Proof.
                                  GenLeaf $ inl $ inl $ inr $ inr xl; go e]
       | App e el => GenNode 3 (go e :: (go <$> el)) *)
       | Call e el => GenNode 2 (go e :: (go <$> el))
-      | InitCall e => GenNode 3 [go e]
-      | EndCall e => GenNode 4 [go e]
-      | BinOp op e1 e2 => GenNode 5 [GenLeaf $ inl $ inl $ inr $ inl op;
+      (* | InitCall e => GenNode 3 [go e] *)
+      (* | EndCall e => GenNode 4 [go e] *)
+      | BinOp op e1 e2 => GenNode 3 [GenLeaf $ inl $ inl $ inr $ inl op;
                                      go e1; go e2]
-      | Proj e1 e2 => GenNode 6 [go e1; go e2]
-      | Conc e1 e2 => GenNode 7 [go e1; go e2]
-      | Place l tag T => GenNode 8 [GenLeaf $ inl $ inl $ inr $ inr l;
+      | Proj e1 e2 => GenNode 4 [go e1; go e2]
+      | Conc e1 e2 => GenNode 5 [go e1; go e2]
+      | Place l tag T => GenNode 6 [GenLeaf $ inl $ inl $ inr $ inr l;
                                     GenLeaf $ inl $ inr $ inl $ inl tag;
                                     GenLeaf $ inl $ inr $ inl $ inr T]
-      | Copy e => GenNode 9 [go e]
-      | Write e1 e2 => GenNode 10 [go e1; go e2]
-      | Free e => GenNode 11 [go e]
-      | Alloc T => GenNode 12 [GenLeaf $ inl $ inr $ inr $ inl T]
-      | Deref e T => GenNode 13 [GenLeaf $ inl $ inr $ inr $ inr T; go e]
-      | Ref e => GenNode 14 [go e]
+      | Copy e => GenNode 7 [go e]
+      | Write e1 e2 => GenNode 8 [go e1; go e2]
+      | Free e => GenNode 9 [go e]
+      | Alloc T => GenNode 10 [GenLeaf $ inl $ inr $ inr $ inl T]
+      | Deref e T => GenNode 11 [GenLeaf $ inl $ inr $ inr $ inr T; go e]
+      | Ref e => GenNode 12 [go e]
       (* | Field e path => GenNode 15 [GenLeaf $ inr $ inl $ inl (* $ inl *) path; go e] *)
       | Retag e pk T kind =>
-          GenNode 15 [GenLeaf $ inr $ inl $ inl pk;
+          GenNode 13 [GenLeaf $ inr $ inl $ inl pk;
                       GenLeaf $ inr $ inl $ inr T;
                       GenLeaf $ inr $ inr $ inl kind; go e]
-      | Let x e1 e2 => GenNode 16 [GenLeaf$ inr $ inr $ inr x; go e1; go e2]
-      | Case e el => GenNode 17 (go e :: (go <$> el))
+      | Let x e1 e2 => GenNode 14 [GenLeaf$ inr $ inr $ inr x; go e1; go e2]
+      | Case e el => GenNode 15 (go e :: (go <$> el))
       (* | Fork e => GenNode 23 [go e]
       | SysCall id => GenNode 24 [GenLeaf $ inr $ inr id] *)
      end)
@@ -215,30 +215,30 @@ Proof.
      | GenNode 0 [GenLeaf (inl (inl (inl (inl x))))] => Var x
      | GenNode 1 [GenLeaf (inl (inl (inl (inr v))))] => Val v
      | GenNode 2 (e :: el) => Call (go e) (go <$> el)
-     | GenNode 3 [e] => InitCall (go e)
-     | GenNode 4 [e] => EndCall (go e)
+     (* | GenNode 3 [e] => InitCall (go e) *)
+     (* | GenNode 4 [e] => EndCall (go e) *)
      (* | GenNode 2 [GenLeaf (inl (inl (inr (inl f))));
                   GenLeaf (inl (inl (inr (inr xl)))); e] => Rec f xl (go e)
      | GenNode 3 (e :: el) => App (go e) (go <$> el) *)
-     | GenNode 5 [GenLeaf (inl (inl (inr (inl op)))); e1; e2] => BinOp op (go e1) (go e2)
-     | GenNode 6 [e1; e2] => Proj (go e1) (go e2)
-     | GenNode 7 [e1; e2] => Conc (go e1) (go e2)
-     | GenNode 8 [GenLeaf (inl (inl (inr (inr l))));
+     | GenNode 3 [GenLeaf (inl (inl (inr (inl op)))); e1; e2] => BinOp op (go e1) (go e2)
+     | GenNode 4 [e1; e2] => Proj (go e1) (go e2)
+     | GenNode 5 [e1; e2] => Conc (go e1) (go e2)
+     | GenNode 6 [GenLeaf (inl (inl (inr (inr l))));
                   GenLeaf (inl (inr (inl (inl tag))));
                   GenLeaf (inl (inr (inl (inr T))))] => Place l tag T
-     | GenNode 9 [e] => Copy (go e)
-     | GenNode 10 [e1; e2] => Write (go e1) (go e2)
-     | GenNode 11 [e] => Free (go e)
-     | GenNode 12 [GenLeaf (inl (inr (inr (inl T))))] => Alloc T
-     | GenNode 13 [GenLeaf (inl (inr (inr (inr T)))); e] => Deref (go e) T
-     | GenNode 14 [e] => Ref (go e)
+     | GenNode 7 [e] => Copy (go e)
+     | GenNode 8 [e1; e2] => Write (go e1) (go e2)
+     | GenNode 9 [e] => Free (go e)
+     | GenNode 10 [GenLeaf (inl (inr (inr (inl T))))] => Alloc T
+     | GenNode 11 [GenLeaf (inl (inr (inr (inr T)))); e] => Deref (go e) T
+     | GenNode 12 [e] => Ref (go e)
      (* | GenNode 15 [GenLeaf (inr (inl (inl (*  (inl *) path(* ) *)))); e] => Field (go e) path *)
-     | GenNode 15 [GenLeaf (inr (inl (inl pk)));
+     | GenNode 13 [GenLeaf (inr (inl (inl pk)));
                    GenLeaf (inr (inl (inr T)));
                    GenLeaf (inr (inr (inl kind))); e] =>
         Retag (go e) pk T kind
-     | GenNode 16 [GenLeaf (inr (inr (inr x))); e1; e2] => Let x (go e1) (go e2)
-     | GenNode 17 (e :: el) => Case (go e) (go <$> el)
+     | GenNode 14 [GenLeaf (inr (inr (inr x))); e1; e2] => Let x (go e1) (go e2)
+     | GenNode 15 (e :: el) => Case (go e) (go <$> el)
      (* | GenNode 23 [e] => Fork (go e)
      | GenNode 24 [GenLeaf (inr (inr id))] => SysCall id *)
      | _ => (#[☠])%E
@@ -307,8 +307,8 @@ Lemma fill_item_no_result_inj Ki1 Ki2 e1 e2 :
   to_result e1 = None → to_result e2 = None →
   fill_item Ki1 e1 = fill_item Ki2 e2 → Ki1 = Ki2.
 Proof.
-  destruct Ki1 as [|v1 vl1 el1| | | | | | | | | | | (* | *) | | | | |],
-           Ki2 as [|v2 vl2 el2| | | | | | | | | | | (* | *) | | | | |];
+  destruct Ki1 as [|v1 vl1 el1|    | | | | | | | | | (* | *) | | | | |];
+           destruct Ki2 as [|v2 vl2 el2|      | | | | | | | | | (* | *) | | | | |];
   intros He1 He2 EQ; try discriminate; simplify_eq/=;
     repeat match goal with
     | H : to_result (of_result _) = None |- _ => by rewrite to_of_result in H

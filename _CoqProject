@@ -8,6 +8,7 @@ theories/lang/notation.v
 theories/lang/bor_semantics.v
 theories/lang/expr_semantics.v
 theories/lang/lang.v
+theories/lang/subst_map.v
 
 # theories/lang/defs.v
 # theories/lang/steps_foreach.v
@@ -17,7 +18,6 @@ theories/lang/lang.v
 # theories/lang/steps_progress.v
 # theories/lang/steps_inversion.v
 # theories/lang/steps_retag.v
-# theories/lang/subst_map.v
 
 # theories/sim/behavior.v
 # theories/sim/global.v

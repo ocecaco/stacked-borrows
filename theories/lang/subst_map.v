@@ -5,8 +5,6 @@ Lemma expr_ind (P : expr → Prop):
   (∀ v, P (Val v)) →
   (∀ x, P (Var x)) →
   (∀ e el, P e → Forall P el → P (Call e el)) →
-  (∀ e, P e → P (InitCall e)) →
-  (∀ e, P e → P (EndCall e)) →
   (∀ e1 e2, P e1 → P e2 → P (Proj e1 e2)) →
   (∀ e1 e2, P e1 → P e2 → P (Conc e1 e2)) →
   (∀ o e1 e2, P e1 → P e2 → P (BinOp o e1 e2)) →
@@ -50,8 +48,6 @@ Fixpoint subst_map (xs : gmap string result) (e : expr) : expr :=
   | Var y => if xs !! y is Some v then of_result v else Var y
   | Val v => Val v
   | Call e el => Call (subst_map xs e) (fmap (subst_map xs) el)
-  | InitCall e => InitCall (subst_map xs e)
-  | EndCall e => EndCall (subst_map xs e)
   | Place l tag T => Place l tag T
   | BinOp op e1 e2 => BinOp op (subst_map xs e1) (subst_map xs e2)
   | Proj e1 e2 => Proj (subst_map xs e1) (subst_map xs e2)
