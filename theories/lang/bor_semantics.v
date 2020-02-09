@@ -11,16 +11,12 @@ Implicit Type (α: stacks) (t: ptr_id).
 
 (** CORE SEMANTICS *)
 
-Inductive access_kind := AccessRead | AccessWrite.
-
-(* Since we only have Unique and SharedReadWrite, every item grants
-read and write access. *)
-Definition grants (perm: permission) (access: access_kind) : bool := true.
-
-Definition matched_grant (access: access_kind) (bor: tag) (it: item) :=
-  grants it.(perm) access ∧ it.(tg) = bor.
-Instance matched_grant_dec (access: access_kind) (bor: tag) :
-  Decision (matched_grant access bor it) := _.
+(* TODO: Coq doesn't like it if I leave out the true. Then
+find_granting fails to find a typeclass instance for Decision. *)
+Definition matched_grant (bor: tag) (it: item) :=
+  true ∧ it.(tg) = bor.
+Instance matched_grant_dec (bor: tag) :
+  Decision (matched_grant bor it) := _.
 
 (** Difference from the paper/Miri in indexing of stacks: *)
 (** In the paper, we represent stacks as lists with their bottom at the left end
@@ -32,15 +28,15 @@ Instance matched_grant_dec (access: access_kind) (bor: tag) :
   bottom.  In this case, a smaller index means a higher item in the stack. *)
 
 (* Return the index of the granting item *)
-Definition find_granting (stk: stack) (access: access_kind) (bor: tag) :
+Definition find_granting (stk: stack) (bor: tag) :
   option (nat * permission) :=
-  (λ nit, (nit.1, nit.2.(perm))) <$> (list_find (matched_grant access bor) stk).
+  (λ nit, (nit.1, nit.2.(perm))) <$> (list_find (matched_grant bor) stk).
 
 (* Checks to deallocate a location: Like a write access, but also there must be
   no active protectors at all. *)
 Definition dealloc1 (stk: stack) (bor: tag) : option unit :=
-  (* Step 1: Find granting item. *)
-  found ← find_granting stk AccessWrite bor;
+  (* Check that there is indeed a granting item. *)
+  found ← find_granting stk bor;
   Some ().
 
 (* Find the index RIGHT BEFORE the first incompatiable item.
@@ -71,10 +67,10 @@ Fixpoint remove_check (stk: stack) (idx: nat) : option stack :=
 (* Test if a memory `access` using pointer tagged `tg` is granted.
    If yes, return the index (in the old stack) of the item that granted it,
    as well as the new stack. *)
-Definition access1 (stk: stack) (access: access_kind) (tg: tag)
+Definition access1 (stk: stack) (tg: tag)
   : option (nat * stack) :=
   (* Step 1: Find granting item. *)
-  idx_p ← find_granting stk access tg;
+  idx_p ← find_granting stk tg;
   (* Step 2: Remove incompatiable items. *)
   (* Remove everything above the write-compatible items, like a proper stack. *)
   incompat_idx ← find_first_write_incompatible (take idx_p.1 stk) idx_p.2;
@@ -104,23 +100,11 @@ Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)
 (* Perform the access check on a block of continuous memory.
  * This implements Stacks::memory_read/memory_written/memory_deallocated. *)
 Definition memory_read α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, nstk' ← access1 stk AccessRead tg; Some nstk'.2).
+  for_each α l n false (λ stk, nstk' ← access1 stk tg; Some nstk'.2).
 Definition memory_written α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, nstk' ← access1 stk AccessWrite tg ; Some nstk'.2).
+  for_each α l n false (λ stk, nstk' ← access1 stk tg ; Some nstk'.2).
 Definition memory_deallocated α l (tg: tag) (n: nat) : option stacks :=
   for_each α l n true (λ stk, dealloc1 stk tg ;; Some []).
-
-Definition unsafe_action
-  {A: Type} (f: A → loc → nat → bool → option A) (a: A) (l: loc)
-  (last frozen_size unsafe_size: nat) :
-  option (A * (nat * nat)) :=
-  (* Anything between the last UnsafeCell and this UnsafeCell is frozen *)
-  a' ← f a (l +ₗ last) frozen_size true;
-  (* This UnsafeCell is not frozen *)
-  let cur_off := (last + frozen_size)%nat in
-    a'' ← f a' (l +ₗ cur_off) unsafe_size false ;
-    Some (a'', ((cur_off + unsafe_size)%nat, O))
-  .
 
 (** Reborrow *)
 
@@ -148,10 +132,8 @@ Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) : stack :=
 (* Insert a `new` tag derived from a parent tag `derived_from`. *)
 Definition grant
   (stk: stack) (derived_from: tag) (new: item) : option stack :=
-  (* Figure out which access `new` allows *)
-  let access := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
   (* Figure out which item grants our parent (`derived_from`) this kind of access *)
-  idx_p ← find_granting stk access derived_from;
+  idx_p ← find_granting stk derived_from;
   match new.(perm) with
   | SharedReadWrite =>
     (* access is AccessWrite *)
@@ -159,7 +141,7 @@ Definition grant
     Some (item_insert_dedup stk new new_idx)
   | _ =>
     (* an actual access check! *)
-    nstk' ← access1 stk access derived_from;
+    nstk' ← access1 stk derived_from;
     Some (item_insert_dedup nstk'.2 new O)
   end.
 

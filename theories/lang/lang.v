@@ -13,12 +13,8 @@ Record state := mkState {
   shp : mem;
   (* Stacked borrows for the heap *)
   sst : stacks;
-  (* Stack of active call ids *)
-  scs : call_id_stack;
   (* Counter for pointer tag generation *)
   snp : ptr_id;
-  (* Counter for call id generation *)
-  snc : call_id;
 }.
 
 Record config := mkConfig {
