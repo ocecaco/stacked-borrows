@@ -29,8 +29,7 @@ Instance matched_grant_dec (bor: tag) :
   bottom.  In this case, a smaller index means a higher item in the stack. *)
 
 (* Return the index of the granting item *)
-Definition find_granting (stk: stack) (bor: tag) :
-  option nat :=
+Definition find_granting (stk: stack) (bor: tag) : option nat :=
   (λ nit, nit.1) <$> (list_find (matched_grant bor) stk).
 
 (* Test if a memory `access` using pointer tagged `tg` is granted.
@@ -68,12 +67,15 @@ Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)
  * This implements Stacks::memory_read/memory_written/memory_deallocated. *)
 Definition memory_use α l (tg: tag) (n: nat) : option stacks :=
   for_each α l n false (λ stk, nstk' ← access1 stk tg; Some nstk').
+(* Deallocation performs an "access" (use), ensuring that the tag is
+ * indeed in the stack. *)
 Definition memory_deallocated α l (tg: tag) (n: nat) : option stacks :=
   for_each α l n true (λ stk, access1 stk tg ;; Some []).
 
 (** Reborrow *)
 
-(* Push a `new` tag derived from a parent tag `derived_from`. *)
+(* Push a `new` tag derived from a parent tag `derived_from`. Performs
+ * an "access" on the parent tag to ensure it is on top of the stack. *)
 Definition grant
   (stk: stack) (derived_from: tag) (new: item) : option stack :=
     (* an actual access check! *)
