@@ -66,7 +66,7 @@ Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)
 (* Perform the access check on a block of continuous memory.
  * This implements Stacks::memory_read/memory_written/memory_deallocated. *)
 Definition memory_use α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, nstk' ← access1 stk tg; Some nstk').
+  for_each α l n false (λ stk, access1 stk tg).
 (* Deallocation performs an "access" (use), ensuring that the tag is
  * indeed in the stack. *)
 Definition memory_deallocated α l (tg: tag) (n: nat) : option stacks :=
@@ -75,7 +75,8 @@ Definition memory_deallocated α l (tg: tag) (n: nat) : option stacks :=
 (** Reborrow *)
 
 (* Push a `new` tag derived from a parent tag `derived_from`. Performs
- * an "access" on the parent tag to ensure it is on top of the stack. *)
+ * an "access" on the parent tag to ensure it is on top of the stack
+ * (by dropping everything above it). *)
 Definition grant
   (stk: stack) (derived_from: tag) (new: item) : option stack :=
     (* an actual access check! *)
@@ -107,7 +108,7 @@ Definition retag_ref α (nxtp: ptr_id) l (old_tag: tag) Tsize
   | _ =>
       let new_tag := match kind with
                      | RawRef => Untagged
-                     | _ => Tagged nxtp
+                     | UniqueRef => Tagged nxtp
                      end in
       (* reborrow old_tag with new_tag *)
       α' ← reborrow α l old_tag Tsize kind new_tag;
@@ -125,7 +126,8 @@ Definition retag α (nxtp: ptr_id)
       match pk, kind with
       (* Mutable reference *)
       | RefPtr, _ => Some UniqueRef
-      (* Raw pointer only causes actual retagging if it's a retag[raw] *)
+      (* Raw pointer only causes actual retagging if it's a retag[raw]
+       * (reference-to-raw cast) *)
       | RawPtr, RawRt => Some RawRef
       | RawPtr, _ => None
       end in
