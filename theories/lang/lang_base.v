@@ -45,11 +45,6 @@ Proof. destruct l as [b o]; intros n n' [=?]; lia. Qed.
 Lemma shift_loc_block l n : (l +ₗ n).1 = l.1.
 Proof. done. Qed.
 
-(** Id to track calls *)
-Notation call_id := nat (only parsing).
-(* Stack of active call ids *)
-Definition call_id_stack := list call_id.
-
 (** Tags for pointers *)
 Notation ptr_id := nat (only parsing).
 
@@ -73,7 +68,7 @@ Proof.
               end) _); by intros [].
 Qed.
 
-Inductive permission := Unique | SharedReadWrite | SharedReadOnly | Disabled.
+Inductive permission := Unique | SharedReadWrite.
 Instance permission_eq_dec : EqDecision permission.
 Proof. solve_decision. Defined.
 Instance permission_countable : Countable permission.
@@ -81,12 +76,11 @@ Proof.
   refine (inj_countable
     (λ p,
       match p with
-      | Unique => 0 | SharedReadWrite => 1 | SharedReadOnly => 2 | Disabled => 3
+      | Unique => 0 | SharedReadWrite => 1
       end)
     (λ s,
       match s with
-      | 0 => Some Unique | 1 => Some SharedReadWrite | 2 => Some SharedReadOnly
-      | _ => Some Disabled
+      | 0 => Some Unique | _ => Some SharedReadWrite
       end) _); by intros [].
 Qed.
 
@@ -94,7 +88,6 @@ Qed.
 Record item := mkItem {
   perm      : permission;
   tg        : tag;
-  protector : option call_id;
 }.
 Instance item_eq_dec : EqDecision item.
 Proof. solve_decision. Defined.
@@ -303,9 +296,6 @@ Inductive event :=
 | DeallocEvt (l: loc) (lbor: tag) (T: type)
 | CopyEvt (l: loc) (lbor: tag) (T: type) (v: value)
 | WriteEvt (l: loc) (lbor: tag) (T: type) (v: value)
-| NewCallEvt (fid: fn_id)
-| InitCallEvt (c: call_id)
-| EndCallEvt (c: call_id) (v: value)
 | RetagEvt (l: loc) (otag ntag: tag) (pk: pointer_kind) (T: type) (kind: retag_kind)
 (* | SysCallEvt (id: nat) *)
 | SilentEvt

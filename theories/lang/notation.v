@@ -40,14 +40,10 @@ Notation "# v" := (Val v%V%R%L) (at level 8, format "# v") : expr_scope.
 
 (** Some common types *)
 Notation int := (FixedSize 1).
-Notation "'&mut' T" := (Reference (RefPtr Mutable) T%T)
+Notation "'&mut' T" := (Reference RefPtr T%T)
   (at level 8, format "&mut  T") : lrust_type.
-Notation "'&' T" := (Reference (RefPtr Immutable) T%T)
-  (at level 8, format "&  T")  : lrust_type.
-Notation "'*mut' T" := (Reference (RawPtr Mutable) T%T)
+Notation "'*mut' T" := (Reference RawPtr T%T)
   (at level 8, format "*mut  T") : lrust_type.
-Notation "'*const' T" := (Reference (RawPtr Immutable) T%T)
-  (at level 8, format "*const  T") : lrust_type.
 Notation "'Box<' T '>'" := (Reference RawPtr T%T)
   (at level 8, format "Box< T >") : lrust_type.
 

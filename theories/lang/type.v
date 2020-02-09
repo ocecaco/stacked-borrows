@@ -5,14 +5,12 @@ From stbor.lang Require Export helpers.
 
 Set Default Proof Using "Type".
 
-Inductive mutability := Mutable | Immutable.
 Inductive ref_kind :=
-  | UniqueRef (two_phase: bool) (* `&mut` and `Box` *)
-  | SharedRef (* `&`, with or without interior mutability *)
-  | RawRef (mutable: bool) (* `*mut`/`*const`, raw pointers *)
-  .
+  | UniqueRef (* `&mut` and `Box` *)
+  | RawRef.
+
 Inductive pointer_kind :=
-  RefPtr (mut: mutability) | RawPtr (mut: mutability) | BoxPtr.
+  RefPtr | RawPtr | BoxPtr.
 
 Inductive type :=
   | FixedSize (sz: nat)
@@ -171,28 +169,19 @@ End type_general_ind.
 
 Instance type_inhabited : Inhabited type := populate (FixedSize 0).
 
-Instance mutability_eq_dec : EqDecision mutability.
-Proof. solve_decision. Defined.
-Instance mutability_countable : Countable mutability.
-Proof.
-  refine (inj_countable'
-    (λ m, match m with Mutable => 0 | Immutable => 1 end)
-    (λ x, match x with 0 => Mutable | _ => Immutable end) _); by intros [].
-Qed.
-
 Instance pointer_kind_eq_dec : EqDecision pointer_kind.
 Proof. solve_decision. Defined.
 Instance pointer_kind_countable : Countable pointer_kind.
 Proof.
   refine (inj_countable
           (λ k, match k with
-              | RefPtr mut => inl $ inl mut
-              | RawPtr mut => inl $ inr mut
+              | RefPtr => inl $ inl ()
+              | RawPtr => inl $ inr ()
               | BoxPtr => inr ()
               end)
           (λ s, match s with
-              | inl (inl mut) => Some $ RefPtr mut
-              | inl (inr mut) => Some $ RawPtr mut
+              | inl (inl ()) => Some $ RefPtr
+              | inl (inr ()) => Some $ RawPtr
               | inr _ => Some BoxPtr
               end) _); by intros [].
 Qed.

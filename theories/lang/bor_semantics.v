@@ -7,20 +7,15 @@ Set Default Proof Using "Type".
 
 (*** STACKED BORROWS SEMANTICS ---------------------------------------------***)
 
-Implicit Type (α: stacks) (t: ptr_id) (c: call_id) (T: type).
+Implicit Type (α: stacks) (t: ptr_id) (T: type).
 
 (** CORE SEMANTICS *)
 
 Inductive access_kind := AccessRead | AccessWrite.
 
-Definition grants (perm: permission) (access: access_kind) : bool :=
-  match perm, access with
-  | Disabled, _ => false
-  (* All items grant read access.
-    All items except SharedReadOnly grant write access. *)
-  | SharedReadOnly, AccessWrite => false
-  | _, _ => true
-  end.
+(* Since we only have Unique and SharedReadWrite, every item grants
+read and write access. *)
+Definition grants (perm: permission) (access: access_kind) : bool := true.
 
 Definition matched_grant (access: access_kind) (bor: tag) (it: item) :=
   grants it.(perm) access ∧ it.(tg) = bor.
@@ -41,28 +36,12 @@ Definition find_granting (stk: stack) (access: access_kind) (bor: tag) :
   option (nat * permission) :=
   (λ nit, (nit.1, nit.2.(perm))) <$> (list_find (matched_grant access bor) stk).
 
-Definition is_active (cids: call_id_stack) (c: call_id) : bool :=
-  bool_decide (c ∈ cids).
-(* FIXME: this one should exclude protectors of Disabled items *)
-Definition is_active_protector cids (it: item) :=
-  match it.(protector) with
-  | Some c => Is_true (is_active cids c)
-  | _ => False
-  end.
-Instance is_active_protector_dec cids : Decision (is_active_protector cids it).
-Proof. intros it. rewrite /is_active_protector. case_match; solve_decision. Qed.
-
-(* Find the top active protector *)
-Definition find_top_active_protector cids (stk: stack) :=
-  list_find (is_active_protector cids) stk.
-
 (* Checks to deallocate a location: Like a write access, but also there must be
   no active protectors at all. *)
-Definition dealloc1 (stk: stack) (bor: tag) cids : option unit :=
+Definition dealloc1 (stk: stack) (bor: tag) : option unit :=
   (* Step 1: Find granting item. *)
   found ← find_granting stk AccessWrite bor;
-  (* Step 2: Check that there are no active protectors left. *)
-  if find_top_active_protector cids stk then None else Some ().
+  Some ().
 
 (* Find the index RIGHT BEFORE the first incompatiable item.
    Remember that 0 is the top of the stack. *)
@@ -75,65 +54,35 @@ Definition find_first_write_incompatible
       | Some (idx, _) => Some ((length stk) - idx)%nat
       | _ => Some O
       end
-  | SharedReadOnly | Disabled => None
-  end.
-
-Definition check_protector cids (it: item) : bool :=
-  match it.(protector) with
-  | None => true
-  | Some c => if is_active cids c then false else true
   end.
 
 (* Remove from `stk` the items before `idx`.
   Check that removed items do not have active protectors.
   The check is run from the top to before the `idx`. *)
-Fixpoint remove_check cids (stk: stack) (idx: nat) : option stack :=
+Fixpoint remove_check (stk: stack) (idx: nat) : option stack :=
   match idx, stk with
   (* Assumption: idx ≤ length stk *)
   | S _, [] => None
   | O, stk => Some stk
   | S idx, it :: stk =>
-      if check_protector cids it then remove_check cids stk idx else None
+      remove_check stk idx
   end.
-
-(* Replace any Unique permission with Disabled, starting from the top of the
-  stack. Check that replaced item do not have active protectors *)
-Fixpoint replace_check' cids (acc stk : stack) : option stack :=
-  match stk with
-  | [] => Some acc
-  | it :: stk =>
-      if decide (it.(perm) = Unique) then
-        if check_protector cids it
-        then let new := mkItem Disabled it.(tg) it.(protector) in
-             replace_check' cids (acc ++ [new]) stk
-        else None
-      else replace_check' cids (acc ++ [it]) stk
-  end.
-Definition replace_check cids (stk: stack) : option stack :=
-  replace_check' cids [] stk.
 
 (* Test if a memory `access` using pointer tagged `tg` is granted.
    If yes, return the index (in the old stack) of the item that granted it,
    as well as the new stack. *)
-Definition access1 (stk: stack) (access: access_kind) (tg: tag) cids
+Definition access1 (stk: stack) (access: access_kind) (tg: tag)
   : option (nat * stack) :=
   (* Step 1: Find granting item. *)
   idx_p ← find_granting stk access tg;
   (* Step 2: Remove incompatiable items. *)
-  match access with
-  | AccessWrite =>
-      (* Remove everything above the write-compatible items, like a proper stack. *)
-      incompat_idx ← find_first_write_incompatible (take idx_p.1 stk) idx_p.2;
-      stk' ← remove_check cids (take idx_p.1 stk) incompat_idx;
-      Some (idx_p.1, stk' ++ drop idx_p.1 stk)
-  | AccessRead =>
-      (* On a read, *disable* all `Unique` above the granting item. *)
-      stk' ← replace_check cids (take idx_p.1 stk);
-      Some (idx_p.1, stk' ++ drop idx_p.1 stk)
-  end.
+  (* Remove everything above the write-compatible items, like a proper stack. *)
+  incompat_idx ← find_first_write_incompatible (take idx_p.1 stk) idx_p.2;
+  stk' ← remove_check (take idx_p.1 stk) incompat_idx;
+  Some (idx_p.1, stk' ++ drop idx_p.1 stk).
 
 (* Initialize [l, l + n) with singleton stacks of `tg` *)
-Definition init_stack (t: tag) : stack := [mkItem Unique t None].
+Definition init_stack (t: tag) : stack := [mkItem Unique t].
 Fixpoint init_stacks α (l:loc) (n:nat) (tg: tag) : stacks :=
   match n with
   | O => α
@@ -154,12 +103,12 @@ Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)
 
 (* Perform the access check on a block of continuous memory.
  * This implements Stacks::memory_read/memory_written/memory_deallocated. *)
-Definition memory_read α cids l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, nstk' ← access1 stk AccessRead tg cids; Some nstk'.2).
-Definition memory_written α cids l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, nstk' ← access1 stk AccessWrite tg cids; Some nstk'.2).
-Definition memory_deallocated α cids l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n true (λ stk, dealloc1 stk tg cids ;; Some []).
+Definition memory_read α l (tg: tag) (n: nat) : option stacks :=
+  for_each α l n false (λ stk, nstk' ← access1 stk AccessRead tg; Some nstk'.2).
+Definition memory_written α l (tg: tag) (n: nat) : option stacks :=
+  for_each α l n false (λ stk, nstk' ← access1 stk AccessWrite tg ; Some nstk'.2).
+Definition memory_deallocated α l (tg: tag) (n: nat) : option stacks :=
+  for_each α l n true (λ stk, dealloc1 stk tg ;; Some []).
 
 Definition unsafe_action
   {A: Type} (f: A → loc → nat → bool → option A) (a: A) (l: loc)
@@ -174,82 +123,6 @@ Definition unsafe_action
   .
 
 (** Reborrow *)
-
-(* visit the type left-to-right and apply the action `f`.
- + `last` is the offset of `l` from the last UnsafeCell,
- + `cur_dist` is the distance between `last` and the current offset of the
-   visit, which is also the start of the sub-type `T`.
- + a` of type A is the accumulator for the visit.
- When an UnsafeCell is found, the action `f` is applied twice, through
- `unsafe_action`:
- - First `f` is applied for the frozen block, which is the range
-   [last, last + cur_dist). `f` is applied with the boolean flag `true`
-   (for frozen).
- - Then `f` is applied for the unfrozen block, which is the range
-   [last + cur_dist, last + cur_dist + unsafe_block_size). `f` is applied with
-   the boolean flag `false`. *)
-Section blah.
-Context {A: Type}.
-Equations visit_freeze_sensitive'
-  (l: loc) (f: A → loc → nat → bool → option A)
-  (a: A) (last cur_dist: nat) (T: type) : option (A * (nat * nat)) :=
-  visit_freeze_sensitive' l f a last cur_dist (FixedSize n) :=
-    (* consider frozen, simply extend the distant by n *)
-      Some (a, (last, cur_dist + n)%nat) ;
-  visit_freeze_sensitive' l f a last cur_dist (Reference _ _) :=
-    (* consider frozen, extend the distant by 1 *)
-      Some (a, (last, S cur_dist)) ;
-  visit_freeze_sensitive' l f a last cur_dist (Unsafe T) :=
-    (* reach an UnsafeCell, apply the action `f` and return new `last` and
-        `cur_dist` *)
-      unsafe_action f a l last cur_dist (tsize T) ;
-  visit_freeze_sensitive' l f a last cur_dist (Union Ts) :=
-    (* If it's a union, look at the type to see if there is UnsafeCell *)
-      if is_freeze (Union Ts)
-      (* No UnsafeCell, consider the whole block frozen and simply extend the
-          distant. *)
-      then Some (a, (last, cur_dist + (tsize (Union Ts)))%nat)
-      (* There can be UnsafeCell, consider the whole block of [Union Ts]
-          unfrozen and perform `f a _ _ false` on the whole block.
-          `unsafe_action` will return the offsets for the following visit. *)
-      else unsafe_action f a l last cur_dist (tsize (Union Ts)) ;
-  visit_freeze_sensitive' l f a last cur_dist (Product Ts) :=
-    (* Try a shortcut *)
-      if is_freeze (Product Ts)
-      (* No UnsafeCell, consider the whole block frozen and simply extend the
-        distant. *)
-      then Some (a, (last, cur_dist + (tsize (Product Ts)))%nat)
-      (* Perform a left-to-right search on [Product Ts], which guarantees
-        that the offsets are increasing. *)
-      else visit_LR a last cur_dist Ts
-        where visit_LR (a: A) (last cur_dist: nat) (Ts: list type)
-          : option (A * (nat * nat)) :=
-          { visit_LR a last cur_dist [] := Some (a, (last, cur_dist)) ;
-            visit_LR a last cur_dist (T' :: Ts') :=
-              alc ← visit_freeze_sensitive' l f a last cur_dist T' ;
-              visit_LR alc.1 alc.2.1 alc.2.2 Ts' } ;
-  visit_freeze_sensitive' l f a last cur_dist (Sum Ts) :=
-    (* Try a shortcut *)
-      if is_freeze (Sum Ts)
-      (* No UnsafeCell, consider the whole block frozen and simply extend the
-          distant. *)
-      then Some (a, (last, cur_dist + (tsize (Sum Ts)))%nat)
-      (* There can be UnsafeCell, consider the whole block of [Sum Ts] unfrozen
-          and perform `f a _ _ false` on the whole block. `unsafe_action` will
-          return the offsets for the following visit. *)
-      else unsafe_action f a l last cur_dist (tsize (Sum Ts))
-  .
-End blah.
-
-Definition visit_freeze_sensitive {A: Type}
-  (l: loc) (T: type) (f: A → loc → nat → bool → option A) (a: A) : option A :=
-  match visit_freeze_sensitive' l f a O O T with
-  | Some (a', (last', cur_dist')) =>
-      (* the last block is frozen *)
-      f a' (l +ₗ last') cur_dist' true
-  | _ => None
-  end.
-
 
 (* Insert `it` into `stk` at `idx` unless `it` is equal to its neighbors. *)
 Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) : stack :=
@@ -274,7 +147,7 @@ Definition item_insert_dedup (stk: stack) (new: item) (idx: nat) : stack :=
 
 (* Insert a `new` tag derived from a parent tag `derived_from`. *)
 Definition grant
-  (stk: stack) (derived_from: tag) (new: item) cids : option stack :=
+  (stk: stack) (derived_from: tag) (new: item) : option stack :=
   (* Figure out which access `new` allows *)
   let access := if grants new.(perm) AccessWrite then AccessWrite else AccessRead in
   (* Figure out which item grants our parent (`derived_from`) this kind of access *)
@@ -286,39 +159,31 @@ Definition grant
     Some (item_insert_dedup stk new new_idx)
   | _ =>
     (* an actual access check! *)
-    nstk' ← access1 stk access derived_from cids;
+    nstk' ← access1 stk access derived_from;
     Some (item_insert_dedup nstk'.2 new O)
   end.
 
-Definition reborrowN α cids l n old_tag new_tag pm prot :=
-  let it := mkItem pm new_tag prot in
-  for_each α l n false (λ stk, grant stk old_tag it cids).
+Definition reborrowN α l n old_tag new_tag pm :=
+  let it := mkItem pm new_tag in
+  for_each α l n false (λ stk, grant stk old_tag it).
 
 (* This implements EvalContextPrivExt::reborrow *)
 (* TODO?: alloc.check_bounds(this, ptr, size)?; *)
-Definition reborrow α cids l (old_tag: tag) T (kind: ref_kind)
-  (new_tag: tag) (protector: option call_id) :=
+Definition reborrow α l (old_tag: tag) T (kind: ref_kind)
+  (new_tag: tag) :=
   match kind with
-  | SharedRef | RawRef false =>
-      (* for shared refs and const raw pointer, treat Unsafe as SharedReadWrite
-        and Freeze as SharedReadOnly *)
-      visit_freeze_sensitive l T
-        (λ α' l' sz frozen,
-          (* If is in Unsafe, use SharedReadWrite, otherwise SharedReadOnly *)
-          let perm := if frozen then SharedReadOnly else SharedReadWrite in
-          reborrowN α' cids l' sz old_tag new_tag perm protector) α
-  | UniqueRef false =>
+  | UniqueRef =>
       (* mutable refs or Box use Unique *)
-      reborrowN α cids l (tsize T) old_tag new_tag Unique protector
-  | UniqueRef true | RawRef true =>
+      reborrowN α l (tsize T) old_tag new_tag Unique
+  | RawRef =>
       (* mutable raw pointer uses SharedReadWrite *)
-      reborrowN α cids l (tsize T) old_tag new_tag SharedReadWrite protector
+      reborrowN α l (tsize T) old_tag new_tag SharedReadWrite
   end.
 
 (* Retag one pointer *)
 (* This implements EvalContextPrivExt::retag_reference *)
-Definition retag_ref α cids (nxtp: ptr_id) l (old_tag: tag) T
-  (kind: ref_kind) (protector: option call_id)
+Definition retag_ref α (nxtp: ptr_id) l (old_tag: tag) T
+  (kind: ref_kind)
   : option (tag * stacks * ptr_id) :=
   match tsize T with
   | O => (* Nothing to do for zero-sized types *)
@@ -326,40 +191,35 @@ Definition retag_ref α cids (nxtp: ptr_id) l (old_tag: tag) T
       Some (old_tag, α, nxtp)
   | _ =>
       let new_tag := match kind with
-                     | RawRef _ => Untagged
+                     | RawRef => Untagged
                      | _ => Tagged nxtp
                      end in
       (* reborrow old_tag with new_tag *)
-      α' ← reborrow α cids l old_tag T kind new_tag protector;
+      α' ← reborrow α l old_tag T kind new_tag;
       (* TODO: this always increments the [nxtp] field, even though that is not
         necessary when new_tag = Untagged *)
       Some (new_tag, α', S nxtp)
   end.
 
-Definition adding_protector (kind: retag_kind) (c: call_id) : option call_id :=
-  match kind with FnEntry => Some c | _ => None end.
-
 (* This *partly* implements EvalContextExt::retag *)
 (* Assumption: ct ∈ cids *)
-Definition retag α (nxtp: ptr_id) (cids: call_id_stack) (ct: call_id)
+Definition retag α (nxtp: ptr_id)
   (l: loc) (otag: tag) (kind: retag_kind) pk Tr :
   option (tag * stacks * ptr_id) :=
-    let qualify : option (ref_kind * option call_id) :=
+    let qualify : option ref_kind :=
       match pk, kind with
       (* Mutable reference *)
-      | RefPtr Mutable, _ =>
-          Some (UniqueRef (is_two_phase kind), adding_protector kind ct)
-      (* Immutable reference *)
-      | RefPtr Immutable, _ => Some (SharedRef, adding_protector kind ct)
+      | RefPtr, _ =>
+          Some UniqueRef
       (* If is both raw ptr and Raw retagging, no protector *)
-      | RawPtr mut, RawRt => Some (RawRef (bool_decide (mut = Mutable)), None)
+      | RawPtr, RawRt => Some RawRef
       (* Box pointer, no protector *)
-      | BoxPtr, _ => Some (UniqueRef false, None)
+      | BoxPtr, _ => Some UniqueRef
       (* Ignore Raw pointer otherwise *)
-      | RawPtr _, _ => None
+      | RawPtr, _ => None
       end in
     match qualify with
-    | Some (rkind, protector) => retag_ref α cids nxtp l otag Tr rkind protector
+    | Some rkind => retag_ref α nxtp l otag Tr rkind
     | None => Some (otag, α, nxtp)
     end
     .
@@ -376,39 +236,33 @@ Infix "<<t" := tag_values_included (at level 60, no associativity).
 
 (** Instrumented step for the stacked borrows *)
 (* This ignores CAS for now. *)
-Inductive bor_step α (cids: call_id_stack) (nxtp: ptr_id) (nxtc: call_id):
-  event → stacks → call_id_stack → ptr_id → call_id → Prop :=
+Inductive bor_step α (nxtp: ptr_id) :
+  event → stacks → ptr_id → Prop :=
 (* | SysCallIS id :
     bor_step h α β nxtp (SysCallEvt id) h α β nxtp *)
 (* This implements EvalContextExt::new_allocation. *)
 | AllocIS x T :
     (* Tagged nxtp is the first borrow of the variable x,
        used when accessing x directly (not through another pointer) *)
-    bor_step α cids nxtp nxtc
+    bor_step α nxtp
               (AllocEvt x (Tagged nxtp) T)
-              (init_stacks α x (tsize T) (Tagged nxtp)) cids (S nxtp) nxtc
+              (init_stacks α x (tsize T) (Tagged nxtp)) (S nxtp)
 (* This implements AllocationExtra::memory_read. *)
 | CopyIS α' l lbor T vl
-    (ACC: memory_read α cids l lbor (tsize T) = Some α')
+    (ACC: memory_read α l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp):
-    bor_step α cids nxtp nxtc (CopyEvt l lbor T vl) α' cids nxtp nxtc
+    bor_step α nxtp (CopyEvt l lbor T vl) α' nxtp
 (* This implements AllocationExtra::memory_written. *)
 | WriteIS α' l lbor T vl
-    (ACC: memory_written α cids l lbor (tsize T) = Some α')
+    (ACC: memory_written α l lbor (tsize T) = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp) :
-    bor_step α cids nxtp nxtc (WriteEvt l lbor T vl) α' cids nxtp nxtc
+    bor_step α nxtp (WriteEvt l lbor T vl) α' nxtp
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor T
-    (ACC: memory_deallocated α cids l lbor (tsize T) = Some α') :
-    bor_step α cids nxtp nxtc (DeallocEvt l lbor T) α' cids nxtp nxtc
-| InitCallIS :
-    bor_step α cids nxtp nxtc (InitCallEvt nxtc) α (nxtc :: cids) nxtp (S nxtc)
-| EndCallIS c cids' v
-    (TOP: cids = c :: cids') :
-    bor_step α cids nxtp nxtc (EndCallEvt c v) α cids' nxtp nxtc
-| RetagIS α' nxtp' l otag ntag T kind pkind c cids'
-    (TOP: cids = c :: cids')
-    (RETAG: retag α nxtp cids c l otag kind pkind T = Some (ntag, α', nxtp')) :
-    bor_step α cids nxtp nxtc (RetagEvt l otag ntag pkind T kind) α' cids nxtp' nxtc.
+    (ACC: memory_deallocated α l lbor (tsize T) = Some α') :
+    bor_step α nxtp (DeallocEvt l lbor T) α' nxtp
+| RetagIS α' nxtp' l otag ntag T kind pkind
+    (RETAG: retag α nxtp l otag kind pkind T = Some (ntag, α', nxtp')) :
+    bor_step α nxtp (RetagEvt l otag ntag pkind T kind) α' nxtp'.
