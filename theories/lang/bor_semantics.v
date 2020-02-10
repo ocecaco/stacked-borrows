@@ -65,12 +65,10 @@ Fixpoint for_each α (l:loc) (n:nat) (dealloc: bool) (f: stack → option stack)
 
 (* Perform the access check on a block of continuous memory.
  * This implements Stacks::memory_read/memory_written/memory_deallocated. *)
-Definition memory_use α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n false (λ stk, access1 stk tg).
-(* Deallocation performs an "access" (use), ensuring that the tag is
+(* Deallocation also performs an "access" (use), ensuring that the tag is
  * indeed in the stack. *)
-Definition memory_deallocated α l (tg: tag) (n: nat) : option stacks :=
-  for_each α l n true (λ stk, access1 stk tg ;; Some []).
+Definition memory_use α l (tg: tag) (n: nat) (deallocate: bool) : option stacks :=
+  for_each α l n deallocate (λ stk, access1 stk tg).
 
 (** Reborrow *)
 
@@ -162,7 +160,7 @@ Inductive bor_step α (nxtp: ptr_id) :
               (init_stacks α x Tsize (Tagged nxtp)) (S nxtp)
 (* This implements AllocationExtra::memory_read. *)
 | UseIS α' l lbor Tsize vl
-    (ACC: memory_use α l lbor Tsize = Some α')
+    (ACC: memory_use α l lbor Tsize false = Some α')
     (* This comes from wellformedness, but for convenience we require it here *)
     (BOR: vl <<t nxtp):
     bor_step α nxtp (UseEvt l lbor Tsize vl) α' nxtp
@@ -174,7 +172,7 @@ Inductive bor_step α (nxtp: ptr_id) :
 (*     bor_step α nxtp (WriteEvt l lbor Tsize vl) α' nxtp *)
 (* This implements AllocationExtra::memory_deallocated. *)
 | DeallocIS α' l lbor Tsize
-    (ACC: memory_deallocated α l lbor Tsize = Some α') :
+    (ACC: memory_use α l lbor Tsize true = Some α') :
     bor_step α nxtp (DeallocEvt l lbor Tsize) α' nxtp
 | RetagIS α' nxtp' l otag ntag Tsize kind pkind
     (RETAG: retag α nxtp l otag kind pkind Tsize = Some (ntag, α', nxtp')) :

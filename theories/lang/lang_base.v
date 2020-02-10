@@ -275,8 +275,6 @@ Proof.
     apply IHes. eexists. done.
 Qed.
 
-Check app_binder.
-
 (** Global static function table *)
 Record function := FunV {
   fun_args: list binder;
